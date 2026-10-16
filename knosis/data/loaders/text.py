@@ -40,8 +40,9 @@ def chunk(text: str, size: int, overlap: int) -> list[tuple[int, int]]:
 @register("text")
 def load(path: str | Path, chunk_chars: int = 2000, overlap: int = 200, dedup: bool = True,
          extractor: Callable[[str, str], Iterable[Unit]] | None = None,
-         suffixes: Iterable[str] = SUFFIXES) -> Dataset:
-    root = Path(path).expanduser().resolve()
+         suffixes: Iterable[str] = SUFFIXES, root: str | Path | None = None) -> Dataset:
+    """`path` 是语料目录；相对路径相对于 `root`（默认当前目录）。"""
+    root = (Path(root or ".").expanduser() / Path(path).expanduser()).resolve()
     units, docs, seen, duplicates = [], [], {}, {}
 
     for p in sorted(root.rglob("*")):

@@ -48,3 +48,33 @@ def load(scenario: str = "m0_gravity", root: str | Path | None = None) -> Datase
         for d, v, c in product(DIFFICULTIES, VERSIONS, COMPLEXITIES)
     ]
     return Dataset("newtonbench", scenario, mdir, files=files, schema={"params": params}, tasks=tasks, metrics=METRICS)
+
+
+def upstream(scenario: str, root: str | Path | None = None):
+    """导入上游模块 `modules.<scenario>`（含 GT 定律与模拟器），只给环境侧（实验工具、打分器）用。
+
+    上游 evaluation 在导入时依赖 openai；Knosis 不做 LLM 符号裁判，这里换成桩模块并关闭符号检查。
+    """
+    import importlib
+    import sys
+    import types
+
+    base = str(Path(root or data_dir("newtonbench")).resolve())
+    loaded = sys.modules.get("modules")
+    if loaded and str(Path(list(loaded.__path__)[0]).parent) != base:  # 上游包名是通用的 modules / utils，换根目录要先清掉
+        for name in [n for n in sys.modules if n.split(".")[0] in ("modules", "utils")]:
+            del sys.modules[name]
+    if sys.path[:1] != [base]:
+        sys.path.insert(0, base)
+    stub = types.ModuleType("utils.call_llm_api")
+    stub.call_llm_api = None
+    sys.modules.setdefault("utils.call_llm_api", stub)
+    module = importlib.import_module(f"modules.{scenario}")
+    core = importlib.import_module(f"modules.{scenario}.core")
+    shared = importlib.import_module("modules.common.evaluation").evaluate_law
+
+    def without_judge(*args, **kw):
+        return shared(*args, **{**kw, "symbolic_check": False})
+
+    core.shared_evaluate_law = without_judge
+    return module

@@ -258,13 +258,21 @@ def from_bibench(ds) -> dict:
     ]
     table_names = dict(zip(tables["ID"], tables["Name"]))
     col_names = dict(zip(columns["ID"], columns["name"]))
+    # 不同表名可能转成同一个 snake 名（"Table (5)" 与 "Table 5"），重名时加序号。
+    dataset_names, used = {}, set()
+    for tid, tname in table_names.items():
+        name, n = snake(tname), 2
+        while name in used:
+            name, n = f"{snake(tname)}_{n}", n + 1
+        used.add(name)
+        dataset_names[tid] = name
 
     datasets = []
     for tid, tname in table_names.items():
         cols = columns[columns["TableID"] == tid]
         fields = [field(c.name, c.datatype) if pd.isna(c.Expression) else field(c.name, c.datatype, "DAX", c.Expression)
                   for c in cols.itertuples()]
-        datasets.append({"name": snake(tname), "source": tname, "fields": fields,
+        datasets.append({"name": dataset_names[tid], "source": tname, "fields": fields,
                          "custom_extensions": eob({"source_kind": "csv", "raw": {"path": f"{tname}.csv"}})})
 
     relationships = []
@@ -275,7 +283,7 @@ def from_bibench(ds) -> dict:
         a, b = ((r.FromTableID, r.FromColumnID), (r.ToTableID, r.ToColumnID))
         (ft, fc), (tt, tc) = (a, b) if many_from else (b, a)  # Ossie 的 from 是多的一侧
         relationships.append(relationship(
-            snake(table_names[ft]), [col_names[fc]], snake(table_names[tt]), [col_names[tc]],
+            dataset_names[ft], [col_names[fc]], dataset_names[tt], [col_names[tc]],
             cardinality=f"{CARDINALITY[r.FromCardinality]}-to-{CARDINALITY[r.ToCardinality]}",
             active=bool(r.IsActive), cross_filter={1: "single", 2: "both"}.get(r.CrossFilteringBehavior, "none"),
         ))

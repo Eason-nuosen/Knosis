@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from string import Template
 
-from ..data import load_dataset
+from ..data import LOADERS, load_dataset
 from ..knowledge import check_ontology, check_units, feedback, load_ontology, load_units, refs, write_units
 from .exporters import EXPORTERS
 
@@ -43,6 +44,12 @@ def stage_dir(ws, state):
     return path / f"round_{state['round']}" if state["stage"] == "refine" else path
 
 
+def open_dataset(benchmark, scenario, options):
+    """按工作区选项加载原始数据集：只把 loader 认识的参数（root、market、task …）传过去，其余留给导出器。"""
+    accepted = inspect.signature(LOADERS[benchmark]).parameters
+    return load_dataset(benchmark, scenario, **{k: v for k, v in options.items() if k in accepted})
+
+
 def commit(ws, message):
     subprocess.run(["git", "add", "-A"], cwd=ws, check=True, capture_output=True)
     subprocess.run(
@@ -58,7 +65,7 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, **options)
 
     ws = Path(out or f"ws/{benchmark}-{scenario}").resolve()
     ws.mkdir(parents=True, exist_ok=False)
-    exported = EXPORTERS[benchmark](load_dataset(benchmark, scenario, root=options.get("root")), ws, **options)
+    exported = EXPORTERS[benchmark](open_dataset(benchmark, scenario, options), ws, **options)
     for directory in ("tasks", "knowledge", ".knosis", *(f"stages/{s}" for s in STAGES.values())):
         (ws / directory).mkdir(parents=True, exist_ok=True)
     (ws / "BRIEF.md").write_text(exported["brief"], encoding="utf-8")
@@ -103,7 +110,7 @@ def next_prompt(ws) -> str:
     stage_dir(ws, state).mkdir(parents=True, exist_ok=True)
     if state["stage"] == "decide" and state["output"] and not (ws / "tasks/tasks.jsonl").exists():
         opts = state["options"]
-        ds = load_dataset(state["benchmark"], state["scenario"], root=opts.get("root"))
+        ds = open_dataset(state["benchmark"], state["scenario"], opts)
         exported = EXPORTERS[state["benchmark"]](ds, ws, write_data=False, **opts)
         write_units(ws / "tasks/tasks.jsonl", exported["tasks"])
     template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")

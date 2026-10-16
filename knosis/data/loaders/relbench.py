@@ -45,3 +45,9 @@ def load(scenario: str = "rel-f1", root: str | Path | None = None, task: str | N
                 ))
 
     return Dataset("relbench", scenario, ddir, files=files, schema=schema, tasks=tasks, metrics=METRICS)
+
+
+def task_splits(ds: Dataset, task: str | None = None) -> dict[str, Task]:
+    """一个任务的 {train / val / test: Task}；`task` 不给就用第一个任务。Task.answer 是该划分的标签表路径。"""
+    name = task or ds.tasks[0].meta["name"]
+    return {t.split: t for t in ds.tasks if t.meta["name"] == name}

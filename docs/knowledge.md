@@ -1,18 +1,20 @@
 # 知识层格式
 
-知识层 = **κ 单元** + 可选的**本体子层**。工作区里：
+知识层 = **κ 单元** + 可选的**本体子层** + **反馈子层**。工作区里：
 
 ```
 knowledge/
 ├── units.jsonl                       每行一个 κ
-└── ontology/                         可选，Apache Ossie 0.2 三文件 + EOB 扩展
-    ├── <name>.semantic_model.yaml    core：表、列、主键、join、度量
-    ├── <name>.ontology.yaml          概念、概念间关系、单位与约束（不提表和列）
-    └── <name>.mapping.yaml           列 → 概念 / 关系
+├── ontology/                         可选，Apache Ossie 0.2 三文件 + EOB 扩展
+│   ├── <name>.semantic_model.yaml    core：表、列、主键、join、度量
+│   ├── <name>.ontology.yaml          概念、概念间关系、单位与约束（不提表和列）
+│   └── <name>.mapping.yaml           列 → 概念 / 关系
+└── feedback/<id>.json                dev 题上的反馈记录
 ```
 
-每次 `ws check` 通过，extract / refine 会把整个知识层（含本体）快照到 `stages/2_extract/`、`stages/3_refine/round_<n>/`，
-这就是 K_0、K_1 …；`ws fork --knowledge K_n` 拿到的也是这一整份。
+每次 `ws check` 通过，extract / refine 会把整个知识层快照到 `stages/2_extract/knowledge/`、
+`stages/3_refine/round_<n>/knowledge/`，这就是 K_0、K_1 …；`ws fork --knowledge K_n` 拿到的也是这一整份
+（fork 出来的对照组关闭反馈，只比较给定的知识）。
 
 ## κ 单元
 
@@ -37,10 +39,10 @@ knowledge/
 | `meta` | 否 | 任意附加信息 |
 
 来源写法：数据 `data/<文件>#node/<id>`、`#edge/<src>|<label>|<dst>`、`#row/<row_id>`、`#col/<列名>`；
-工具 `tool:<name>@<version>(<k=v,...>)`；纯派生 `derived`（`derived_from` 必须非空）；多来源用 ` ; ` 连接。
+工具 `tool:<name>@<version>(<k=v,...>)`；反馈 `feedback:<记录 id>#item/<题目 id>`；纯派生 `derived`（`derived_from` 必须非空）；多来源用 ` ; ` 连接。
 
 结构检查（`check_units`）：必填字段与取值、重复 id、`data/` 来源文件存在、
-**I1** 派生引用可解析（含历史版本）、**I5** 父单元撤回 / 失效后后代必须是 `retracted` 或 `stale`。
+`feedback:` 来源指向存在的记录、**I1** 派生引用可解析（含历史版本）、**I5** 父单元撤回 / 失效后后代必须是 `retracted` 或 `stale`。
 不判断内容对错；I2（独立来源计数）、I3（类型兼容）、I4（条件不丢）尚未实现。
 
 ## 本体子层
@@ -70,3 +72,16 @@ EOB `annotations` 的 target 存在。官方 JSON Schema 校验请用 Ossie 仓�
 | 工具 `joins --ontology DIR` | 从数据里发现的候选主键与 join 写成 core 层草稿（`method: tool`） |
 
 注意：BI-Bench 的 `_relationships` 与 RelBench 的外键在「join 发现 / 本体构造」类评测里是 GT，不应给被测 agent。
+
+## 反馈子层
+
+agent 自己就是 Codex / Claude Code：Knosis 不记录它的轨迹，只给它**结果**，由它把结果变成知识。
+
+- 每个工作区有一个 dev 划分（`tasks/dev.jsonl`，无答案，与测试题不重叠）。agent 按 decide 的交付格式回答一部分或全部 dev 题，
+  `knosis feedback submit <文件>` 返回逐题结果，同时写一条 `knowledge/feedback/<id>.json`。
+- 模式（`ws init --feedback`）：`answer` 给对错、分数和正确答案；`score` 只给对错与分数；`none` 关闭。`--budget` 限制提交次数。
+- 反馈只接受 dev id；GT 从原始数据目录读，打分器与 `knosis eval` 是同一个函数（`decision` 层的 `score(..., ids)`）。
+- **自动 RSI**：驱动模式下 `knosis ws run <ws> --stage refine --rounds N`，每轮结束时运行器把本轮的
+  `stages/3_refine/round_<n>/dev_<交付文件>` 自动提交一次，结果写进下一轮的提示。
+- 提示里只说明数据可能含噪声；哪些是噪声、怎么处理、反馈说明了什么，都由 agent 判断并写成 κ
+  （例如「某条边是噪声」是一条 finding，provenance 指向反馈记录与数据位置）。

@@ -22,7 +22,8 @@ def scenarios(root: str | Path | None = None) -> list[str]:
 
 @register("bibench", scenarios=scenarios)
 def load(scenario: str | None = None, root: str | Path | None = None) -> Dataset:
-    """`scenario` 是用例 id，不给就加载全部用例的题目（此时 files 为空）。"""
+    """`scenario` 是用例 id；不给或为 `all` 时加载全部用例的题目（此时 files 为空，各用例的表在 `meta["dir"]`）。"""
+    scenario = None if scenario == "all" else scenario
     base = Path(root or data_dir("bibench"))
     bench, meta = base / "bi-bench", base / "tools" / "data_management_tools"
     queries = json.loads((bench / "queries.json").read_text())
@@ -36,7 +37,8 @@ def load(scenario: str | None = None, root: str | Path | None = None) -> Dataset
             input=queries[cid],
             answer=gt,
             kind="bi_query",
-            meta={"oracle": json.loads(hint.read_text()) if hint.is_file() else None},  # 该用哪些表 / 做哪些变换，属于提示
+            # oracle：该用哪些表 / 做哪些变换，属于提示，不给被测 agent
+            meta={"dir": bench / cid, "oracle": json.loads(hint.read_text()) if hint.is_file() else None},
         ))
 
     files = {}

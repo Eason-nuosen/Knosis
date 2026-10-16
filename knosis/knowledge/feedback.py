@@ -26,9 +26,8 @@ def left(ws, state) -> int:
 
 def submit(ws, path) -> dict:
     """在 dev GT 上给 `path`（与 decide 交付同格式，只含 dev 题，可以只交一部分）打分，写一条反馈记录并返回它。"""
-    from ..data import load_dataset
     from ..decision import SCORERS
-    from ..workspace import prediction_ids, status
+    from ..workspace import open_dataset, prediction_ids, status
 
     ws, path = Path(ws).resolve(), Path(path).resolve()
     state = status(ws)
@@ -38,7 +37,7 @@ def submit(ws, path) -> dict:
     ids, _ = prediction_ids(path)
     if set(ids) - dev:
         raise ValueError(f"feedback only accepts dev ids; unknown: {sorted(set(ids) - dev, key=str)[:10]}")
-    ds = load_dataset(state["benchmark"], state["scenario"], root=state["options"].get("root"))
+    ds = open_dataset(state["benchmark"], state["scenario"], state["options"])
     result = SCORERS[state["benchmark"]](ws, state, ds, path, ids)
     items = result["items"] if state["feedback"]["mode"] == "answer" else [
         {k: v for k, v in item.items() if k != "gold"} for item in result["items"]]

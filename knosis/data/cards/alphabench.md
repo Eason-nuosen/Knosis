@@ -65,3 +65,10 @@ AlphaBench 考的是：**LLM 能不能做量化因子的挖掘。**
 - 仓库的覆盖面已经超出 ICLR 论文（多了市场、多了 atomic 任务、多了 Assay 引擎），
   所以**论文的数字与仓库跑出来的数字未必对应**。
 - 二手资料里的题量数字互相矛盾，**不要引用它们**，以仓库为准。
+
+## Knosis 工作区
+
+只支持 `evaluate` 场景（上游 T2）：`knosis ws init alphabench evaluate [-o start=2021-01-01 -o end=2025-06-30]`。
+题目是因子池里的表达式，交付预测的 signal / mean_ic / mean_rankic / 1–5 维度分，GT 由本地 IC / RankIC 真值表按上游口径现算；
+工作区只给评估窗口开始之前的行情面板（来自本地 Qlib cn_data）。
+`generate`（T1）要用 Qlib 现算新因子的 IC，本地未安装 Qlib，暂不支持；目前只有 CSI300（cn_data）。

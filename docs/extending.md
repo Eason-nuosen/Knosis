@@ -13,33 +13,38 @@
 
 ## 让数据集能开工作区
 
-在 `knosis/workspace/export.py` 写 `export_<name>(ds, ws, write_data=True, **opts) -> dict` 并登记到 `EXPORTERS`：
+写 `knosis/workspace/exporters/<name>.py`，用 `@register("<name>")` 装饰 `export(ds, ws, write_data=True, **opts) -> dict`，
+并加进 `exporters/__init__.py` 末尾的 import 列表：
 
 | 返回键 | 内容 |
 | --- | --- |
-| `brief` | BRIEF.md 正文（模板放 `workspace/templates/briefs/`，事实先从数据算出来再写） |
-| `tasks` | decide 阶段的无答案题目列表（`id`、`kind`、题面） |
+| `brief` | BRIEF.md 正文（模板放 `workspace/templates/briefs/`，事实先从数据算出来再写；只说数据可能含噪声，不教怎么处理） |
+| `tasks` | 测试题（无答案），每项至少有 `id`；decide 阶段才写到 `tasks/tasks.jsonl` |
+| `dev` | 开发题（无答案，与测试题不重叠），用于反馈；可为空 |
 | `holdout` | 写进 BRIEF 当示例、不参与测试的题目 id |
-| `output` | decide 交付的文件名（`predictions.jsonl` 或 `predictions.csv`） |
+| `output` | decide 交付文件名：`predictions.jsonl`（每行 `{id, answer}`）或 `predictions.csv`（`row_id`, `prediction`, …）；没有下游预测时为 None |
 | `modalities` | 用于挑选 TOOLS.md 里的工具，如 `["graph"]`、`["table"]`、`["tables"]` |
 
-`write_data=False` 时只返回上述内容不写数据（decide 阶段重新生成题目时用），同样的 `opts` 必须给出同样的题目。
+`write_data=False` 时只返回上述内容不写数据（decide 阶段重新生成题目时用），同样的 `opts` 必须给出同样的划分（`split()` 按 seed 切分）。
+原始文件用 `place()` 放进工作区（硬链接，跨盘时复制）；不要用软链接，它会暴露原始目录与旁边的 GT。
+命令行的 `ws init` 用 `--dev` / `--limit` / `--seed` / `-o key=value` 把参数传给导出器。
 
 ## 新增评测（决策层）
 
-在 `knosis/decision/` 写一个打分器并注册：
+在 `knosis/decision/<name>.py` 写打分器并注册，加进 `decision/__init__.py` 末尾的 import 列表：
 
 ```python
 from . import register
 
 @register("<name>")
-def score(ws, state, ds) -> dict:
-    # ws：工作区路径；state：.knosis/state.json；ds：从原始目录重新加载的 Dataset（含 GT）
-    # 读 ws / "stages/4_decide" / state["output"]，返回指标；建议附 "reference"（平凡基线）
-    ...
+def score(ws, state, ds, path, ids) -> dict:
+    # path：交付文件；ids：要打分的题目 id（测试题或 dev 题）；ds：从原始目录重新加载的 Dataset（含 GT）
+    return {"metrics": {...},                       # 汇总指标
+            "items": [{"id": ..., "ok": ..., "gold": ...}, ...],   # 逐题结果，反馈会原样返回给 agent（score 模式去掉 gold）
+            "reference": {...}}                     # 可选：平凡基线
 ```
 
-并在 `knosis/decision/__init__.py` 末尾的 import 里加上模块名。`evaluate` 会自动附上知识使用统计并写 `.knosis/eval.json`。
+同一个函数既用于 `knosis eval`（测试题），也用于 `knosis feedback submit`（dev 题）。
 
 ## 新增工具（工具层）
 

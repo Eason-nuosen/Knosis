@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from ..data import load_dataset
 from ..knowledge import INACTIVE, load_units
 
 SCORERS: dict[str, Callable] = {}
@@ -28,15 +27,15 @@ def register(name: str):
 
 
 def evaluate(ws, write: bool = True) -> dict:
-    from ..workspace import status
+    from ..workspace import open_dataset, status
 
     # 驱动模式下的 agent 带 KNOSIS_DEPTH=1：不给它看测试分数，否则就是在针对 GT 调参。
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("evaluation is disabled inside agent runs (KNOSIS_DEPTH >= 1)")
     ws = Path(ws).resolve()
     state = status(ws)
-    ds = load_dataset(state["benchmark"], state["scenario"], root=state["options"].get("root"))
-    ids = [task["id"] for task in load_units(ws / "tasks/tasks.jsonl")]
+    ds = open_dataset(state["benchmark"], state["scenario"], state["options"])
+    ids = [task["id"] for task in load_units(ws / "tasks/tasks.jsonl")] if state["output"] else []
     path = ws / "stages/4_decide" / state["output"] if state["output"] else None
     result = SCORERS[state["benchmark"]](ws, state, ds, path, ids)
     report = {"benchmark": state["benchmark"], "scenario": state["scenario"],
@@ -74,4 +73,6 @@ def mean(rows, key) -> float:
     return sum(r[key] for r in rows) / max(1, len(rows))
 
 
-from . import graph_qa, tabular  # noqa: E402,F401
+from . import (  # noqa: E402,F401
+    alphabench, bibench, burr, graph_qa, kramabench, llm_srbench, newtonbench, relbench, tabular, text,
+)

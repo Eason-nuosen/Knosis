@@ -16,6 +16,7 @@ def test_answer_sets():
     s = graph_qa.answer_set
     assert s(12) == s([12.0]) == s("12") == s(["12", "12"])
     assert s([{"a": "x", "cnt": 1}]) == s([{"b": "x", "n": 1.0}])
+    assert s([{"b.createTime": "t1"}, {"b.createTime": "t2"}]) == s(["t1", "t2"])
     assert s(True) == s("true") == frozenset({"true"})
     assert graph_qa.f1(s(["a", "b"]), s(["a"])) == pytest.approx(2 / 3)
     assert graph_qa.f1(s([]), s([])) == 1.0

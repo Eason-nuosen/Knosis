@@ -11,7 +11,7 @@ agent 负责思考。所有后续工作（新数据、新工具、新的知识�
 | 层 | 模块 | 内容 |
 | --- | --- | --- |
 | **数据层** | `knosis.data` | 统一入口 `load_dataset`，10 个数据入口返回同一个 `Dataset(tasks, files, schema, units, metrics)` |
-| **知识层** | `knosis.knowledge` | 知识单元 κ（`units.jsonl`，带条件、来源、状态）+ **本体子层**（Apache Ossie 三文件 + EOB 扩展，与 ontology-bench 同一格式）；结构检查 |
+| **知识层** | `knosis.knowledge` | 知识单元 κ（`units.jsonl`，带条件、来源、状态）+ **本体子层**（Apache Ossie 三文件 + EOB 扩展，与 ontology-bench 同一格式）+ **反馈子层**（dev 题上的结果，驱动自动 RSI）；结构检查 |
 | **工具层** | `knosis.tools` | 统一的 `TOOL.md + run.py`：SQL、表画像、join 发现（参考 BI-Agent）、ULTRA、TabPFN |
 | **决策层** | `knosis.decision` | decide 产物的打分（从原始目录读 GT），与训练先验 / 含噪答案等参照对比，并统计知识被引用的情况 |
 | 工作区 | `knosis.workspace` | 把四层串起来：explore → extract → refine（多轮）→ decide，每步验收并提交 git，GT 不进工作区 |
@@ -80,7 +80,7 @@ knosis tool run sql     -- --tables data/ --query 'SELECT COUNT(*) FROM train' -
 
 ```bash
 knosis ws init tabarena houses --out ws/houses                 # 试点 1：单表
-knosis ws init ngdbench ngd-fin --out ws/ngd-fin --limit 200   # 试点 2：含噪属性图问答，抽 200 道测试题
+knosis ws init ngdbench ngd-fin --out ws/ngd-fin --limit 200   # 试点 2：含噪属性图问答，抽 200 道测试题（另有 50 道 dev 题）
 
 # 嵌入模式：在 Codex / Claude Code 里打开工作区，agent 读 AGENTS.md，自己调 ws next / ws check
 knosis install                                                 # 安装 skill，让 agent 知道怎么用 Knosis
@@ -88,31 +88,47 @@ knosis install                                                 # 安装 skill，
 # 驱动模式：由 Knosis 启动 agent 跑完各阶段
 knosis ws run ws/houses --agent codex --stage explore extract refine decide --rounds 2
 
+# 反馈与自动 RSI：agent 交 dev 题答案换逐题结果；驱动模式下 refine 每轮自动提交一次
+knosis feedback submit stages/3_refine/round_1/dev_predictions.jsonl --ws ws/ngd-fin
+knosis ws run ws/ngd-fin --agent codex --stage refine --rounds 3
+
 # 对照与评测
 knosis ws fork ws/houses --out ws/houses-none --knowledge none  # none / K_0 / K_<n> / K_final
 knosis eval ws/houses                                          # 写 .knosis/eval.json
 ```
 
-阶段：explore 交笔记与可疑项；extract 产出 K_0；refine 每轮产出 K_n 并写 changelog；
+阶段：explore 交笔记与可疑项；extract 产出 K_0；refine 每轮产出 K_n、写 changelog，并用 dev 反馈修正知识；
 decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jsonl` 记录用到的知识。
 `ws check` 验收通过才提交并推进阶段。
 
 **GT 软隔离**：GT 永远不导出到工作区（NGD-Fin 只给去掉加噪痕迹的观测图；TabArena 只给训练标签与测试特征；
-测试题直到 decide 才生成）。驱动模式下 agent 进程带 `KNOSIS_DEPTH=1`，不能再起 agent，也不能运行 `knosis eval`。
+测试题直到 decide 才生成；反馈只接受 dev 题）。驱动模式下 agent 进程带 `KNOSIS_DEPTH=1`，不能再起 agent，也不能运行 `knosis eval`。
 这不是安全边界：同机的 agent 仍可能读到原始数据目录，正式评测请把 `data/` 放在 agent 环境之外。
 
 ## 现状（v0.3）
 
+10 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
+
+| 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
+| --- | --- | --- | --- | --- | --- |
+| ngdbench | ngd-fin | 答案 JSONL | 答案集合 EM / F1；参照：照抄含噪图答案 | 50 题 | 其他 4 个域的导出模板 |
+| tabarena | 51 个数据集 | 预测 CSV | RMSE / accuracy / AUC / log loss；参照：训练先验 | 默认 0，`--dev N` 留出训练行 | — |
+| relbench | 库名，`-o task=` | 预测 CSV | AUROC / MAE / MAP@k；参照：平凡基线 | val 划分 | — |
+| bibench | 用例 id 或 `all` | 表 JSONL | 上游匹配规则的 success；`-o metadata=true` 给初始本体 | all 模式 20 例 | — |
+| kramabench | 领域 | 答案 JSONL | 上游 exact / 近似 / 列表 F1 | 约 25% | 需 LLM 判定的口径退化为规范化精确匹配 |
+| burr | 真实库 / micro 场景 / `micro/<类别>` | 映射 JSONL | 上游 class / relation / attribute P/R/F1 | 多场景时约 25% | iswc、npd 的 D2RQ GT 打分 |
+| llm-srbench | split | 表达式 JSONL | NMSE、Acc₀.₁（含 OOD） | 约 20% | 符号等价（需 LLM） |
+| newtonbench | 领域 | 定律函数源码 | 上游 RMSLE；实验用 `newton` 工具 | 按（难度, 版本）整组 | 符号等价（需 LLM） |
+| alphabench | evaluate（CSI300） | 因子判断 JSONL | 信号准确率、IC MAE / Spearman、分维度打分 | 50 题 | generate（需 Qlib 现算 IC）、美股 |
+| text | 语料路径 | 无（只评知识层） | 单元数、来源可定位率、引文核对 | 无 | — |
+
 | 部分 | 状态 |
 | --- | --- |
-| 数据层 10 个入口 | 可用；工作区导出只支持 NGD-Fin、TabArena |
-| 知识层 κ + 本体 | 结构检查覆盖必填字段、来源文件、I1 派生引用、I5 撤回传播、本体跨文件引用；I2–I4 未实现 |
-| 工具层 | SQL / 表画像 / join 发现可用；ULTRA / TabPFN 接口已适配，真实 GPU 推断待验收 |
-| 决策层 | NGD-Fin（答案集合 EM / F1）、TabArena（RMSE / accuracy / AUC / log loss）可用；其余数据集待补 |
-| agent 接入 | Codex 驱动模式完成端到端 smoke test；Claude Code 驱动 / 嵌入模式接口相同 |
+| 知识层 | κ 检查覆盖必填字段、来源（数据文件 / 反馈记录）、I1、I5、本体跨文件引用；I2–I4 未实现 |
+| 工具层 | sql / profile / joins / newton 可用；ULTRA / TabPFN 接口已适配，真实 GPU 推断待验收 |
+| agent 接入 | Codex 驱动模式在 NGD-Fin、TabArena 跑通端到端（含 refine 自动反馈）；Claude Code 接口相同，未做 smoke |
 
-路线：先补齐其余数据集的导出器与打分器（BI-Bench 优先，配合本体层），再做 refine 的 RSI 与工具进化、
-L2 复杂查询、跨模型族的 transmission test。设计背景见 [docs/design.md](docs/design.md)。
+路线：refine 的工具进化、L2 复杂查询、跨模型族的 transmission test。设计背景见 [docs/design.md](docs/design.md)。
 
 ## 扩展
 

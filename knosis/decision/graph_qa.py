@@ -22,10 +22,11 @@ def scalar(value) -> str:
 
 
 def answer_set(value) -> frozenset:
-    """标量 → 单元素集合；列表去重；字典行只比较取值（不要求与 Cypher 的返回别名一致）。"""
+    """标量 → 单元素集合；列表去重；字典行只比较取值（不要求与 Cypher 的返回别名一致），单列字典等同于它的值。"""
     items = value if isinstance(value, list) else [value]
     return frozenset(
-        tuple(sorted(scalar(v) for v in item.values())) if isinstance(item, dict) else scalar(item) for item in items
+        (scalar(*item.values()) if len(item) == 1 else tuple(sorted(scalar(v) for v in item.values())))
+        if isinstance(item, dict) else scalar(item) for item in items
     )
 
 
