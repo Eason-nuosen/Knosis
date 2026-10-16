@@ -4,10 +4,12 @@
 
     knowledge/units.jsonl          每行一个 κ
     knowledge/ontology/            可选；<name>.{semantic_model,ontology,mapping}.yaml
+    knowledge/feedback/            dev 题上的反馈记录，见 `feedback`
 """
 
 from pathlib import Path
 
+from . import feedback
 from .ontology import check_ontology, load_ontology, ontology_units, refs, write_ontology
 from .units import FORMS, INACTIVE, STATUSES, active, check_units, load_units, write_units
 

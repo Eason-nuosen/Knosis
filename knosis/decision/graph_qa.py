@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..knowledge import load_units
-from . import register
+from . import answers, mean, register
 
 
 def scalar(value) -> str:
@@ -38,26 +37,24 @@ def f1(pred: frozenset, gold: frozenset) -> float:
 
 
 def summarize(rows) -> dict:
-    n = len(rows)
-    return {"n": n, "answer_set_em": sum(r["em"] for r in rows) / max(1, n),
-            "answer_set_f1": sum(r["f1"] for r in rows) / max(1, n)}
+    return {"answer_set_em": mean(rows, "ok"), "answer_set_f1": mean(rows, "f1")}
 
 
 @register("ngdbench")
-def score(ws, state, ds) -> dict:
+def score(ws, state, ds, path, ids) -> dict:
     gold = {t.id: t for t in ds.tasks}
-    tasks = load_units(ws / "tasks/tasks.jsonl")
-    predictions = {p["id"]: p.get("answer") for p in load_units(ws / "stages/4_decide" / state["output"])}
-    rows, noise, by_kind = [], [], defaultdict(list)
-    for task in tasks:
-        g = answer_set(gold[task["id"]].answer)
-        p = answer_set(predictions[task["id"]]) if task["id"] in predictions else frozenset()
-        row = {"em": p == g, "f1": f1(p, g)}
-        rows.append(row)
-        by_kind[task["kind"]].append(row)
+    predictions = answers(path)
+    items, noise, by_kind = [], [], defaultdict(list)
+    for tid in ids:
+        task = gold[tid]
+        g = answer_set(task.answer)
+        p = answer_set(predictions[tid]) if tid in predictions else frozenset()
+        item = {"id": tid, "kind": task.kind, "ok": p == g, "f1": f1(p, g), "gold": task.answer}
+        items.append(item)
+        by_kind[task.kind].append(item)
         # 参照：直接照抄含噪观测图上的答案能得几分。
-        n = answer_set(gold[task["id"]].meta.get("noise_answer"))
-        noise.append({"em": n == g, "f1": f1(n, g)})
-    return {**summarize(rows), "missing": sum(t["id"] not in predictions for t in tasks),
-            "by_kind": {k: summarize(v) for k, v in sorted(by_kind.items())},
-            "reference": {"noisy_graph_answer": summarize(noise)}}
+        n = answer_set(task.meta.get("noise_answer"))
+        noise.append({"ok": n == g, "f1": f1(n, g)})
+    metrics = {**summarize(items), "missing": sum(tid not in predictions for tid in ids),
+               "by_kind": {k: {"n": len(v), **summarize(v)} for k, v in sorted(by_kind.items())}}
+    return {"metrics": metrics, "items": items, "reference": {"noisy_graph_answer": summarize(noise)}}

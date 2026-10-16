@@ -10,7 +10,8 @@ from knosis import data_dir, load_dataset
 from knosis import workspace as w
 from knosis.cli import main
 from knosis.knowledge import load_units, write_units
-from knosis.workspace.export import export_ngdbench, export_tabarena
+from knosis.workspace.exporters.ngdbench import export as export_ngdbench
+from knosis.workspace.exporters.tabarena import export as export_tabarena
 
 
 @pytest.fixture
@@ -62,16 +63,17 @@ def valid_unit(**changes):
 def test_export_graph(ngd_data, tmp_path):
     ds = load_dataset("ngdbench", "ngd-fin", root=ngd_data)
     ws = tmp_path / "ws"
-    first = export_ngdbench(ds, ws)
-    second = export_ngdbench(ds, ws, write_data=False)
+    first = export_ngdbench(ds, ws, dev=2)
+    second = export_ngdbench(ds, ws, write_data=False, dev=2)
     assert first == second
     with (ws / "data/graph.gpickle").open("rb") as fh:
         graph = pickle.load(fh)
     assert not graph.graph
     assert set(graph.nodes["Account:1"]) == {"label", "balance"}
     assert set(graph.edges["Person:2", "Account:1", 0]) == {"label"}
-    assert len(first["holdout"]) == 6 and len(first["tasks"]) == 6
+    assert len(first["holdout"]) == 6 and len(first["tasks"]) == 4 and len(first["dev"]) == 2
     assert not set(first["holdout"]) & {t["id"] for t in first["tasks"]}
+    assert not {t["id"] for t in first["dev"]} & {t["id"] for t in first["tasks"]}
     for task in first["tasks"]:
         assert set(task) == {"id", "kind", "question", "cypher"}
     assert "SECRET" not in json.dumps(first)
@@ -102,14 +104,14 @@ def test_workspace_flow(tab_data, tmp_path):
     assert w.check(ws)
     write_units(ws / "knowledge/units.jsonl", [valid_unit()])
     assert not w.check(ws) and w.status(ws)["stage"] == "refine"
-    assert load_units(ws / "stages/2_extract/units.jsonl") == [valid_unit()]
+    assert load_units(ws / "stages/2_extract/knowledge/units.jsonl") == [valid_unit()]
     assert "round_1" in w.next_prompt(ws)
     assert w.check(ws)
     (ws / "stages/3_refine/round_1/changelog.md").write_text("Validated schema.")
     assert not w.check(ws) and w.status(ws)["round"] == 2
     w.goto(ws, "decide")
     assert "predictions.csv" in w.next_prompt(ws)
-    assert len(load_units(ws / "tasks/tasks.jsonl")) == 1
+    assert len(load_units(ws / "tasks/tasks.jsonl")) == 3
     pd.DataFrame({"row_id": [5, 6, 7], "prediction": ["a", "a", "b"]}).to_csv(
         ws / "stages/4_decide/predictions.csv", index=False,
     )
@@ -124,14 +126,14 @@ def test_workspace_flow(tab_data, tmp_path):
     assert subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=empty, text=True).strip() == "1"
     baseline = w.fork(ws, tmp_path / "baseline", "K_0")
     assert load_units(baseline / "knowledge/units.jsonl") == [valid_unit()]
-    assert not list((baseline / "stages/3_refine").rglob("units.jsonl"))
+    assert not list((baseline / "stages/3_refine").rglob("knowledge"))
     final = w.fork(ws, tmp_path / "final")
-    assert (final / "stages/3_refine/round_1/units.jsonl").exists()
+    assert (final / "stages/3_refine/round_1/knowledge/units.jsonl").exists()
 
 
 def test_history_retracted_parent(tab_data, tmp_path):
     ws = w.init("tabarena", "toy", tmp_path / "ws", root=tab_data)
-    write_units(ws / "stages/2_extract/units.jsonl", [valid_unit(status="retracted")])
+    write_units(ws / "stages/2_extract/knowledge/units.jsonl", [valid_unit(status="retracted")])
     write_units(ws / "knowledge/units.jsonl", [
         valid_unit(id="child", provenance="derived", derived_from=["u1"], status="verified"),
     ])
@@ -156,8 +158,8 @@ def test_table_prediction_rejected(tab_data, tmp_path, rows, values):
 
 
 def test_graph_predictions(ngd_data, tmp_path):
-    ws = w.init("ngdbench", "ngd-fin", tmp_path / "ws", root=ngd_data)
-    assert not list((ws / "tasks").iterdir())
+    ws = w.init("ngdbench", "ngd-fin", tmp_path / "ws", root=ngd_data, dev=2)
+    assert [p.name for p in (ws / "tasks").iterdir()] == ["dev.jsonl"]
     assert "- [complex_query] question 1\n" not in (ws / "BRIEF.md").read_text()
     w.goto(ws, "decide")
     w.next_prompt(ws)

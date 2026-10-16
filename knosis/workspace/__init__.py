@@ -3,9 +3,10 @@
     ws/<name>/
     ├── BRIEF.md  AGENTS.md  CLAUDE.md  TOOLS.md
     ├── data/                 agent 可见的数据（只读）
-    ├── tasks/tasks.jsonl     decide 阶段才生成的无答案题目
-    ├── stages/{1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/
-    ├── knowledge/units.jsonl  knowledge/ontology/   当前知识层
+    ├── tasks/dev.jsonl       开发题（无答案），可提交拿反馈
+    ├── tasks/tasks.jsonl     decide 阶段才生成的测试题（无答案）
+    ├── stages/{1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   每个版本的知识快照在 <阶段目录>/knowledge/
+    ├── knowledge/            当前知识层：units.jsonl、ontology/、feedback/
     └── .knosis/state.json
 """
 
@@ -20,8 +21,8 @@ from pathlib import Path
 from string import Template
 
 from ..data import load_dataset
-from ..knowledge import check_ontology, check_units, load_ontology, load_units, refs, write_units
-from .export import EXPORTERS
+from ..knowledge import check_ontology, check_units, feedback, load_ontology, load_units, refs, write_units
+from .exporters import EXPORTERS
 
 TEMPLATES = Path(__file__).parent / "templates"
 STAGES = {"explore": "1_explore", "extract": "2_extract", "refine": "3_refine", "decide": "4_decide"}
@@ -51,7 +52,8 @@ def commit(ws, message):
     )
 
 
-def init(benchmark, scenario, out=None, **options) -> Path:
+def init(benchmark, scenario, out=None, feedback="answer", budget=20, **options) -> Path:
+    """`feedback` / `budget`：dev 题反馈的模式（answer / score / none）与提交次数上限；其余参数给导出器。"""
     from ..tools import tools_markdown
 
     ws = Path(out or f"ws/{benchmark}-{scenario}").resolve()
@@ -66,12 +68,14 @@ def init(benchmark, scenario, out=None, **options) -> Path:
     (ws / "TOOLS.md").write_text(tools_markdown(exported["modalities"]), encoding="utf-8")
     (ws / ".gitignore").write_text("__pycache__/\n*.pyc\n.knosis/runs.jsonl\n.knosis/eval.json\n", encoding="utf-8")
     write_units(ws / "knowledge/units.jsonl", [])
+    write_units(ws / "tasks/dev.jsonl", exported["dev"])
     if options.get("root") is not None:
         options["root"] = str(Path(options["root"]).resolve())
     save_state(ws, {
         "benchmark": benchmark, "scenario": scenario, "options": options,
         "stage": "explore", "round": 1, "holdout": exported["holdout"],
         "output": exported["output"], "python": sys.executable,
+        "feedback": {"mode": feedback if exported["dev"] else "none", "budget": budget},
         "created": datetime.now(timezone.utc).isoformat(),
     })
     subprocess.run(["git", "init", "--quiet"], cwd=ws, check=True, capture_output=True)
@@ -79,45 +83,63 @@ def init(benchmark, scenario, out=None, **options) -> Path:
     return ws
 
 
+def feedback_note(ws, state) -> str:
+    """阶段提示里关于 dev 反馈的一段话。"""
+    if state["feedback"]["mode"] == "none":
+        return "本工作区没有 dev 反馈。"
+    note = (f"`tasks/dev.jsonl` 是开发题（与测试题不重叠）。按 decide 的交付格式回答（可以只答一部分），"
+            f"运行 `knosis feedback submit <文件>` 得到逐题结果"
+            f"{'和正确答案' if state['feedback']['mode'] == 'answer' else '（只给对错与分数）'}，"
+            f"记录写入 `knowledge/feedback/`；本工作区还剩 {feedback.left(ws, state)} 次。")
+    last = feedback.records(ws)[-1:]
+    if last:
+        note += f"\n最近一次反馈：`knowledge/feedback/{last[0]['id']}.json`，指标 {json.dumps(last[0]['metrics'], ensure_ascii=False)[:300]}。"
+    return note
+
+
 def next_prompt(ws) -> str:
     ws = Path(ws).resolve()
     state = status(ws)
     stage_dir(ws, state).mkdir(parents=True, exist_ok=True)
-    if state["stage"] == "decide" and not (ws / "tasks/tasks.jsonl").exists():
+    if state["stage"] == "decide" and state["output"] and not (ws / "tasks/tasks.jsonl").exists():
         opts = state["options"]
         ds = load_dataset(state["benchmark"], state["scenario"], root=opts.get("root"))
         exported = EXPORTERS[state["benchmark"]](ds, ws, write_data=False, **opts)
         write_units(ws / "tasks/tasks.jsonl", exported["tasks"])
     template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
-    return Template(template).substitute(state)
+    return Template(template).substitute(state, output=state["output"] or "（本数据集没有下游预测）",
+                                         feedback=feedback_note(ws, state))
+
+
+def prediction_ids(path) -> tuple[list, list]:
+    """交付文件里的 id 与缺答案的 id。JSONL 每行 {id, answer}；CSV 有 row_id、prediction 两列。"""
+    path = Path(path)
+    if path.suffix == ".jsonl":
+        rows = load_units(path)
+        return [r["id"] for r in rows], [r["id"] for r in rows if "answer" not in r]
+    import pandas as pd
+
+    frame = pd.read_csv(path)
+    if not {"row_id", "prediction"} <= set(frame.columns):
+        raise ValueError(f"{path.name} requires row_id and prediction columns")
+    return frame["row_id"].tolist(), frame.loc[frame["prediction"].isna(), "row_id"].tolist()
 
 
 def prediction_issues(ws, state):
+    if not state["output"]:
+        return []
     path = stage_dir(ws, state) / state["output"]
     if not path.is_file() or not path.stat().st_size:
         return [f"missing or empty predictions: {path.relative_to(ws)}"]
-    tasks_path = ws / "tasks/tasks.jsonl"
-    if not tasks_path.exists():
+    if not (ws / "tasks/tasks.jsonl").exists():
         return ["tasks/tasks.jsonl is missing; run knosis ws next first"]
-    if state["output"] == "predictions.jsonl":
-        expected = {task["id"] for task in load_units(tasks_path)}
-        predictions = load_units(path)
-        ids = [prediction["id"] for prediction in predictions]
-        missing_answers = [p["id"] for p in predictions if "answer" not in p]
-    else:
-        import pandas as pd
-
-        predictions = pd.read_csv(path)
-        if not {"row_id", "prediction"} <= set(predictions.columns):
-            return ["predictions.csv requires row_id and prediction columns"]
-        expected = set(pd.read_parquet(ws / "data/test_features.parquet")["row_id"])
-        ids = predictions["row_id"].tolist()
-        missing_answers = predictions.loc[predictions["prediction"].isna(), "row_id"].tolist()
+    expected = {task["id"] for task in load_units(ws / "tasks/tasks.jsonl")}
+    ids, missing_answers = prediction_ids(path)
     issues = []
     if set(ids) - expected:
-        issues.append(f"unknown prediction ids: {sorted(set(ids) - expected)[:20]}")
+        issues.append(f"unknown prediction ids: {sorted(set(ids) - expected, key=str)[:20]}")
     if expected - set(ids):
-        issues.append(f"missing prediction ids: {sorted(expected - set(ids))[:20]}")
+        issues.append(f"missing prediction ids: {sorted(expected - set(ids), key=str)[:20]}")
     if len(ids) != len(set(ids)):
         issues.append("duplicate prediction ids")
     if missing_answers:
@@ -126,9 +148,9 @@ def prediction_issues(ws, state):
 
 
 def snapshots(ws) -> list[Path]:
-    """已保存的知识版本目录，按 K_0, K_1, … 排序。"""
-    rounds = sorted((ws / "stages/3_refine").glob("round_*/units.jsonl"), key=lambda p: int(p.parent.name.split("_")[1]))
-    return [p.parent for p in [ws / "stages/2_extract/units.jsonl", *rounds] if p.exists()]
+    """已保存的知识版本目录（`<阶段目录>/knowledge/`），按 K_0, K_1, … 排序。"""
+    rounds = sorted((ws / "stages/3_refine").glob("round_*/knowledge"), key=lambda p: int(p.parent.name.split("_")[1]))
+    return [p for p in [ws / "stages/2_extract/knowledge", *rounds] if p.exists()]
 
 
 def stage_issues(ws, state):
@@ -156,10 +178,8 @@ def stage_issues(ws, state):
 
 
 def copy_knowledge(source, target):
-    """复制一个知识版本：`units.jsonl` 与可选的 `ontology/`。"""
-    write_units(target / "units.jsonl", load_units(source / "units.jsonl"))
-    if (source / "ontology").is_dir():
-        shutil.copytree(source / "ontology", target / "ontology", dirs_exist_ok=True)
+    """复制一整份知识层（units.jsonl、ontology/、feedback/）。"""
+    shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
 
 
 def check(ws) -> list[str]:
@@ -170,7 +190,7 @@ def check(ws) -> list[str]:
         return issues
     stage = state["stage"]
     if stage in {"extract", "refine"}:
-        copy_knowledge(ws / "knowledge", stage_dir(ws, state))
+        copy_knowledge(ws / "knowledge", stage_dir(ws, state) / "knowledge")
     message = f"{stage}" + (f" round {state['round']}" if stage == "refine" else "")
     if stage == "refine":
         state["round"] += 1
@@ -201,14 +221,15 @@ def fork(ws, out, knowledge="K_final") -> Path:
         raise ValueError("fork output must be outside the source workspace")
     versions = snapshots(ws)
     if knowledge in {"none", "K_final", "K_0"}:
-        chosen = {"none": None, "K_final": ws / "knowledge", "K_0": ws / "stages/2_extract"}[knowledge]
+        chosen = {"none": None, "K_final": ws / "knowledge", "K_0": ws / "stages/2_extract/knowledge"}[knowledge]
     else:
-        chosen = ws / f"stages/3_refine/round_{int(knowledge.removeprefix('K_'))}"
+        chosen = ws / f"stages/3_refine/round_{int(knowledge.removeprefix('K_'))}/knowledge"
     # 对照副本不带未来的分析、预测或 git 历史；历史快照只保留所选版本及其之前的。
     shutil.copytree(ws, out, ignore=shutil.ignore_patterns(".git", "stages", "tasks", "knowledge", "runs.jsonl", "eval.json", "__pycache__"))
     for directory in STAGES.values():
         (out / "stages" / directory).mkdir(parents=True)
     (out / "tasks").mkdir()
+    write_units(out / "tasks/dev.jsonl", load_units(ws / "tasks/dev.jsonl"))
     if chosen is None:
         write_units(out / "knowledge/units.jsonl", [])
     else:
@@ -217,7 +238,8 @@ def fork(ws, out, knowledge="K_final") -> Path:
         for directory in keep:
             copy_knowledge(directory, out / directory.relative_to(ws))
     state = status(out)
-    state.update(stage="decide", knowledge=knowledge)
+    # 对照组只比较给定的知识，decide 时不再拿新的反馈。
+    state.update(stage="decide", knowledge=knowledge, feedback={**state["feedback"], "mode": "none"})
     state.pop("completed", None)
     save_state(out, state)
     subprocess.run(["git", "init", "--quiet"], cwd=out, check=True, capture_output=True)

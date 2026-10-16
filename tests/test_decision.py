@@ -76,7 +76,7 @@ def test_evaluate_graph(tmp_path):
             pickle.dump(graph, fh)
     (d / "query/complex_query_agg.json").write_text(json.dumps(
         [{"nlp": f"q{i}", "query": "MATCH", "clean_answer": i, "noise_answer": i if i % 2 else -1} for i in range(20)]))
-    ws = w.init("ngdbench", "ngd-fin", tmp_path / "ws", root=tmp_path / "ngd", limit=5, seed=1)
+    ws = w.init("ngdbench", "ngd-fin", tmp_path / "ws", root=tmp_path / "ngd", dev=4, limit=5, seed=1)
     w.goto(ws, "decide")
     w.next_prompt(ws)
     tasks = load_units(ws / "tasks/tasks.jsonl")

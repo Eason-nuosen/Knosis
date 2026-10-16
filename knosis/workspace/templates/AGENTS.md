@@ -7,13 +7,16 @@
 ## 目录与环境
 
 - `data/`：只读的可见数据，不要修改。
-- `tasks/tasks.jsonl`：只在 decide 阶段出现的无答案题目。
+- `tasks/dev.jsonl`：开发题（无答案，与测试题不重叠），可用 `knosis feedback submit <文件>` 换取反馈。
+- `tasks/tasks.jsonl`：只在 decide 阶段出现的无答案测试题。
 - `stages/1_explore/`、`2_extract/`、`3_refine/round_<n>/`、`4_decide/`：
   当前阶段的代码、笔记和交付物。
 - `knowledge/units.jsonl`：当前知识层，每行一个 κ。
 - `knowledge/ontology/`（可选）：本体，Ossie 三文件格式，见下文。
+- `knowledge/feedback/`：dev 反馈记录（只读，由 `knosis feedback submit` 写入）。
 - `.knosis/state.json`：阶段状态；历史知识快照在 `stages/`。
 
+数据可能含噪声；哪些是噪声、如何处理，由你判断，判断的依据写进知识。
 Python 使用 `$python`；已安装 pandas、pyarrow 等数据依赖。
 可用工具及调用方式见 `TOOLS.md`。工具只产出注解，不修改数据。
 工具输出的 `inferred` 不等于已验证，采纳前需判断并在数据上验证。
@@ -31,6 +34,7 @@ Python 使用 `$python`；已安装 pandas、pyarrow 等数据依赖。
 - 数据：`data/graph.gpickle#node/<id>`、`data/graph.gpickle#edge/<src>|<label>|<dst>`，
   `data/train.parquet#row/<row_id>` 或 `#col/<列名>`。
 - 工具：`tool:<name>@<version>(<k=v,...>)`。
+- 反馈：`feedback:<记录 id>#item/<题目 id>`。
 - 纯派生：`derived`，此时必须填写 `derived_from`。
 - 多来源用 ` ; ` 连接。合并知识保留父单元，撤回后将受影响后代标为 stale 或 retracted。
 

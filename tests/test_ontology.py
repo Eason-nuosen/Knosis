@@ -120,7 +120,7 @@ def test_workspace_snapshots_and_forks_ontology(tmp_path):
     write_units(ws / "knowledge/units.jsonl", [{"id": "u", "content": "x 是整数", "form": "fact", "status": "observed",
                                                  "provenance": "data/train.parquet#col/x", "about": ["train.x"]}])
     assert not w.check(ws)
-    assert (ws / "stages/2_extract/ontology/toy.semantic_model.yaml").exists()
+    assert (ws / "stages/2_extract/knowledge/ontology/toy.semantic_model.yaml").exists()
     write_units(ws / "knowledge/units.jsonl", [{"id": "u", "content": "x", "form": "fact", "status": "observed",
                                                  "provenance": "data/train.parquet#col/x", "about": ["train.zzz"]}])
     w.next_prompt(ws)

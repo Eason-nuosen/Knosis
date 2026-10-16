@@ -4,6 +4,7 @@
     knosis ws init|next|check|status|goto|fork|run ...
     knosis tool list|card|run ...
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
+    knosis feedback submit <dev 预测文件> [--ws <ws>] | list [--ws <ws>]
     knosis eval <ws>
     knosis install [--codex] [--claude]
 """
@@ -28,10 +29,13 @@ def workspace_parser(sub):
     init.add_argument("scenario")
     init.add_argument("--out")
     init.add_argument("--root", help="原始数据目录")
-    init.add_argument("--repeat", type=int, default=0, help="TabArena 划分")
-    init.add_argument("--fold", type=int, default=0, help="TabArena 划分")
-    init.add_argument("--limit", type=int, help="NGDBench：抽样的测试题数")
-    init.add_argument("--seed", type=int, default=0)
+    init.add_argument("--dev", type=int, help="开发题（反馈用）数量；默认由数据集决定")
+    init.add_argument("--limit", type=int, help="抽样的测试题数")
+    init.add_argument("--seed", type=int)
+    init.add_argument("-o", "--option", action="append", default=[], metavar="KEY=VALUE",
+                      help="导出器的其他参数，如 repeat=0、task=driver-dnf；值按 YAML 解析")
+    init.add_argument("--feedback", choices=["answer", "score", "none"], default="answer")
+    init.add_argument("--budget", type=int, default=20, help="反馈提交次数上限")
     for name in ("next", "check", "status"):
         ws.add_parser(name).add_argument("dir", nargs="?", default=".")
     goto = ws.add_parser("goto")
@@ -53,12 +57,12 @@ def workspace_command(args):
     from . import workspace
 
     if args.ws_cmd == "init":
-        options = {"repeat": args.repeat, "fold": args.fold, "seed": args.seed}
-        if args.limit is not None:
-            options["limit"] = args.limit
-        if args.root:
-            options["root"] = args.root
-        print(workspace.init(args.benchmark, args.scenario, args.out, **options))
+        import yaml
+
+        options = {k: v for k, v in (("dev", args.dev), ("limit", args.limit), ("seed", args.seed), ("root", args.root))
+                   if v is not None}
+        options |= {k: yaml.safe_load(v) for k, v in (item.split("=", 1) for item in args.option)}
+        print(workspace.init(args.benchmark, args.scenario, args.out, args.feedback, args.budget, **options))
     elif args.ws_cmd == "next":
         print(workspace.next_prompt(args.dir))
     elif args.ws_cmd == "status":
@@ -133,6 +137,11 @@ def main(argv: list[str] | None = None) -> None:
     convert.add_argument("dataset", choices=["bibench", "relbench"])
     convert.add_argument("scenario")
     convert.add_argument("--out", required=True)
+    fb = sub.add_parser("feedback", help="dev 题反馈").add_subparsers(dest="fb_cmd", required=True)
+    fb_submit = fb.add_parser("submit")
+    fb_submit.add_argument("file")
+    fb_submit.add_argument("--ws", default=".")
+    fb.add_parser("list").add_argument("--ws", default=".")
     sub.add_parser("eval", help="评测 decide 产物").add_argument("dir", nargs="?", default=".")
     install = sub.add_parser("install", help="安装 Codex / Claude Code skill")
     install.add_argument("--codex", action="store_true")
@@ -153,6 +162,17 @@ def main(argv: list[str] | None = None) -> None:
         workspace_command(args)
     elif args.cmd == "ontology":
         ontology_command(args)
+    elif args.cmd == "feedback":
+        from .knowledge import feedback
+
+        if args.fb_cmd == "submit":
+            record = feedback.submit(args.ws, args.file)
+            print(json.dumps({"id": record["id"], "metrics": record["metrics"], "items": record["items"][:50]},
+                             ensure_ascii=False, indent=1, default=str))
+            print(f"完整记录：knowledge/feedback/{record['id']}.json")
+        else:
+            for record in feedback.records(args.ws):
+                print(record["id"], record["submitted"], json.dumps(record["metrics"], ensure_ascii=False)[:200])
     elif args.cmd == "eval":
         from .decision import evaluate
 

@@ -25,7 +25,8 @@ def write_units(path, units: list[dict]) -> None:
 def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology_refs=None) -> list[str]:
     """返回问题清单，空 = 通过。
 
-    `known_ids`：历史版本出现过的 id（I1）；`root`：给定时检查 `data/` 来源文件存在；
+    `known_ids`：历史版本出现过的 id（I1）；`root`（工作区）：给定时检查 `data/` 来源文件与
+    `feedback:` 记录存在；
     `ontology_refs`：给定时检查 `about` 里引用的本体元素存在（见 `ontology.refs`）。
     """
     issues = []
@@ -52,6 +53,10 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
                 path = (Path(root) / source.split("#", 1)[0]).resolve()
                 if not path.is_relative_to(Path(root).resolve() / "data") or not path.exists():
                     issues.append(f"{name}: missing data source: {source}")
+            if root is not None and source.startswith("feedback:"):
+                record = source.split("#", 1)[0].removeprefix("feedback:")
+                if not (Path(root) / "knowledge/feedback" / f"{record}.json").exists():
+                    issues.append(f"{name}: missing feedback record: {source}")
         for parent in parents:
             if parent not in available:
                 issues.append(f"{name}: unknown derived_from: {parent}")

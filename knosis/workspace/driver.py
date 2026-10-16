@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from ..knowledge import load_units
+from ..knowledge import feedback, load_units
 from . import check, goto, next_prompt, save_state, stage_dir, stage_issues, status
 
 
@@ -20,6 +20,14 @@ def agent_command(agent, ws, prompt, model=None):
         return ["claude", "-p", prompt, "--permission-mode", "acceptEdits", *(["--model", model] if model else []),
                 "--allowedTools", "Bash", "Read", "Edit", "Write"]
     raise ValueError(f"unknown agent: {agent}")
+
+
+def submit_round(ws, state, directory) -> None:
+    """自动 RSI：refine 每轮结束时，把本轮的 dev 预测提交一次反馈，结果进入下一轮的提示。"""
+    path = directory / f"dev_{state['output']}"
+    submitted = {r["submitted"] for r in feedback.records(ws)}
+    if path.exists() and str(path.relative_to(ws)) not in submitted and feedback.left(ws, state) > 0:
+        feedback.submit(ws, path)
 
 
 def run(ws, agent="codex", stages=None, rounds=1, model=None) -> None:
@@ -43,6 +51,8 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None) -> None:
                                             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
                 if result.returncode:
                     raise RuntimeError(f"{agent} exited with {result.returncode}; see {directory / 'agent.log'}")
+                if stage == "refine":
+                    submit_round(ws, before, directory)
                 # agent 偶尔自行验收；仍检查原阶段交付，不能用切换状态绕过验收。
                 if status(ws) == before:
                     issues = check(ws)

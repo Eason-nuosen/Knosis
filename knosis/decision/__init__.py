@@ -1,8 +1,9 @@
-"""决策层：decide 阶段的产物如何打分，以及知识在决策中被如何使用。
+"""决策层：decide 产物如何打分，以及知识在决策中被如何使用。
 
-`evaluate(ws)` 从原始数据目录重新读取 GT（GT 从不进入工作区），按数据集调用打分器，
-结果写到 `.knosis/eval.json`。新增数据集的评测：写一个 `scorer(ws, state, ds) -> dict`，
-用 `@register("<数据集>")` 注册。
+每个数据集一个打分器 `score(ws, state, ds, path, ids) -> dict`，用 `@register("<数据集>")` 注册：
+`path` 是交付文件（格式见导出器的 `output`），`ids` 是要打分的题目 id，`ds` 从原始数据目录重新加载（含 GT）。
+返回 `{"metrics": {...}, "items": [{"id", "ok", "gold", ...}], "reference": {...}}`：
+`evaluate` 在测试题上调用它；知识层的反馈（`knowledge.feedback.submit`）在 dev 题上调用同一个函数。
 """
 
 from __future__ import annotations
@@ -29,17 +30,21 @@ def register(name: str):
 def evaluate(ws, write: bool = True) -> dict:
     from ..workspace import status
 
-    # 驱动模式下的 agent 带 KNOSIS_DEPTH=1：不给它看分数，否则就是在针对 GT 调参。
+    # 驱动模式下的 agent 带 KNOSIS_DEPTH=1：不给它看测试分数，否则就是在针对 GT 调参。
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("evaluation is disabled inside agent runs (KNOSIS_DEPTH >= 1)")
     ws = Path(ws).resolve()
     state = status(ws)
     ds = load_dataset(state["benchmark"], state["scenario"], root=state["options"].get("root"))
+    ids = [task["id"] for task in load_units(ws / "tasks/tasks.jsonl")]
+    path = ws / "stages/4_decide" / state["output"] if state["output"] else None
+    result = SCORERS[state["benchmark"]](ws, state, ds, path, ids)
     report = {"benchmark": state["benchmark"], "scenario": state["scenario"],
-              "knowledge": state.get("knowledge", "K_final"), **SCORERS[state["benchmark"]](ws, state, ds)}
-    report["usage"] = usage(ws)
+              "knowledge": state.get("knowledge", "K_final"), "n": len(ids), **result["metrics"],
+              "reference": result.get("reference", {}), "usage": usage(ws)}
     if write:
-        (ws / ".knosis/eval.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (ws / ".knosis/eval.json").write_text(
+            json.dumps({**report, "items": result["items"]}, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     return report
 
 
@@ -58,6 +63,15 @@ def usage(ws) -> dict:
         "unknown_units": sorted(set(cited) - set(units)),
         "inactive_units": sorted({uid for uid in cited if units.get(uid, {}).get("status") in INACTIVE}),
     }
+
+
+def answers(path) -> dict:
+    """JSONL 交付 → {id: answer}。"""
+    return {row["id"]: row.get("answer") for row in load_units(path)}
+
+
+def mean(rows, key) -> float:
+    return sum(r[key] for r in rows) / max(1, len(rows))
 
 
 from . import graph_qa, tabular  # noqa: E402,F401

@@ -8,6 +8,8 @@
 `BRIEF.md`、`data/`、`stages/1_explore/notes.md`、已有 finding 和 `TOOLS.md`。
 Python：`$python`。
 
+$feedback
+
 ## 交付物
 
 更新 `knowledge/units.jsonl`，可以追加、修改或撤回已有单元。
@@ -17,6 +19,6 @@ Python：`$python`。
 ## 验收标准
 
 知识层（κ 或本体）非空且结构检查通过；每条知识记录 condition。
-规则与方程在数据上验证，meta 报告支持样本数与反例数；
+规则与方程在数据上（或用反馈）验证，meta 报告支持样本数与反例数；
 已验证的标为 verified，派生知识记录 derived_from。
 完成后运行 `knosis ws check .`，通过后保存 K_0 快照。
