@@ -1,0 +1,13 @@
+# 数据不入仓：`knosis download <name>` 取到 data/<name>/（或用 KNOSIS_DATA_DIR 指到别处）
+/data
+
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+
+# agent 工作区
+ws/

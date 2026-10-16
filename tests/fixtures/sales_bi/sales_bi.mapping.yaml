@@ -1,0 +1,64 @@
+# mapping 层：表里的列分别对应 ontology 里的哪个概念 / 关系（φ）
+version: 0.2.0.dev0
+name: sales_bi_mapping
+ontology_ref: {name: SalesBI, iri: ./sales_bi.ontology.yaml}
+semantic_model_ref: {name: sales_bi, iri: ./sales_bi.semantic_model.yaml}
+concept_mappings:
+  - concept: Product
+    object_mappings:                     # 哪些列能"认出"一个 Product
+      - referent_mappings:
+          - {relationship: key, expression: products.ProductKey}
+    link_mappings:                       # 认出之后，它的属性/关系来自哪些列
+      - object_mapping:
+          referent_mappings:
+            - {relationship: key, expression: products.ProductKey}
+        children:
+          - relationship: name
+            object_mapping: {concept: ProductName, expression: products.ProductName}
+          - relationship: category
+            object_mapping: {concept: CategoryName, expression: products.Category}
+  - concept: Sale
+    object_mappings:
+      - referent_mappings:               # 复合标识：product + month
+          - relationship: product
+            referent_mappings:
+              - {relationship: key, expression: sales.ProductKey}
+          - {relationship: month, expression: sales.Month}
+    link_mappings:
+      - object_mapping:
+          referent_mappings:
+            - relationship: product
+              referent_mappings:
+                - {relationship: key, expression: sales.ProductKey}
+            - {relationship: month, expression: sales.Month}
+        children:
+          - relationship: amount
+            object_mapping: {concept: MoneyUSD, expression: sales.Amount}
+  - concept: BudgetLine
+    object_mappings:
+      - referent_mappings:
+          - relationship: product
+            referent_mappings:
+              - {relationship: key, expression: budget_forecast.ProductKey}
+          - {relationship: month, expression: budget_forecast.Month}
+    link_mappings:
+      - object_mapping:
+          referent_mappings:
+            - relationship: product
+              referent_mappings:
+                - {relationship: key, expression: budget_forecast.ProductKey}
+            - {relationship: month, expression: budget_forecast.Month}
+        children:
+          - relationship: budget
+            object_mapping: {concept: MoneyUSD, expression: budget_forecast.Budget}
+          - relationship: forecast
+            object_mapping: {concept: MoneyUSD, expression: budget_forecast.Forecast}
+custom_extensions:
+  - vendor_name: EOB
+    data: |
+      {"eob_version": "0.2",
+       "provenance": {"method": "human", "author": "example"},
+       "annotations": [
+         {"target": "BudgetLine.month", "expression": "budget_forecast.Month",
+          "confidence": 0.8, "note": "budget may be keyed by fiscal month"}
+       ]}

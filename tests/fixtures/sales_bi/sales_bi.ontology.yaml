@@ -1,0 +1,84 @@
+# ontology 层：业务世界里有什么（概念、关系、单位、约束），不提表和列
+version: 0.2.0.dev0
+name: SalesBI
+description: Sales and budgeting concepts
+ontology:
+  # ---- 值概念（ValueType）：带语义的取值，单位也写在这里 ----
+  - concept: ProductKey
+    type: ValueType
+    extends: [String]
+  - concept: ProductName
+    type: ValueType
+    extends: [String]
+  - concept: CategoryName
+    type: ValueType
+    extends: [String]
+  - concept: Month
+    type: ValueType
+    description: First day of a calendar month
+    extends: [Date]
+  - concept: MoneyUSD
+    type: ValueType
+    description: Monetary amount in US dollars
+    extends: [Decimal]
+  # ---- 事件根概念（Ossie 没有 event 类型，统一继承它）----
+  - concept: Event
+    type: EntityType
+    description: EOB convention - root of all event concepts
+  # ---- 实体概念（EntityType）----
+  - concept: Product
+    type: EntityType
+    identify_by: [key]
+    relationships:
+      - name: key
+        roles: [{concept: ProductKey}]
+        multiplicity: OneToOne
+        verbalizes: ['{Product} is identified by {ProductKey}']
+      - name: name
+        roles: [{concept: ProductName}]
+        multiplicity: ManyToOne
+        verbalizes: ['{Product} is named {ProductName}']
+      - name: category
+        roles: [{concept: CategoryName}]
+        multiplicity: ManyToOne
+        verbalizes: ['{Product} belongs to category {CategoryName}']
+  - concept: Sale
+    type: EntityType
+    extends: [Event]
+    description: Actual sales of one product in one month
+    identify_by: [product, month]       # 标识 = 粒度：一个产品一个月一条
+    relationships:
+      - name: product
+        roles: [{concept: Product}]
+        multiplicity: ManyToOne
+        verbalizes: ['{Sale} is of {Product}']
+      - name: month
+        roles: [{concept: Month}]
+        multiplicity: ManyToOne
+        verbalizes: ['{Sale} occurs in {Month}']
+      - name: amount
+        roles: [{concept: MoneyUSD}]
+        multiplicity: ManyToOne
+        verbalizes: ['{Sale} has amount {MoneyUSD}']
+  - concept: BudgetLine
+    type: EntityType
+    extends: [Event]
+    description: Planned budget and forecast of one product in one month
+    identify_by: [product, month]
+    relationships:
+      - name: product
+        roles: [{concept: Product}]
+        multiplicity: ManyToOne
+        verbalizes: ['{BudgetLine} is for {Product}']
+      - name: month
+        roles: [{concept: Month}]
+        multiplicity: ManyToOne
+        verbalizes: ['{BudgetLine} is for {Month}']
+      - name: budget
+        roles: [{concept: MoneyUSD}]
+        multiplicity: ManyToOne
+        verbalizes: ['{BudgetLine} has budget {MoneyUSD}']
+      - name: forecast
+        roles: [{concept: MoneyUSD}]
+        multiplicity: ManyToOne
+        verbalizes: ['{BudgetLine} has forecast {MoneyUSD}']

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "knosis"
+version = "0.3.0"
+description = "Knowledge substrate for agents: data, knowledge (units + ontology), tools and decision layers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["pyyaml", "pandas", "pyarrow"]
+
+[project.optional-dependencies]
+graph = ["networkx"]          # NGDBench 的 .gpickle / .graphml
+hdf5 = ["h5py"]               # LLM-SRBench 的数值数据
+download = ["huggingface_hub", "openml"]
+dev = ["pytest"]
+all = ["networkx", "h5py", "huggingface_hub", "openml", "pytest"]
+
+[project.scripts]
+knosis = "knosis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["knosis*"]
+
+[tool.setuptools.package-data]
+knosis = ["data/cards/*.md", "workspace/templates/*.md", "workspace/templates/*/*.md", "tools/*/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,90 @@
+# core 层：数据长什么样（表、列、主键、join、度量）
+# 场景改编自 BI-Bench（arXiv:2609.20886）图 2–3 的 Sales / Budget，表名列名为示意
+version: 0.2.0.dev0
+name: sales_bi
+description: Monthly sales vs. budget/forecast by product
+custom_extensions:
+  - vendor_name: EOB
+    data: |
+      {"eob_version": "0.2",
+       "source": {"dataset": "bi-bench", "item": "sales-budget-demo"},
+       "provenance": {"method": "human", "author": "example"}}
+datasets:
+  - name: sales
+    # 原始 Sales 表是宽表（每个月一列），这里用 source 查询 unpivot 成长表
+    source: "SELECT ProductKey, CAST(Month AS DATE) AS Month, Amount FROM (UNPIVOT raw.Sales ON COLUMNS(* EXCLUDE ProductKey) INTO NAME Month VALUE Amount)"
+    primary_key: [ProductKey, Month]
+    description: Actual sales amount per product per month
+    fields:
+      - name: ProductKey
+        expression: {dialects: [{dialect: ANSI_SQL, expression: ProductKey}]}
+        datatype: String
+      - name: Month
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Month}]}
+        datatype: Date
+      - name: Amount
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Amount}]}
+        datatype: Decimal
+    custom_extensions:
+      - vendor_name: EOB
+        data: |
+          {"source_kind": "table",
+           "raw": {"table": "raw.Sales"},
+           "transforms": [{"op": "unpivot", "description": "Month columns -> (Month, Amount) rows"}],
+           "grain": ["ProductKey", "Month"]}
+  - name: budget_forecast
+    source: raw.BudgetForecast
+    primary_key: [ProductKey, Month]
+    fields:
+      - name: ProductKey
+        expression: {dialects: [{dialect: ANSI_SQL, expression: ProductKey}]}
+        datatype: String
+      - name: Month
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Month}]}
+        datatype: Date
+      - name: Budget
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Budget}]}
+        datatype: Decimal
+      - name: Forecast
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Forecast}]}
+        datatype: Decimal
+    custom_extensions:
+      - vendor_name: EOB
+        data: '{"source_kind": "table", "grain": ["ProductKey", "Month"]}'
+  - name: products
+    source: raw.Products
+    primary_key: [ProductKey]
+    fields:
+      - name: ProductKey
+        expression: {dialects: [{dialect: ANSI_SQL, expression: ProductKey}]}
+        datatype: String
+      - name: ProductName
+        expression: {dialects: [{dialect: ANSI_SQL, expression: ProductName}]}
+        datatype: String
+      - name: Category
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Category}]}
+        datatype: String
+  - name: calendar
+    source: raw.Calendar
+    primary_key: [MonthStart]
+    fields:
+      - name: MonthStart
+        expression: {dialects: [{dialect: ANSI_SQL, expression: MonthStart}]}
+        datatype: Date
+      - name: Year
+        expression: {dialects: [{dialect: ANSI_SQL, expression: Year}]}
+        datatype: Integer
+        dimension: {is_time: true}
+relationships:
+  - {name: sales_to_products, from: sales, to: products, from_columns: [ProductKey], to_columns: [ProductKey]}
+  - {name: sales_to_calendar, from: sales, to: calendar, from_columns: [Month], to_columns: [MonthStart]}
+  - {name: budget_to_products, from: budget_forecast, to: products, from_columns: [ProductKey], to_columns: [ProductKey]}
+  - {name: budget_to_calendar, from: budget_forecast, to: calendar, from_columns: [Month], to_columns: [MonthStart]}
+metrics:
+  - name: total_sales
+    expression: {dialects: [{dialect: ANSI_SQL, expression: SUM(sales.Amount)}]}
+    datatype: Decimal
+  - name: budget_variance
+    expression: {dialects: [{dialect: ANSI_SQL, expression: SUM(sales.Amount) - SUM(budget_forecast.Budget)}]}
+    description: Actual minus budget
+    datatype: Decimal
