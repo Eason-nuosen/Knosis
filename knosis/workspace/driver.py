@@ -38,8 +38,9 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None) -> None:
                 started = time.monotonic()
                 before = status(ws)
                 with (directory / "agent.log").open("a", encoding="utf-8") as log:
+                    # stdin 必须关掉：codex exec 在 stdin 未关闭时会一直等待追加输入。
                     result = subprocess.run(agent_command(agent, ws, prompt, model), cwd=ws, env=env,
-                                            stdout=log, stderr=subprocess.STDOUT)
+                                            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
                 if result.returncode:
                     raise RuntimeError(f"{agent} exited with {result.returncode}; see {directory / 'agent.log'}")
                 # agent 偶尔自行验收；仍检查原阶段交付，不能用切换状态绕过验收。
