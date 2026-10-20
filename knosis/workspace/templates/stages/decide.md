@@ -20,3 +20,4 @@ Python：`$python`。
 
 每道题或测试行恰有一个输出，没有未知或重复 id；不能寻找测试答案。
 完成后运行 `knosis ws check .`。
+$control

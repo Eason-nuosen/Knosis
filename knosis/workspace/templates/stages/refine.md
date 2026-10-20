@@ -26,3 +26,4 @@ I1 来源与派生引用完整，I5 撤回传播通过；状态与证据一致�
 `feedback:` 来源指向存在的反馈记录。合并单元的 derived_from 指向原单元，不得丢掉来源、成立条件与例外。
 完成后运行 `knosis ws check .`，通过后保存 K_$round；
 轮次自行决定，结束时运行 `knosis ws goto . decide`。
+$control

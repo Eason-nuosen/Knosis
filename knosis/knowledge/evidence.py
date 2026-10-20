@@ -155,7 +155,9 @@ def trace(directory, unit_id, history=()) -> str:
             lines.append(f"{pad}  - 条件：{unit['condition']}")
         lines.append(f"{pad}  - 来源：{unit.get('provenance', '')}")
         for entry in evidence.get(uid, []):
-            lines.append(f"{pad}  - {entry['created'][:19]} {entry['verdict']}（{entry['method']}，{entry['source']}）{entry.get('note', '')}")
+            note = entry.get("note", "")
+            note = note if len(note) <= 300 else note[:300] + " …"
+            lines.append(f"{pad}  - {entry['created'][:19]} {entry['verdict']}（{entry['method']}，{entry['source']}）{note}")
         for parent in unit.get("derived_from", []):
             walk(parent, depth + 1)
 

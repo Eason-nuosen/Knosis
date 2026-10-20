@@ -26,11 +26,13 @@ def merged_ontology(ds) -> dict:
 
 @register("bibench")
 def export(ds, ws: Path, write_data=True, dev=None, limit=None, seed=0, metadata=False, **opts) -> dict:
-    """`dev` 默认：all 模式 20 个用例，单用例 0。`metadata=true` 时把 Power BI 模型元数据转成本体放进初始知识层。"""
+    """`dev` 默认：all 模式 20 个用例，项目模式（scenario 是项目 id）1 个，单用例 0。
+    `metadata=true` 时把 Power BI 模型元数据转成本体放进初始知识层。"""
     ws = Path(ws)
-    single = ds.scenario != "all"
+    single = len(ds.tasks) == 1
     tasks = [{"id": t.id, "question": t.input, "tables": f"data/{t.id}/"} for t in ds.tasks]
-    dev_tasks, tests = split(tasks, (0 if single else 20) if dev is None else dev, limit, seed)
+    default = 0 if single else 20 if ds.scenario == "all" else 1
+    dev_tasks, tests = split(tasks, default if dev is None else dev, limit, seed)
     lines = []
     for task in ds.tasks:
         csvs = sorted(Path(task.meta["dir"]).glob("*.csv"))  # 只放表；oracle、transformation/、join/ 都是提示，不导出

@@ -161,3 +161,20 @@ def test_cli_knowledge_commands(ngd_root, tmp_path, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "e-0001 a support" in out and "e-0002" in out and "OK" in out and '"support": 1' in out
     assert load_evidence(ws / "knowledge")[1]["inputs"]["data/graph.gpickle"]
+
+
+def test_method_checks_must_be_self_contained(ngd_root, tmp_path):
+    ws = make(ngd_root, tmp_path / "ws")
+    w.goto(ws, "extract")
+    (ws / "knowledge/checks").mkdir()
+    (ws / "stages/2_extract/helper.py").write_text("OK = 0\n")
+    (ws / "knowledge/checks/bad.py").write_text("import sys\nsys.path.insert(0, 'stages/2_extract')\nimport helper\nsys.exit(helper.OK)\n")
+    (ws / "knowledge/checks/good.py").write_text("import pickle,sys\npickle.load(open('data/graph.gpickle','rb'))\n")
+    write_units(ws / "knowledge/units.jsonl", [
+        unit("bad", form="method", check={"kind": "python", "path": "knowledge/checks/bad.py"}),
+        unit("good", form="method", check={"kind": "python", "path": "knowledge/checks/good.py"}),
+        unit("outside", form="method", check={"kind": "python", "path": "stages/2_extract/helper.py"})])
+    issues = w.stage_issues(ws, w.status(ws))
+    assert "bad: method check is not self-contained (fails with only data/ and knowledge/)" in issues
+    assert "outside: method check must live under knowledge/checks/" in issues
+    assert not any(i.startswith("good:") for i in issues)

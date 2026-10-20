@@ -23,3 +23,4 @@ $feedback
 被反驳的候选不要删掉，标为 retracted（或收窄条件后重新验证），这样发现过程可追溯；派生知识记录 derived_from。
 发现知识所用的、可在别的数据上照做的步骤，写成 `form=method` 的元知识。
 完成后运行 `knosis ws check .`，通过后保存 K_0 快照。
+$control

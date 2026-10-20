@@ -13,12 +13,14 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
-from .evidence import load_evidence
+from .evidence import data_inputs, load_evidence, run_check
 from .units import load_units, write_units
 
 PARTS = ("ontology", "checks", "feedback")
+IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
 
 
 def git(kb, *args) -> str:
@@ -56,7 +58,7 @@ def inherit(kb, target, form=None) -> dict:
     write_units(target / "evidence.jsonl", [e for e in load_evidence(kb) if e["unit"] in ids or not form])
     for part in PARTS:
         if (kb / part).is_dir() and (part != "ontology" or not form):
-            shutil.copytree(kb / part, target / part, dirs_exist_ok=True)
+            shutil.copytree(kb / part, target / part, dirs_exist_ok=True, ignore=IGNORE)
     return {"path": str(kb), "version": git(kb, "rev-parse", "--short", "HEAD"), "form": form, "units": len(units)}
 
 
@@ -65,6 +67,17 @@ def seen_items(kb, benchmark, scenario) -> set:
     records = [json.loads(p.read_text(encoding="utf-8")) for p in (Path(kb) / "feedback").glob("*.json")]
     return {item["id"] for r in records if (r.get("benchmark"), r.get("scenario")) == (benchmark, scenario)
             for item in r["items"]}
+
+
+def portable(ws, unit) -> tuple[bool, str]:
+    """在只含 `data/` 与 `knowledge/` 的临时工作区里跑单元的检查，结果与原地运行一致，才说明它不依赖本工作区的其他文件。"""
+    here = run_check(unit, ws)[0]
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (tmp / "data").symlink_to(Path(ws).resolve() / "data")
+        shutil.copytree(Path(ws) / "knowledge", tmp / "knowledge", ignore=IGNORE)
+        verdict, note = run_check(unit, tmp)
+    return verdict == here and "Traceback" not in note, note
 
 
 def merge(ws, kb) -> str:
@@ -83,6 +96,19 @@ def merge(ws, kb) -> str:
     def rewrite(text):
         return re.sub(r"feedback:([^#;\s]+)", lambda m: f"feedback:{renames.get(m.group(1), m.group(1))}", text)
 
+    # 可执行的元知识要能离开原工作区运行；跑不通的记一条「无法判定」证据，写回 KB。
+    extra = []
+    for unit in load_units(source / "units.jsonl"):
+        if unit["form"] == "method" and unit.get("check", {}).get("kind") == "python":
+            ok, note = portable(ws, unit)
+            if not ok:
+                extra.append({"unit": unit["id"], "verdict": "undetermined", "method": "check",
+                              "source": f"check:{unit['id']}(portable)", "inputs": data_inputs(ws),
+                              "note": f"检查脚本离开原工作区（只保留 data/ 与 knowledge/）运行不通：{note[-200:]}"})
+    if extra:
+        from .evidence import add_evidence
+
+        add_evidence(source, extra)
     units = {u["id"]: u for u in load_units(kb / "units.jsonl")}
     units |= {u["id"]: json.loads(rewrite(json.dumps(u, ensure_ascii=False))) for u in load_units(source / "units.jsonl")}
     # 工作区里删掉、但仍被派生引用的单元，用它在历史快照里的最后版本补进 KB，保证 I1 在 KB 里也成立。
@@ -98,7 +124,7 @@ def merge(ws, kb) -> str:
     new = [{**e, "id": f"e-{len(old) + i + 1:04d}"} for i, e in enumerate(x for x in new if key(x) not in known)]
     for part in ("ontology", "checks"):
         if (source / part).is_dir():
-            shutil.copytree(source / part, kb / part, dirs_exist_ok=True)
+            shutil.copytree(source / part, kb / part, dirs_exist_ok=True, ignore=IGNORE)
     (kb / "feedback").mkdir(exist_ok=True)
     for path in (source / "feedback").glob("*.json"):
         record = json.loads(path.read_text(encoding="utf-8"))

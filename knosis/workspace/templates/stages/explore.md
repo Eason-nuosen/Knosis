@@ -19,3 +19,4 @@ $feedback
 
 笔记非空；知识单元结构检查通过，provenance 定位到数据文件的具体位置或反馈记录。
 可疑项有统计量、约束、矛盾或反馈结果作为依据。完成后运行 `knosis ws check .`。
+$control

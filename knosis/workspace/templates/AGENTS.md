@@ -49,6 +49,8 @@ not_applicable（前提不成立）：
 - 可执行检查：单元带 `check`，由 Knosis 重跑并记证据（`knosis knowledge verify [--unit ID]`）。
   `{"kind": "sql", "query": "SELECT ... FROM train ...", "expect": [[...]]}`（表名为 `data/` 下文件名；不给 expect 时第一行全为真即支持），
   或 `{"kind": "python", "path": "knowledge/checks/<id>.py"}`（在工作区根目录运行；退出码 0 支持，1 反驳，其他无法判定）。
+  检查脚本只能读 `data/`、只能导入 `knowledge/checks/` 里的代码：知识会被别的工作区继承，那里没有你的 `stages/`。
+  `form=method` 的检查在 extract / refine 验收时会放到只含 `data/` 与 `knowledge/` 的临时目录里试跑。
 - 其他验证：`knosis knowledge evidence add --unit ID --verdict support --method tool|data|feedback|derivation|human --source <来源> --note "<数字>" [--inputs data/...]`；
   工具写出的 `evidence.jsonl` 用 `knosis knowledge evidence import <文件>` 导入。
 

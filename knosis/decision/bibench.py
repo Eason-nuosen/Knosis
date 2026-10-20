@@ -172,7 +172,8 @@ def join_report(knowledge, ds) -> dict:
     docs = {n: d for n, d in ontology_docs(knowledge).items() if "semantic_model" in d}
     if not docs:
         return {"reported": False}
-    meta = Path(ds.root).parents[1] / "tools/data_management_tools/metadata"  # bi-bench/<用例>/ 
+    bench = Path(ds.root) if Path(ds.root).name == "bi-bench" else Path(ds.root).parent  # 单用例时 root 是 bi-bench/<用例>/
+    meta = bench.parent / "tools/data_management_tools/metadata"
     scores = {name: {case: score_pairs(pairs(docs[name]["semantic_model"]),
                                        gold_pairs(meta / case, docs[name]["semantic_model"], case))
                      for case in (t.id for t in ds.tasks)}

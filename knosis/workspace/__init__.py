@@ -85,6 +85,14 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
         seen = seen_items(kb, benchmark, scenario)
         exclude = [t["id"] for t in exported["tasks"] if t["id"] in seen]
     write_units(ws / "tasks/dev.jsonl", exported["dev"])
+    if inherited:
+        from ..knowledge import ontology_docs
+
+        names = ", ".join(f"`{n or 'ontology'}`" for n in ontology_docs(ws / "knowledge")) or "无"
+        with (ws / "BRIEF.md").open("a", encoding="utf-8") as fh:
+            fh.write(f"\n## 继承的知识\n\n本工作区从独立知识库继承了 {inherited['units']} 条 κ 与本体 {names}"
+                     f"（已在 `knowledge/`，原样快照在 `stages/0_inherit/knowledge/`）。它们来自别的任务或别人的标注，"
+                     "未必正确、未必适用于这里的任务：用 `knosis knowledge select` 挑选，按证据采用、修正、收窄或撤回。\n")
     if options.get("root") is not None:
         options["root"] = str(Path(options["root"]).resolve())
     save_state(ws, {
@@ -125,8 +133,13 @@ def next_prompt(ws) -> str:
         exclude = set(state.get("exclude", []))
         write_units(ws / "tasks/tasks.jsonl", [t for t in exported["tasks"] if t["id"] not in exclude])
     template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
+    note = CONTROL if state.get("knowledge") == "none" else ""
     return Template(template).substitute(state, output=state["output"] or "（本数据集没有下游预测）",
-                                         feedback=feedback_note(ws, state))
+                                         feedback=feedback_note(ws, state), control=note)
+
+
+CONTROL = ("\n\n## 对照条件\n\n这是对照工作区：知识层为本轮的 baseline，**不要新增知识单元或方法**，"
+           "也不要在 workspace 里写可复用的检测脚本。只用数据、工具和常识直接完成任务与交付。\n")
 
 
 def prediction_ids(path) -> tuple[list, list]:
@@ -192,6 +205,16 @@ def stage_issues(ws, state):
             issues.append(f"missing or empty {path.relative_to(ws)}")
     if state["stage"] == "extract" and not units and not docs:
         issues.append("extract requires nonempty knowledge/units.jsonl or knowledge/ontology/")
+    if state["stage"] in {"extract", "refine"}:
+        from ..knowledge.kb import portable
+
+        # 元知识要能被别人照做：它的检查脚本只能依赖 data/ 与 knowledge/。
+        for unit in units:
+            if unit["form"] == "method" and unit.get("check", {}).get("kind") == "python" and unit["status"] not in {"retracted", "stale"}:
+                if not unit["check"]["path"].startswith("knowledge/"):
+                    issues.append(f"{unit['id']}: method check must live under knowledge/checks/")
+                elif not portable(ws, unit)[0]:
+                    issues.append(f"{unit['id']}: method check is not self-contained (fails with only data/ and knowledge/)")
     if state["stage"] == "decide":
         issues.extend(prediction_issues(ws, state))
     return list(dict.fromkeys(issues))

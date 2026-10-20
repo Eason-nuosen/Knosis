@@ -22,14 +22,17 @@ def scenarios(root: str | Path | None = None) -> list[str]:
 
 @register("bibench", scenarios=scenarios)
 def load(scenario: str | None = None, root: str | Path | None = None) -> Dataset:
-    """`scenario` 是用例 id；不给或为 `all` 时加载全部用例的题目（此时 files 为空，各用例的表在 `meta["dir"]`）。"""
+    """`scenario` 是用例 id；也可以是项目 id（如 `280113507`，加载它的全部用例 `280113507-1` …）；
+    不给或为 `all` 时加载全部用例。多用例时 files 为空，各用例的表在 `meta["dir"]`。"""
     scenario = None if scenario == "all" else scenario
     base = Path(root or data_dir("bibench"))
     bench, meta = base / "bi-bench", base / "tools" / "data_management_tools"
     queries = json.loads((bench / "queries.json").read_text())
+    cases = [scenario] if scenario in queries else sorted(c for c in queries if c.startswith(f"{scenario}-")) if scenario else sorted(queries)
+    single = scenario in queries
 
     tasks = []
-    for cid in [scenario] if scenario else sorted(queries):
+    for cid in cases:
         gt = sorted(bench.glob(f"gt/{cid}_*.csv")) or [bench / "gt" / f"{cid}.csv"]  # 多个文件 = 任一匹配即对
         hint = meta / "metadata" / cid / "query_metadata.json"
         tasks.append(Task(
@@ -42,9 +45,9 @@ def load(scenario: str | None = None, root: str | Path | None = None) -> Dataset
         ))
 
     files = {}
-    if scenario:
+    if single:
         files = {p.stem: p for p in sorted((bench / scenario).glob("*.csv"))}
         files |= {f"_{k}": meta / "metadata" / scenario / f"_{k}.csv" for k in ("tables", "columns", "relationships")}
         files["_joins"] = meta / "join" / f"{scenario}.csv"
-    root_dir = bench / scenario if scenario else bench
+    root_dir = bench / scenario if single else bench
     return Dataset("bibench", scenario or "all", root_dir, files=files, tasks=tasks, metrics=METRICS)
