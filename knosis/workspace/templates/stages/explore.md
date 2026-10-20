@@ -12,7 +12,7 @@ $feedback
 ## 交付物
 
 `stages/1_explore/notes.md`：看了什么、发现什么、哪些不确定。
-可疑项写入 `knowledge/units.jsonl`，使用 `form=finding`、`status=inferred`。
+可疑项写入 `knowledge/units.jsonl`，使用 `form=finding`、`status=inferred`；有直接依据的，用 `knosis knowledge evidence add` 记一条证据。
 分析代码与工具结果放在 `stages/1_explore/`。
 
 ## 验收标准

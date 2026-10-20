@@ -141,3 +141,24 @@ def test_real_conversion(name, scenario, convert):
     model = convert(load_dataset(name, scenario))
     assert model["datasets"] and model["relationships"]
     assert not ontology.check_ontology({"semantic_model": model})
+
+
+def test_units_status_from_element_origin():
+    model = ontology.semantic_model("demo", [{"name": "t", "source": "t", "fields": [ontology.field("a", "Integer")]}],
+                                    [ontology.relationship("t", ["a"], "t", ["a"], origin="pbi_gt"),
+                                     {**ontology.relationship("t", ["a"], "t", ["a"]), "name": "inferred_join",
+                                      "custom_extensions": ontology.eob({"origin": "inferred"})}],
+                                    provenance={"method": "converted"})
+    units = ontology.ontology_units({"semantic_model": model})
+    status = {u["id"]: u["status"] for u in units}
+    assert status == {"ontology/dataset/t": "observed", "ontology/join/t_a_to_t": "observed",
+                      "ontology/join/inferred_join": "inferred"}
+    model["relationships"][1]["custom_extensions"] = ontology.eob({"origin": "human"})
+    assert ontology.ontology_units({"semantic_model": model})[2]["status"] == "verified"
+
+
+def test_sql_source_is_replaced_by_a_marker():
+    model = ontology.semantic_model("demo", [{"name": "t", "source": "SELECT a FROM raw UNPIVOT (v FOR k IN (b))",
+                                              "fields": [ontology.field("a", "Integer")]}])
+    [unit] = ontology.ontology_units({"semantic_model": model})
+    assert "（SQL 视图）" in unit["content"] and "UNPIVOT" not in unit["content"]

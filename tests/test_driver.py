@@ -90,7 +90,7 @@ def test_driver_real_subprocess(ws, tmp_path, monkeypatch):
         "Path('stages/1_explore/notes.md').write_text('Inspected data.')\n"
         "print('done')\n",
     )
-    monkeypatch.setattr(driver, "agent_command", lambda agent, path, prompt, model: [sys.executable, str(script)])
+    monkeypatch.setattr(driver, "agent_command", lambda agent, path, prompt, model, effort: [sys.executable, str(script)])
     w.run(ws, stages=["explore"])
     assert w.status(ws)["stage"] == "extract"
     assert "done" in (ws / "stages/1_explore/agent.log").read_text()

@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from knosis import load_dataset, workspace as w
-from knosis.knowledge import load_units, write_units
+from knosis.knowledge import verify, load_units, write_units
 
 
 def accept(ws):
@@ -46,6 +46,10 @@ def trial(scenario="houses", out=None, root=None):
     write_units(ws / "knowledge/units.jsonl", units)
     accept(ws)
     w.next_prompt(ws)
+    # 验证：给 prior 附一条可执行检查，由 Knosis 重跑并记一条支持证据，再标为 verified。
+    units[1]["check"] = {"kind": "sql", "query": f'SELECT COUNT(*) > 0 FROM train WHERE "{target}" IS NOT NULL'}
+    write_units(ws / "knowledge/units.jsonl", units)
+    verify(ws, ["prior"])
     units[1]["status"] = "verified"
     units[1]["meta"]["counterexamples"] = 0
     write_units(ws / "knowledge/units.jsonl", units)

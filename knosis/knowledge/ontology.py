@@ -13,6 +13,7 @@ EOB 信息写在 `custom_extensions`（`vendor_name: EOB`，`data` 是 JSON 字�
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from pathlib import Path
@@ -23,8 +24,18 @@ VERSION = "0.2.0.dev0"
 EOB_VERSION = "0.2"
 LAYERS = ("semantic_model", "ontology", "mapping")
 BUILTIN_TYPES = {"String", "Integer", "Decimal", "Float", "Boolean", "Date", "Time", "DateTime", "DateTimeTz", "Opaque", "Any"}
-# EOB provenance.method → κ 的 status
-STATUS_BY_METHOD = {"human": "verified", "converted": "observed", "llm": "inferred", "tool": "inferred"}
+# EOB provenance.method / 元素 origin → κ 的 status
+STATUS_BY_METHOD = {"human": "verified", "annotator": "verified", "converted": "observed", "llm": "inferred", "tool": "inferred"}
+STATUS_BY_ORIGIN = {**STATUS_BY_METHOD, "inferred": "inferred"}
+
+# 来自 benchmark GT、不能给被测 agent 的东西（relbench_gt 除外：RelBench 的 brief 本来就给 schema）
+GT_ORIGINS = {"pbi_gt", "bibench_transformation_gt", "bibench_transformation_output"}
+GT_PREFIX = ("bibench_",)
+# 提到这些就等于泄露了逐题 oracle
+ORACLE_MARKS = ("query_metadata", "transformation/", "transformation\\")
+# 行首的 annotator 标记（`source` / 根 EOB 的 `note`）
+NOTE_MARKERS = ("annotator-only", "annotator only")
+SQL = re.compile(r"^\s*(SELECT|WITH)\b", re.I)
 
 
 def load_ontology(directory) -> dict[str, dict]:
@@ -129,17 +140,19 @@ def walk(node):
 
 
 def ontology_units(docs: dict[str, dict], prefix: str = "knowledge/ontology") -> list[dict]:
-    """把本体元素展开成 κ（form=schema）。status 取自 EOB provenance.method，默认 observed。"""
+    """把本体元素展开成 κ（form=schema）。status 优先取元素上的 `origin`，其次 EOB provenance.method，默认 observed。"""
     units = []
     # ontology 层不允许 custom_extensions，整份本体的 provenance 记在 core / mapping 的根上。
     default = next((eob_data(docs[k])["provenance"] for k in ("semantic_model", "mapping")
                     if k in docs and "provenance" in eob_data(docs[k])), {})
 
     def add(uid, content, path, location, item, root, about):
-        method = (eob_data(item).get("provenance") or eob_data(root).get("provenance") or default).get("method")
+        ext = eob_data(item)
+        method = (ext.get("provenance") or eob_data(root).get("provenance") or default).get("method")
+        status = STATUS_BY_ORIGIN.get(ext.get("origin")) or STATUS_BY_METHOD.get(method, "observed")
         units.append({
             "id": f"ontology/{uid}", "content": content, "form": "schema",
-            "provenance": f"{prefix}/{path}#{location}", "status": STATUS_BY_METHOD.get(method, "observed"),
+            "provenance": f"{prefix}/{path}#{location}", "status": status,
             "about": [about], "meta": {"layer": path.split(".")[-2]},
         })
 
@@ -149,7 +162,9 @@ def ontology_units(docs: dict[str, dict], prefix: str = "knowledge/ontology") ->
         for ds in model.get("datasets", []):
             cols = ", ".join(f"{f['name']}:{f.get('datatype', '?')}" for f in ds.get("fields", []))
             key = f"；主键 {ds['primary_key']}" if ds.get("primary_key") else ""
-            add(f"dataset/{ds['name']}", f"表 {ds['name']}（{ds['source']}）列 {cols}{key}", path, f"dataset/{ds['name']}", ds, model, ds["name"])
+            hint = (ds.get("ai_context") or {}).get("instructions", "")
+            add(f"dataset/{ds['name']}", f"表 {ds['name']}（{source_text(ds)}）列 {cols}{key}" + (f"。{hint}" if hint else ""),
+                path, f"dataset/{ds['name']}", ds, model, ds["name"])
         for r in model.get("relationships", []):
             content = f"{r['from']}({', '.join(r['from_columns'])}) → {r['to']}({', '.join(r['to_columns'])})"
             add(f"join/{r['name']}", f"join：{content}", path, f"relationship/{r['name']}", r, model, r["name"])
@@ -167,6 +182,164 @@ def ontology_units(docs: dict[str, dict], prefix: str = "knowledge/ontology") ->
                 add(f"relation/{c['concept']}.{r['name']}", "; ".join(r.get("verbalizes", [])) or r["name"],
                     path, f"relationship/{c['concept']}.{r['name']}", r, onto, f"{c['concept']}.{r['name']}")
     return units
+
+
+def source_text(ds: dict) -> str:
+    """dataset 的来源短描述：SQL 视图只记标记，不把整段 SQL（往往是 GT 变换的复现）塞进 κ。"""
+    source = ds.get("source", "")
+    return "（SQL 视图）" if SQL.match(source) else source
+
+
+# ---------------------------------------------------------------- 剔除 benchmark GT
+
+
+def strip_gt(docs: dict[str, dict]) -> tuple[dict[str, dict], dict]:
+    """去掉来自 benchmark GT 的部分（关系 / 条目的 origin 是 pbi_gt、bibench_*，以及被 SQL 或 oracle 变换
+    复现出来的 dataset 及其全部引用），返回 (新文档, 各类计数)。relbench_gt 与 annotator 的内容保留。
+
+    返回的计数按元素数；连到 transient 表（LocalDateTable_…）的 GT 关系没有 dataset 可数，记在 `dataset` 下。
+    根 provenance 一律改成 `{"method": "llm"}`（内容已不再是标注者照 GT 抄的），有剔除时加 `stripped` 明细。
+    `origin: annotator` 的度量与注记（从数据推出的）保留，只把提到 oracle 的根注记换成占位。
+    """
+    report = dict.fromkeys(("relationship", "dataset", "metric", "mapping", "annotation", "transform", "note"), 0)
+    docs = copy.deepcopy(docs)
+    model = docs.get("semantic_model", {})
+    dropped = {ds["name"] for ds in model.get("datasets", []) if is_oracle(ds)}
+    report["dataset"] = len(dropped)
+    if dropped:
+        model["datasets"] = [ds for ds in model.get("datasets", []) if ds["name"] not in dropped]
+        # 只连到 transient 表（LocalDateTable_…）的 GT 关系：那些表本就不在 datasets 里，记到 dataset 一栏。
+        names = {ds["name"] for ds in model["datasets"]}
+        orphans = {side for r in model.get("relationships", []) if _forbidden(r) for side in (r["from"], r["to"])}
+        orphans -= names
+        dropped |= orphans
+        report["dataset"] += len(orphans)
+        model["relationships"] = [r for r in model.get("relationships", [])
+                                  if r["from"] not in dropped and r["to"] not in dropped]
+
+    for layer, doc in docs.items():
+        report["relationship"] += _strip_list(doc, "relationships", lambda r: _forbidden(r) or mentions(r, dropped))
+        report["metric"] += _strip_list(doc, "metrics", lambda r: _forbidden(r) or mentions(r, dropped))
+        report["dataset"] += _strip_list(doc, "datasets", lambda r: _forbidden(r))
+        root = eob_data(doc)
+        for key in ("pbi_transforms", "bibench_transformations", "gt_transforms"):
+            if key in root:
+                report["transform"] += _strip_list(root, key, lambda r: _forbidden(r) or mentions(r, dropped))
+        n = _strip_notes(root)
+        report["note"] += n
+        if n:
+            _write_eob(doc, root)
+
+    mapping = docs.get("mapping")
+    if mapping:
+        report["mapping"] += _strip_list(mapping, "concept_mappings", lambda cm: mentions(cm, dropped))
+        ext = eob_data(mapping)
+        for key in ("annotations", "conditional_mappings"):
+            if key in ext:
+                report["annotation" if key == "annotations" else "mapping"] += _strip_list(
+                    ext, key, lambda x: mentions(x, dropped))
+        _write_eob(mapping, ext)
+
+    stripped = [f"{k}:{v}" for k, v in report.items() if v]
+    for key in ("semantic_model", "mapping"):
+        if key in docs:
+            ext = eob_data(docs[key])
+            ext["provenance"] = {"method": "llm", "stripped": stripped} if stripped else {"method": "llm"}
+            _write_eob(docs[key], ext)
+    return docs, report
+
+
+def is_oracle(ds: dict) -> bool:
+    """dataset 是否由 GT 的逐题变换（query_metadata / transformation/）复现而来：SQL 视图，
+    或其描述 / EOB note 明说是 GT 变换的产物，或带 GT 来源的变换步骤。"""
+    ext = eob_data(ds)
+    return (bool(SQL.match(ds.get("source", "")))
+            or _text_hit(ds.get("description")) or _text_hit(ext.get("note"))
+            or any(_forbidden(t) or _text_hit(t.get("note")) for t in ext.get("transforms", [])))
+
+
+def _text_hit(value) -> bool:
+    return isinstance(value, str) and any(mark in value for mark in ORACLE_MARKS)
+
+
+def _forbidden(item: dict) -> bool:
+    origin = eob_data(item).get("origin") if isinstance(item, dict) else None
+    return bool(origin) and (origin in GT_ORIGINS or origin.startswith(GT_PREFIX))
+
+
+def mentions(item, names: set[str]) -> bool:
+    """条目里是否引用了这些 dataset（`表` 或 `表.列`，也认 SQL 表达式里出现的表名）。"""
+    if not names or not isinstance(item, dict):
+        return False
+    values = []
+    walk_dict(item, values)
+    pattern = re.compile(rf"(?<![0-9A-Za-z_])({'|'.join(map(re.escape, sorted(names)))})(?![0-9A-Za-z_])")
+    return any(isinstance(v, str) and pattern.search(v) for v in values)
+
+
+def walk_dict(node, out):
+    if isinstance(node, dict):
+        out.extend(node.values())
+        for value in node.values():
+            walk_dict(value, out)
+    elif isinstance(node, list):
+        for value in node:
+            walk_dict(value, out)
+
+
+def _strip_list(node: dict, key: str, drop) -> int:
+    items = node.get(key) or []
+    kept = [x for x in items if not drop(x)]
+    if len(kept) != len(items):
+        node[key] = kept
+    return len(items) - len(kept)
+
+
+def _strip_notes(root: dict) -> int:
+    """根 EOB 的 note / source.note 提到 oracle 或标注为 annotator 专用时换成占位。"""
+    n = 0
+    if isinstance(root.get("note"), str) and (_text_hit(root["note"]) or _annotator(root["note"])):
+        root["note"] = "（提到被剔除的 GT 内容，见 provenance.stripped）"
+        n += 1
+    source = root.get("source")
+    if isinstance(source, dict) and isinstance(source.get("note"), str) and (
+            _text_hit(source["note"]) or _annotator(source["note"])):
+        source["note"] = "（提到被剔除的 GT 内容，见 provenance.stripped）"
+        n += 1
+    return n
+
+
+def _annotator(note: str) -> bool:
+    return any(mark in note.lower() for mark in NOTE_MARKERS)
+
+
+def _write_eob(item: dict, data: dict) -> None:
+    """把 EOB 扩展整体换成 `data`（其余扩展不动）。"""
+    item["custom_extensions"] = [x for x in item.get("custom_extensions") or [] if x.get("vendor_name") != "EOB"] + eob(data)
+
+
+def import_annotation(src_dir, dest_dir, strip: bool = False) -> dict:
+    """把一个标注单元的三个 yaml（不要 report.md）复制到 `<dest_dir>/<单元名>/`，返回剔除报告。
+
+    `dest_dir` 是知识层的 `ontology/` 目录：每个单元一个子目录，多个单元可以共存。
+    """
+    src = Path(src_dir)
+    [model] = src.glob("*.semantic_model.yaml")
+    name = model.name.removesuffix(".semantic_model.yaml")
+    out = Path(dest_dir) / name
+    out.mkdir(parents=True, exist_ok=True)
+    (out / model.name).write_text(model.read_text(encoding="utf-8"), encoding="utf-8")
+    for layer in ("ontology", "mapping"):
+        [path] = src.glob(f"*.{layer}.yaml")
+        (out / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    report = {"unit": name, "dir": str(out), "stripped": False}
+    if strip:
+        docs, counts = strip_gt(load_ontology(out))
+        for path in out.glob("*.yaml"):
+            path.unlink()
+        write_ontology(out, docs)
+        report |= {"stripped": True, "counts": counts}
+    return report
 
 
 # ---------------------------------------------------------------- core 层的构造与转换

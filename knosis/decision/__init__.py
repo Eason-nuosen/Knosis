@@ -4,23 +4,36 @@
 `path` 是交付文件（格式见导出器的 `output`），`ids` 是要打分的题目 id，`ds` 从原始数据目录重新加载（含 GT）。
 返回 `{"metrics": {...}, "items": [{"id", "ok", "gold", ...}], "reference": {...}}`：
 `evaluate` 在测试题上调用它；知识层的反馈（`knowledge.feedback.submit`）在 dev 题上调用同一个函数。
+
+知识本身对不对（与任务有没有用分开）由可选的 `score_knowledge(ws, state, ds) -> dict` 评，
+用 `@register_knowledge("<数据集>")` 注册，结果写进评测报告的 `knowledge` 段；它可以读 GT，但结果不回给 agent。
 """
 
 from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from pathlib import Path
 from typing import Callable
 
 from ..knowledge import INACTIVE, load_units
 
 SCORERS: dict[str, Callable] = {}
+KNOWLEDGE_SCORERS: dict[str, Callable] = {}
 
 
 def register(name: str):
     def deco(fn):
         SCORERS[name] = fn
+        return fn
+
+    return deco
+
+
+def register_knowledge(name: str):
+    def deco(fn):
+        KNOWLEDGE_SCORERS[name] = fn
         return fn
 
     return deco
@@ -41,6 +54,9 @@ def evaluate(ws, write: bool = True) -> dict:
     report = {"benchmark": state["benchmark"], "scenario": state["scenario"],
               "knowledge": state.get("knowledge", "K_final"), "n": len(ids), **result["metrics"],
               "reference": result.get("reference", {}), "usage": usage(ws)}
+    report["knowledge_summary"] = summary(ws)
+    if state["benchmark"] in KNOWLEDGE_SCORERS:
+        report["knowledge"] = KNOWLEDGE_SCORERS[state["benchmark"]](ws, state, ds)
     if write:
         (ws / ".knosis/eval.json").write_text(
             json.dumps({**report, "items": result["items"]}, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
@@ -62,6 +78,17 @@ def usage(ws) -> dict:
         "unknown_units": sorted(set(cited) - set(units)),
         "inactive_units": sorted({uid for uid in cited if units.get(uid, {}).get("status") in INACTIVE}),
     }
+
+
+def summary(ws) -> dict:
+    """知识层概况：各形式 / 状态的单元数，各结论的证据数，带可执行检查的单元数。"""
+    from ..knowledge import load_evidence
+
+    units = load_units(Path(ws) / "knowledge/units.jsonl")
+    count = lambda values: dict(sorted(Counter(values).items()))  # noqa: E731
+    return {"units": len(units), "forms": count(u["form"] for u in units), "statuses": count(u["status"] for u in units),
+            "with_check": sum("check" in u for u in units),
+            "evidence": count(e["verdict"] for e in load_evidence(Path(ws) / "knowledge"))}
 
 
 def answers(path) -> dict:

@@ -12,10 +12,10 @@ from ..knowledge import feedback, load_units
 from . import check, goto, next_prompt, save_state, stage_dir, stage_issues, status
 
 
-def agent_command(agent, ws, prompt, model=None):
+def agent_command(agent, ws, prompt, model=None, effort=None):
     if agent == "codex":
         return ["codex", "exec", "-C", str(ws), "--sandbox", "workspace-write", "--skip-git-repo-check",
-                *(["-m", model] if model else []), prompt]
+                *(["-m", model] if model else []), *(["-c", f'model_reasoning_effort="{effort}"'] if effort else []), prompt]
     if agent == "claude":
         return ["claude", "-p", prompt, "--permission-mode", "acceptEdits", *(["--model", model] if model else []),
                 "--allowedTools", "Bash", "Read", "Edit", "Write"]
@@ -25,12 +25,12 @@ def agent_command(agent, ws, prompt, model=None):
 def submit_round(ws, state, directory) -> None:
     """自动 RSI：refine 每轮结束时，把本轮的 dev 预测提交一次反馈，结果进入下一轮的提示。"""
     path = directory / f"dev_{state['output']}"
-    submitted = {r["submitted"] for r in feedback.records(ws)}
+    submitted = {r["submitted"] for r in feedback.own(ws)}
     if path.exists() and str(path.relative_to(ws)) not in submitted and feedback.left(ws, state) > 0:
         feedback.submit(ws, path)
 
 
-def run(ws, agent="codex", stages=None, rounds=1, model=None) -> None:
+def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None) -> None:
     """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。"""
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
@@ -47,7 +47,7 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None) -> None:
                 before = status(ws)
                 with (directory / "agent.log").open("a", encoding="utf-8") as log:
                     # stdin 必须关掉：codex exec 在 stdin 未关闭时会一直等待追加输入。
-                    result = subprocess.run(agent_command(agent, ws, prompt, model), cwd=ws, env=env,
+                    result = subprocess.run(agent_command(agent, ws, prompt, model, effort), cwd=ws, env=env,
                                             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
                 if result.returncode:
                     raise RuntimeError(f"{agent} exited with {result.returncode}; see {directory / 'agent.log'}")
@@ -61,7 +61,7 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None) -> None:
                     if issues:
                         save_state(ws, before)
                 record = {"stage": stage, "round": before["round"], "attempt": attempt + 1,
-                          "agent": agent, "model": model, "seconds": time.monotonic() - started,
+                          "agent": agent, "model": model, "effort": effort, "seconds": time.monotonic() - started,
                           "units": len(load_units(ws / "knowledge/units.jsonl")), "issues": issues}
                 with (ws / ".knosis/runs.jsonl").open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")

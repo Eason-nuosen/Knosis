@@ -12,11 +12,15 @@ Knosis 提供可追溯的显式知识层，本会话的 agent 是执行者，不
 用户决定结束改进时，用 `knosis ws goto . decide` 进入下游任务。
 
 工作区外，用户需要这种流程时可运行
-`knosis ws init <dataset> <scenario> --out <目录>`；目前支持 NGDBench ngd-fin 与 TabArena。
-`knosis tool list` 与工作区的 `TOOLS.md` 提供可用工具（SQL、表画像、join 发现、ULTRA、TabPFN）。
+`knosis ws init <dataset> <scenario> --out <目录> [--kb <知识库>]`（`knosis list` 看支持的数据集）。
+`knosis tool list` 与工作区的 `TOOLS.md` 提供可用工具（SQL、表画像、join 发现、方程拟合、ULTRA、TabPFN 等）。
 
 知识写入 `knowledge/units.jsonl`。每条必有唯一 id、content、form、provenance、status。
-form 为 finding/fact/rule/formula/schema/tool；status 为 observed/inferred/verified/retracted/stale。
+form 为 finding/fact/rule/formula/schema/tool/method（method 是「如何发现或验证知识」的元知识）；
+status 为 observed/inferred/verified/contested/retracted/stale。
+每次验证记一条证据（support/refute/undetermined/not_applicable）：可执行检查写进 `check` 后运行
+`knosis knowledge verify`，其他用 `knosis knowledge evidence add`；verified 需要支持证据，被反驳要改状态。
+用 `knosis knowledge select` 按任务挑知识，`knosis knowledge trace <id>` 看证据链。
 记录 condition、derived_from 和验证支持数与反例数；来源定位到 data 文件的行、列、节点或边，
 工具来源为 `tool:<name>@<version>(...)`，多来源用 ` ; ` 连接。
 结构性知识可写成 `knowledge/ontology/` 下的 Ossie 三文件本体，κ 用 `about` 引用本体元素。

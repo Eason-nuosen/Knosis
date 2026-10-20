@@ -1,19 +1,23 @@
 # 知识层格式
 
-知识层 = **κ 单元** + 可选的**本体子层** + **反馈子层**。工作区里：
+知识层 = **κ 单元** + **证据账本** + 可选的**本体**（本体元素也是 κ）+ **反馈记录**。工作区里（独立知识库同布局）：
 
 ```
 knowledge/
 ├── units.jsonl                       每行一个 κ
-├── ontology/                         可选，Apache Ossie 0.2 三文件 + EOB 扩展
+├── evidence.jsonl                    每行一条证据
+├── checks/<id>.py                    可选，单元的可执行检查
+├── ontology/                         可选，Apache Ossie 0.2 三文件 + EOB 扩展；多份本体各占一个子目录
 │   ├── <name>.semantic_model.yaml    core：表、列、主键、join、度量
 │   ├── <name>.ontology.yaml          概念、概念间关系、单位与约束（不提表和列）
 │   └── <name>.mapping.yaml           列 → 概念 / 关系
 └── feedback/<id>.json                dev 题上的反馈记录
 ```
 
+范围与定位见 [scope.md](scope.md)。
+
 每次 `ws check` 通过，extract / refine 会把整个知识层快照到 `stages/2_extract/knowledge/`、
-`stages/3_refine/round_<n>/knowledge/`，这就是 K_0、K_1 …；`ws fork --knowledge K_n` 拿到的也是这一整份
+`stages/3_refine/round_<n>/knowledge/`，这就是 K_0、K_1 …；从知识库继承的初始知识在 `stages/0_inherit/knowledge/`（K_inherit）；`ws fork --knowledge K_n` 拿到的也是这一整份
 （fork 出来的对照组关闭反馈，只比较给定的知识）。
 
 ## κ 单元
@@ -29,13 +33,14 @@ knowledge/
 | --- | --- | --- |
 | `id` | 是 | 工作区内唯一 |
 | `content` | 是 | 知识内容（自然语言 / 公式 / 三元组文本） |
-| `form` | 是 | `finding` / `fact` / `rule` / `formula` / `schema` / `tool` |
+| `form` | 是 | `finding` / `fact` / `rule` / `formula` / `schema` / `tool` / `method`（元知识：如何发现或验证某类知识） |
 | `provenance` | 是 | 来源，见下 |
-| `status` | 是 | `observed` / `inferred` / `verified` / `retracted` / `stale` |
+| `status` | 是 | `observed` / `inferred` / `verified` / `contested`（有反驳、未定论）/ `retracted` / `stale` |
 | `condition` | 否 | 适用条件与已知例外 |
 | `derived_from` | 否 | 父单元 id |
 | `support` | 否 | 独立支持数 |
 | `about` | 否 | 引用的本体元素名（见下），有本体时必须能解析 |
+| `check` | 否 | 可执行检查，见「证据」 |
 | `meta` | 否 | 任意附加信息 |
 
 来源写法：数据 `data/<文件>#node/<id>`、`#edge/<src>|<label>|<dst>`、`#row/<row_id>`、`#col/<列名>`；
@@ -44,6 +49,40 @@ knowledge/
 结构检查（`check_units`）：必填字段与取值、重复 id、`data/` 来源文件存在、
 `feedback:` 来源指向存在的记录、**I1** 派生引用可解析（含历史版本）、**I5** 父单元撤回 / 失效后后代必须是 `retracted` 或 `stale`。
 不判断内容对错；I2（独立来源计数）、I3（类型兼容）、I4（条件不丢）尚未实现。
+
+## 证据
+
+`evidence.jsonl` 每行一次验证：
+
+```json
+{"id": "e-0007", "unit": "smoker-rule", "verdict": "support", "method": "check", "source": "check:smoker-rule",
+ "note": "rows=[[1]]", "inputs": {"data/train.parquet": "<大小:修改时间>"}, "created": "..."}
+```
+
+| 字段 | 取值 |
+| --- | --- |
+| `verdict` | `support` / `refute` / `undetermined`（条件或测量无法确认）/ `not_applicable`（前提不成立，不算支持也不算反例） |
+| `method` | `check`（Knosis 重跑可执行检查）/ `tool` / `data` / `feedback` / `derivation` / `human` |
+| `inputs` | 依赖的数据文件指纹；文件变了证据即过期，不再计入 |
+
+可执行检查写在 κ 的 `check`：`{"kind": "sql", "query": ..., "expect": [[...]]}` 在 `data/` 的表上执行
+（不给 expect 时第一行全为真即支持），或 `{"kind": "python", "path": "knowledge/checks/<id>.py"}`（退出码 0 支持、1 反驳、其他无法判定）。
+`knosis knowledge verify` 重跑并记证据；其他验证用 `knosis knowledge evidence add` / `import`（工具写出的 `evidence.jsonl`）。
+
+**状态与证据一致**（`check_units(..., evidence=...)`）：`verified` 至少一条未过期的支持；最近一条决定性证据是反驳时须为
+`contested` / `retracted` / `stale`；**I2** `support: n` 不超过支持证据的独立来源数（按 `#` 之前去重）。
+状态仍由 agent 写，Knosis 只检查它与证据是否矛盾。
+
+**证据链**：`knosis knowledge trace <id>` 按派生关系列出每个单元与它的证据，即这条知识的发现途径。
+**选取**：`knosis knowledge select [--about ...] [--form ...] [--text ...]` 按任务筛选（含本体元素）并附证据计数。
+
+## 独立知识库
+
+`knosis kb init <dir>` 建库（git 仓库，布局同上）。`knosis ws init ... --kb <dir> [--kb-form method]` 继承（可只继承某种形式）；
+同一数据集上，知识库反馈记录里出现过的题目不进新工作区的测试集。`knosis kb merge <ws> --kb <dir>` 写回：
+κ 按 id 合并、证据追加、反馈记录改名为 `<工作区>.<id>` 并改写引用，写回后整体检查，不通过就拒绝。
+`knosis kb import-ontology <标注目录> --kb <dir> [--strip-gt]` 导入已有本体（如 ontology-bench 的标注），
+`--strip-gt` 去掉来自 benchmark GT 的部分。
 
 ## 本体子层
 

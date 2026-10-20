@@ -39,10 +39,17 @@ def run_tool(name, args: list[str]) -> int:
     return subprocess.run([python, str(TOOLS_DIR / name / "run.py"), *args]).returncode
 
 
+def available(info) -> bool:
+    """模型工具的依赖能否在它的解释器里导入（`TOOL.md` 的 `requires`）。"""
+    python = os.environ.get(f"KNOSIS_{info['name'].upper()}_PYTHON", sys.executable)
+    code = "; ".join(f"import {module}" for module in info.get("requires", []))
+    return not code or subprocess.run([python, "-c", code], capture_output=True).returncode == 0
+
+
 def tools_markdown(modalities) -> str:
     sections = ["# 可用工具\n\n用 `knosis tool run <name> -- <参数>` 调用。工具只输出注解，不改数据；"
                 "输出的 κ 是 inferred / observed，采纳前要在数据上验证。\n"
-                "神经模型工具需单独环境，`--prepare-only` 只检查输入，不产生推断。"]
+                "模型类工具标明了在本机能否做真实推断；不能时 `--prepare-only` 只检查输入，不产生推断。"]
     seen = set()
     for modality in modalities:
         for tool in list_tools(modality):
@@ -50,7 +57,11 @@ def tools_markdown(modalities) -> str:
                 continue
             seen.add(tool["name"])
             body = card(tool["name"]).split("---", 2)[2].strip()
-            sections.append(f"## {tool['name']} @{tool['version']}（{tool['kind']}）\n\n许可：{tool['license']}\n\n{body}")
+            state = ""
+            if tool["kind"] == "model":
+                state = ("本机状态：依赖已安装，可以直接做真实推断。\n\n" if available(tool)
+                         else f"本机状态：缺少依赖（{', '.join(tool.get('requires', []))}），只能 `--prepare-only`。\n\n")
+            sections.append(f"## {tool['name']} @{tool['version']}（{tool['kind']}）\n\n许可：{tool['license']}\n\n{state}{body}")
     return "\n\n".join(sections) + "\n"
 
 

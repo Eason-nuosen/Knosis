@@ -5,6 +5,7 @@ kind: model
 modality: [graph]
 stage: [explore, extract]
 env: knosis-ultra
+requires: [torch, torch_geometric]
 license: "ULTRA 上游代码 MIT；checkpoint 需核对所选发布的模型卡，本包不分发权重。"
 ---
 

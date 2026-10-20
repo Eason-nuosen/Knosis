@@ -5,7 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from . import register
+from ..knowledge import active, load_units
+from ..knowledge.evidence import run_check
+from . import register, register_knowledge
 
 
 def roc_auc(truth: np.ndarray, score: np.ndarray) -> float:
@@ -60,3 +62,25 @@ def score(ws, state, ds, path, ids) -> dict:
     truth = pd.Series(y.iloc[ids].tolist(), index=ids)  # row_id 就是原始行号
     predictions = pd.read_csv(path).set_index("row_id")
     return score_rows(truth, predictions, y.iloc[task.meta["train"]], ds.schema["problem_type"])
+
+
+@register_knowledge("tabarena")
+def score_knowledge(ws, state, ds) -> dict:
+    """带 SQL 检查的活跃单元，在训练行与带标签的留出（测试）行上各跑一次：规律是否在没见过的数据上仍成立。"""
+    opts = state["options"]
+    task = next(t for t in ds.tasks if t.meta["repeat"] == opts.get("repeat", 0) and t.meta["fold"] == opts.get("fold", 0))
+    data = ds.read("data")
+    frames = {name: data.iloc[task.meta[name]].assign(row_id=lambda f: f.index).reset_index(drop=True)
+              for name in ("train", "test")}
+    frames = {k: f[["row_id", *[c for c in f.columns if c != "row_id"]]] for k, f in frames.items()}
+    items = []
+    for unit in active(load_units(ws / "knowledge/units.jsonl")):
+        if unit.get("check", {}).get("kind") != "sql":
+            continue
+        train, _ = run_check(unit, ws, {"train": frames["train"]})
+        held, note = run_check(unit, ws, {"train": frames["test"]})
+        items.append({"id": unit["id"], "status": unit["status"], "train": train, "heldout": held, "note": note[:200]})
+    holds = [i for i in items if i["train"] == "support"]
+    return {"checks": len(items), "support_on_train": len(holds),
+            "heldout_support_rate": sum(i["heldout"] == "support" for i in holds) / len(holds) if holds else None,
+            "items": items}

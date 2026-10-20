@@ -5,8 +5,8 @@
     ├── data/                 agent 可见的数据（只读）
     ├── tasks/dev.jsonl       开发题（无答案），可提交拿反馈
     ├── tasks/tasks.jsonl     decide 阶段才生成的测试题（无答案）
-    ├── stages/{1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   每个版本的知识快照在 <阶段目录>/knowledge/
-    ├── knowledge/            当前知识层：units.jsonl、ontology/、feedback/
+    ├── stages/{0_inherit, 1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   每个版本的知识快照在 <阶段目录>/knowledge/
+    ├── knowledge/            当前知识层：units.jsonl、evidence.jsonl、ontology/、checks/、feedback/
     └── .knosis/state.json
 """
 
@@ -22,7 +22,8 @@ from pathlib import Path
 from string import Template
 
 from ..data import LOADERS, load_dataset
-from ..knowledge import check_ontology, check_units, feedback, load_ontology, load_units, refs, write_units
+from ..knowledge import check_knowledge, check_units, feedback, load_units, ontology_docs, write_units
+from ..knowledge.kb import inherit, seen_items
 from .exporters import EXPORTERS
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -59,8 +60,9 @@ def commit(ws, message):
     )
 
 
-def init(benchmark, scenario, out=None, feedback="answer", budget=20, **options) -> Path:
-    """`feedback` / `budget`：dev 题反馈的模式（answer / score / none）与提交次数上限；其余参数给导出器。"""
+def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, kb_form=None, **options) -> Path:
+    """`feedback` / `budget`：dev 题反馈的模式（answer / score / none）与提交次数上限；
+    `kb`：从独立知识库继承初始知识（`kb_form` 只继承该形式，如 method），快照为 K_inherit；其余参数给导出器。"""
     from ..tools import tools_markdown
 
     ws = Path(out or f"ws/{benchmark}-{scenario}").resolve()
@@ -75,14 +77,22 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, **options)
     (ws / "TOOLS.md").write_text(tools_markdown(exported["modalities"]), encoding="utf-8")
     (ws / ".gitignore").write_text("__pycache__/\n*.pyc\n.knosis/runs.jsonl\n.knosis/eval.json\n", encoding="utf-8")
     write_units(ws / "knowledge/units.jsonl", [])
+    inherited, exclude = None, []
+    if kb:
+        inherited = inherit(kb, ws / "knowledge", kb_form)
+        copy_knowledge(ws / "knowledge", ws / "stages/0_inherit/knowledge")
+        # 继承来的反馈可能带着答案：同一数据集上，它们出现过的题目不再进测试集。
+        seen = seen_items(kb, benchmark, scenario)
+        exclude = [t["id"] for t in exported["tasks"] if t["id"] in seen]
     write_units(ws / "tasks/dev.jsonl", exported["dev"])
     if options.get("root") is not None:
         options["root"] = str(Path(options["root"]).resolve())
     save_state(ws, {
         "benchmark": benchmark, "scenario": scenario, "options": options,
         "stage": "explore", "round": 1, "holdout": exported["holdout"],
-        "output": exported["output"], "python": sys.executable,
+        "output": exported["output"], "extras": exported.get("extras", []), "python": sys.executable,
         "feedback": {"mode": feedback if exported["dev"] else "none", "budget": budget},
+        **({"kb": inherited, "exclude": exclude} if kb else {}),
         "created": datetime.now(timezone.utc).isoformat(),
     })
     subprocess.run(["git", "init", "--quiet"], cwd=ws, check=True, capture_output=True)
@@ -98,7 +108,7 @@ def feedback_note(ws, state) -> str:
             f"运行 `knosis feedback submit <文件>` 得到逐题结果"
             f"{'和正确答案' if state['feedback']['mode'] == 'answer' else '（只给对错与分数）'}，"
             f"记录写入 `knowledge/feedback/`；本工作区还剩 {feedback.left(ws, state)} 次。")
-    last = feedback.records(ws)[-1:]
+    last = feedback.own(ws)[-1:]
     if last:
         note += f"\n最近一次反馈：`knowledge/feedback/{last[0]['id']}.json`，指标 {json.dumps(last[0]['metrics'], ensure_ascii=False)[:300]}。"
     return note
@@ -112,7 +122,8 @@ def next_prompt(ws) -> str:
         opts = state["options"]
         ds = open_dataset(state["benchmark"], state["scenario"], opts)
         exported = EXPORTERS[state["benchmark"]](ds, ws, write_data=False, **opts)
-        write_units(ws / "tasks/tasks.jsonl", exported["tasks"])
+        exclude = set(state.get("exclude", []))
+        write_units(ws / "tasks/tasks.jsonl", [t for t in exported["tasks"] if t["id"] not in exclude])
     template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
     return Template(template).substitute(state, output=state["output"] or "（本数据集没有下游预测）",
                                          feedback=feedback_note(ws, state))
@@ -133,8 +144,10 @@ def prediction_ids(path) -> tuple[list, list]:
 
 
 def prediction_issues(ws, state):
+    extras = [f"missing or empty {name}: stages/4_decide/{name}" for name in state.get("extras", [])
+              if not (ws / "stages/4_decide" / name).is_file() or not (ws / "stages/4_decide" / name).stat().st_size]
     if not state["output"]:
-        return []
+        return extras
     path = stage_dir(ws, state) / state["output"]
     if not path.is_file() or not path.stat().st_size:
         return [f"missing or empty predictions: {path.relative_to(ws)}"]
@@ -151,13 +164,14 @@ def prediction_issues(ws, state):
         issues.append("duplicate prediction ids")
     if missing_answers:
         issues.append(f"missing answers: {missing_answers[:20]}")
-    return issues
+    return issues + extras
 
 
 def snapshots(ws) -> list[Path]:
-    """已保存的知识版本目录（`<阶段目录>/knowledge/`），按 K_0, K_1, … 排序。"""
+    """已保存的知识版本目录（`<阶段目录>/knowledge/`），按 K_inherit, K_0, K_1, … 排序。"""
+    ws = Path(ws)
     rounds = sorted((ws / "stages/3_refine").glob("round_*/knowledge"), key=lambda p: int(p.parent.name.split("_")[1]))
-    return [p for p in [ws / "stages/2_extract/knowledge", *rounds] if p.exists()]
+    return [p for p in [ws / "stages/0_inherit/knowledge", ws / "stages/2_extract/knowledge", *rounds] if p.exists()]
 
 
 def stage_issues(ws, state):
@@ -165,11 +179,10 @@ def stage_issues(ws, state):
     history = {}
     for directory in snapshots(ws):
         history.update((u["id"], u) for u in load_units(directory / "units.jsonl"))
-    docs = load_ontology(ws / "knowledge/ontology") if (ws / "knowledge/ontology").is_dir() else {}
+    docs = ontology_docs(ws / "knowledge")
     # 保留历史单元的最后状态，使删除单元不能绕过撤回传播。
     effective = {**history, **{u["id"]: u for u in units if u.get("id")}}
-    issues = check_ontology(docs)
-    issues += check_units(units, known_ids=history, root=ws, ontology_refs=refs(docs) if docs else None)
+    issues = check_knowledge(ws / "knowledge", known_ids=set(history), root=ws)
     issues += check_units(list(effective.values()), root=ws)
     directory = stage_dir(ws, state)
     required = {"explore": "notes.md", "refine": "changelog.md"}
@@ -221,14 +234,16 @@ def goto(ws, stage) -> None:
     commit(ws, f"goto: {stage}")
 
 
-def fork(ws, out, knowledge="K_final") -> Path:
-    """decide 对照用的副本：knowledge 为 none / K_0 / K_<n> / K_final。"""
+def fork(ws, out, knowledge="K_final", drop=()) -> Path:
+    """decide 对照用的副本：knowledge 为 none / K_inherit / K_0 / K_<n> / K_final；
+    `drop`：再从中去掉这些单元（单条知识的消融，测它对任务有没有用）。"""
     ws, out = Path(ws).resolve(), Path(out).resolve()
     if out == ws or out.is_relative_to(ws):
         raise ValueError("fork output must be outside the source workspace")
     versions = snapshots(ws)
-    if knowledge in {"none", "K_final", "K_0"}:
-        chosen = {"none": None, "K_final": ws / "knowledge", "K_0": ws / "stages/2_extract/knowledge"}[knowledge]
+    if knowledge in {"none", "K_final", "K_0", "K_inherit"}:
+        chosen = {"none": None, "K_final": ws / "knowledge", "K_0": ws / "stages/2_extract/knowledge",
+                  "K_inherit": ws / "stages/0_inherit/knowledge"}[knowledge]
     else:
         chosen = ws / f"stages/3_refine/round_{int(knowledge.removeprefix('K_'))}/knowledge"
     # 对照副本不带未来的分析、预测或 git 历史；历史快照只保留所选版本及其之前的。
@@ -244,9 +259,11 @@ def fork(ws, out, knowledge="K_final") -> Path:
         keep = versions if knowledge == "K_final" else versions[:versions.index(chosen) + 1]
         for directory in keep:
             copy_knowledge(directory, out / directory.relative_to(ws))
+        units = load_units(out / "knowledge/units.jsonl")
+        write_units(out / "knowledge/units.jsonl", [u for u in units if u["id"] not in set(drop)])
     state = status(out)
     # 对照组只比较给定的知识，decide 时不再拿新的反馈。
-    state.update(stage="decide", knowledge=knowledge, feedback={**state["feedback"], "mode": "none"})
+    state.update(stage="decide", knowledge=knowledge, dropped=list(drop), feedback={**state["feedback"], "mode": "none"})
     state.pop("completed", None)
     save_state(out, state)
     subprocess.run(["git", "init", "--quiet"], cwd=out, check=True, capture_output=True)

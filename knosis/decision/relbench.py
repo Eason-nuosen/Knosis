@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from ..data.loaders.relbench import task_splits
-from . import register
+from ..knowledge import ontology, ontology_docs
+from . import register, register_knowledge
+from .bibench import pairs, score_pairs
 from .tabular import roc_auc
 
 
@@ -57,3 +60,35 @@ def score(ws, state, ds, path, ids) -> dict:
         popular = [x for x, _ in Counter(x for g in train for x in g).most_common(k)]
         reference = {"train_popular": {f"map@{k}": float(np.mean([average_precision(popular, g, k) for g in golds]))}}
     return {"metrics": {"task": spec["name"], "task_type": kind, **metrics}, "items": items, "reference": reference}
+
+
+# ---------------------------------------------------------------- 本体（join 发现）评分
+
+
+def gold_pairs(ds) -> set[frozenset]:
+    """manifest 的外键 → 无向 join 集合：外键 (表, 列) 对主键表 (主表, 主键列)。"""
+    tables = ds.schema["tables"]
+    return {frozenset({(ontology.snake(table), column), (ontology.snake(target), tables[target]["pkey"])})
+            for table, spec in tables.items()
+            for column, target in (spec.get("fkeys") or {}).items() if tables[target].get("pkey")}
+
+
+def db_report(knowledge, ds) -> dict:
+    """知识层里的全部本体 → 该库的 join 发现分数；没有本体时 reported=False。"""
+    docs = {n: d for n, d in ontology_docs(knowledge).items() if "semantic_model" in d}
+    if not docs:
+        return {"reported": False}
+    gold = gold_pairs(ds)
+    scores = {name: score_pairs(pairs(d["semantic_model"]), gold) for name, d in docs.items()}
+    return {"reported": True, "db": ds.scenario, "units": len(docs), "scores": scores,
+            "mean": {k: float(np.mean([s[k] for s in scores.values()])) for k in ("precision", "recall", "f1")}}
+
+
+@register_knowledge("relbench")
+def score_knowledge(ws, state, ds) -> dict:
+    ws = Path(ws)
+    result = {"ontology": db_report(ws / "knowledge", ds)}
+    inherited = ws / "stages/0_inherit/knowledge"
+    if inherited.is_dir():
+        result["K_inherit"] = db_report(inherited, ds)
+    return result

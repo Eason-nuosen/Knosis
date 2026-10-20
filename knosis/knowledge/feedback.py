@@ -19,9 +19,14 @@ def records(ws) -> list[dict]:
     return [json.loads(p.read_text(encoding="utf-8")) for p in sorted((Path(ws) / "knowledge/feedback").glob("*.json"))]
 
 
+def own(ws) -> list[dict]:
+    """本工作区自己提交的记录（从知识库继承来的记录名为 `<工作区>.<id>`，不计入预算）。"""
+    return [r for r in records(ws) if "." not in r["id"]]
+
+
 def left(ws, state) -> int:
     config = state["feedback"]
-    return 0 if config["mode"] == "none" else config["budget"] - len(records(ws))
+    return 0 if config["mode"] == "none" else config["budget"] - len(own(ws))
 
 
 def submit(ws, path) -> dict:
@@ -44,7 +49,8 @@ def submit(ws, path) -> dict:
     directory = ws / "knowledge/feedback"
     directory.mkdir(parents=True, exist_ok=True)
     name = state["stage"] + (f"-r{state['round']}" if state["stage"] == "refine" else "")
-    record = {"id": f"{len(records(ws)) + 1:03d}-{name}", "stage": state["stage"], "round": state["round"],
+    record = {"id": f"{len(own(ws)) + 1:03d}-{name}", "stage": state["stage"], "round": state["round"],
+              "benchmark": state["benchmark"], "scenario": state["scenario"],
               "submitted": str(path.relative_to(ws)), "mode": state["feedback"]["mode"],
               "created": datetime.now(timezone.utc).isoformat(), "metrics": result["metrics"], "items": items}
     (directory / f"{record['id']}.json").write_text(

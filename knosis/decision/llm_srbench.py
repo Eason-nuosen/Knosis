@@ -9,7 +9,8 @@ from __future__ import annotations
 import h5py
 import numpy as np
 
-from . import answers, register
+from ..knowledge import load_units
+from . import answers, register, register_knowledge
 
 TAU = 0.1
 
@@ -61,3 +62,31 @@ def score(ws, state, ds, path, ids) -> dict:
         result |= {"ood_acc_0.1": float(np.mean([i["ood_ok"] for i in ood])),
                    "ood_nmse_median": float(np.median([i["ood_nmse"] for i in ood]))}
     return {"metrics": result, "items": items, "reference": {}}
+
+
+@register_knowledge("llm-srbench")
+def score_knowledge(ws, state, ds) -> dict:
+    """`form=formula` 且带 `meta.task` / `meta.expression` 的单元（含 dev 题与被撤回的候选），在留出点上重算：
+    被接受的方程有多少真的成立，被撤回的有多少本来就不成立。"""
+    tasks = {t.id: t for t in ds.tasks}
+    items = []
+    with h5py.File(ds.files["hdf5"], "r") as h5:
+        for unit in load_units(ws / "knowledge/units.jsonl"):
+            meta = unit.get("meta", {})
+            if unit["form"] != "formula" or meta.get("task") not in tasks or not meta.get("expression"):
+                continue
+            task = tasks[meta["task"]]
+            group = h5[task.meta["hdf5_group"]]
+            test = metrics(meta["expression"], task.meta["symbols"], group["test"][:])
+            item = {"id": unit["id"], "task": task.id, "status": unit["status"], "nmse": test["nmse"], "ok": test["acc"]}
+            if "ood_test" in group:
+                ood = metrics(meta["expression"], task.meta["symbols"], group["ood_test"][:])
+                item |= {"ood_nmse": ood["nmse"], "ood_ok": ood["acc"]}
+            items.append(item)
+    accepted = [i for i in items if i["status"] in {"verified", "observed", "inferred", "contested"}]
+    rejected = [i for i in items if i["status"] in {"retracted", "stale"}]
+    rate = lambda rows, key: sum(r[key] for r in rows) / len(rows) if rows else None  # noqa: E731
+    return {"formulas": len(items), "accepted": len(accepted), "rejected": len(rejected),
+            "accepted_ok_rate": rate(accepted, "ok"),
+            "accepted_ood_ok_rate": rate([i for i in accepted if "ood_ok" in i], "ood_ok"),
+            "rejected_ok_rate": rate(rejected, "ok"), "items": items}

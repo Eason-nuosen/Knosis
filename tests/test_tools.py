@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import pickle
 import sys
 from pathlib import Path
@@ -223,3 +224,77 @@ def test_tabpfn_inference_output_contract(table_files, tmp_path, monkeypatch, co
     units = load_units(out / "units.jsonl")
     assert units and all(u["status"] == "inferred" for u in units)
     assert (out / "run.json").exists()
+
+
+@pytest.fixture
+def cv_file(tmp_path):
+    rng = np.random.default_rng(0)
+    x, g = rng.normal(size=60), rng.choice(["p", "q"], size=60)
+    path = tmp_path / "cv.parquet"
+    pd.DataFrame({"x": x, "noise": rng.normal(size=60), "g": g,
+                  "y": 3 * x + 5 * (g == "p") * (x > 0) + rng.normal(scale=0.1, size=60)}).to_parquet(path)
+    return path
+
+
+CV_VARIANTS = ["--variant", "inter=add:xp=(g==\"p\")&(x>0)", "--variant", "lean=drop:noise",
+               "--variant", "ps=subset:g==\"p\""]
+
+
+def test_tabpfn_cv_prepare_subprocess(cv_file, tmp_path):
+    out = tmp_path / "out"
+    assert tools.run_tool("tabpfn", ["cv", "--train", str(cv_file), "--target", "y", "--out", str(out),
+                                     "--prepare-only", *CV_VARIANTS]) == 0
+    plan = pd.read_csv(out / "cv_plan.csv").set_index("variant")
+    assert plan.n_features.to_dict() == {"base": 3, "inter": 4, "lean": 2, "ps": 3}
+    assert plan.loc["ps", "n_rows"] == (pd.read_parquet(cv_file).g == "p").sum() and plan.loc["base", "n_rows"] == 60
+    assert load_units(out / "units.jsonl") == [] and not (out / "cv.csv").exists()
+
+
+def test_tabpfn_variant_encoding(cv_file):
+    frame, features, mask = tab.build_variant(pd.read_parquet(cv_file), ["x", "noise", "g"], 'add:xp=(g=="p")&(x>0);drop:noise')
+    assert features == ["x", "g", "xp"] and mask.all()
+    assert frame.xp.dtype.kind == "i" and frame.g.dtype.kind == "i"
+
+
+class LinearModel:
+    """只用 x 线性拟合的假模型；有 xp 特征时再加上它，便于判断 Δ 的方向。"""
+
+    def fit(self, x, y):
+        design = np.column_stack([x[[c for c in ("x", "xp") if c in x]], np.ones(len(x))])
+        self.columns = [c for c in ("x", "xp") if c in x]
+        self.coef = np.linalg.lstsq(design, y, rcond=None)[0]
+        return self
+
+    def predict(self, x):
+        return np.column_stack([x[self.columns], np.ones(len(x))]) @ self.coef
+
+
+def test_tabpfn_cv_contract(cv_file, tmp_path, monkeypatch):
+    monkeypatch.setattr(tab, "fit_model", lambda rows, target, features, *a: (LinearModel().fit(rows[features], rows[target]), []))
+    out = tmp_path / "out"
+    tab.main(["cv", "--train", str(cv_file), "--target", "y", "--folds", "3", "--out", str(out), *CV_VARIANTS,
+              "--unit", "inter=k-1", "--unit", "lean=k-2"])
+    table = pd.read_csv(out / "cv.csv").set_index("variant")
+    assert table.loc["base", "delta"] == 0 and table.loc["inter", "delta"] < 0
+    assert table.loc["lean", "delta"] == 0  # 假模型不用 noise
+    ps = table.loc["ps"]
+    assert ps.n_rows < 60 and ps.base_mean != table.loc["base", "mean"]
+    units = load_units(out / "units.jsonl")
+    assert [u["id"] for u in units] == ["tabpfn/cv/inter", "tabpfn/cv/lean", "tabpfn/cv/ps"] and not check_units(units)
+    assert units[0]["provenance"].startswith("tool:tabpfn@0.2(cv,variant=inter")
+    evidence = load_units(out / "evidence.jsonl")
+    assert [(e["unit"], e["verdict"]) for e in evidence] == [("k-1", "support"), ("k-2", "undetermined")]
+    assert all(e["method"] == "tool" and "id" not in e and "RMSE" in e["note"] for e in evidence)
+
+
+def test_tabpfn_cv_real(cv_file, tmp_path, monkeypatch):
+    pytest.importorskip("tabpfn")
+    model = Path(os.environ.get("KNOSIS_TABPFN_MODEL", "/Users/eason/Desktop/optiver/cache/tabpfn-v3-regressor-v3_default.ckpt"))
+    if not model.exists():
+        pytest.skip("没有本地 TabPFN 回归权重")
+    out = tmp_path / "out"
+    tab.main(["cv", "--train", str(cv_file), "--target", "y", "--folds", "3", "--out", str(out), "--model", str(model),
+              "--device", "cpu", *CV_VARIANTS[:2], "--unit", "inter=k-1"])
+    table = pd.read_csv(out / "cv.csv")
+    assert len(table) == 2 and np.isfinite(table["mean"]).all()
+    assert load_units(out / "evidence.jsonl")[0]["unit"] == "k-1"

@@ -12,6 +12,8 @@
 - `stages/1_explore/`、`2_extract/`、`3_refine/round_<n>/`、`4_decide/`：
   当前阶段的代码、笔记和交付物。
 - `knowledge/units.jsonl`：当前知识层，每行一个 κ。
+- `knowledge/evidence.jsonl`：证据账本，每行一次验证结果（用命令写，不要手改）。
+- `knowledge/checks/`：单元的可执行检查脚本（可选）。
 - `knowledge/ontology/`（可选）：本体，Ossie 三文件格式，见下文。
 - `knowledge/feedback/`：dev 反馈记录（只读，由 `knosis feedback submit` 写入）。
 - `.knosis/state.json`：阶段状态；历史知识快照在 `stages/`。
@@ -24,10 +26,11 @@ Python 使用 `$python`；已安装 pandas、pyarrow 等数据依赖。
 ## 知识单元 κ
 
 必填：`id`（唯一字符串）、`content`、`form`、`provenance`、`status`。
-`form` 为 finding / fact / rule / formula / schema / tool；
-`status` 为 observed / inferred / verified / retracted / stale。
+`form` 为 finding / fact / rule / formula / schema / tool / method；
+`method` 是元知识：「如何发现或验证某类知识」的步骤与适用条件，可以附可执行检查，换一份数据也能照做。
+`status` 为 observed / inferred / verified / contested / retracted / stale。
 可选：`condition`（条件与例外）、`derived_from`（父单元 id 列表）、
-`support`（独立支持数）、`about`（引用的本体元素）、`meta`（验证支持数、反例数、分数等）。
+`support`（独立支持数）、`about`（引用的本体元素）、`check`（可执行检查，见下）、`meta`（分数、反例数等）。
 
 来源写法：
 
@@ -38,11 +41,34 @@ Python 使用 `$python`；已安装 pandas、pyarrow 等数据依赖。
 - 纯派生：`derived`，此时必须填写 `derived_from`。
 - 多来源用 ` ; ` 连接。合并知识保留父单元，撤回后将受影响后代标为 stale 或 retracted。
 
+## 证据与验证
+
+知识要能被证据支持或反驳。每次验证记一条证据，结论为 support / refute / undetermined（条件或测量无法确认）/
+not_applicable（前提不成立）：
+
+- 可执行检查：单元带 `check`，由 Knosis 重跑并记证据（`knosis knowledge verify [--unit ID]`）。
+  `{"kind": "sql", "query": "SELECT ... FROM train ...", "expect": [[...]]}`（表名为 `data/` 下文件名；不给 expect 时第一行全为真即支持），
+  或 `{"kind": "python", "path": "knowledge/checks/<id>.py"}`（在工作区根目录运行；退出码 0 支持，1 反驳，其他无法判定）。
+- 其他验证：`knosis knowledge evidence add --unit ID --verdict support --method tool|data|feedback|derivation|human --source <来源> --note "<数字>" [--inputs data/...]`；
+  工具写出的 `evidence.jsonl` 用 `knosis knowledge evidence import <文件>` 导入。
+
+状态规则（`ws check` 会检查）：`verified` 至少有一条未过期的支持证据；最近一条决定性证据是反驳时，
+状态须为 contested、retracted 或 stale（收窄条件后可再验证）；`support: n` 不超过独立来源数。
+证据记录了所依赖数据的指纹，数据变了证据就过期。`knosis knowledge trace ID` 输出一条知识的证据链。
+
+## 选取知识
+
+知识正确不等于对当前任务有用。`knosis knowledge select [--about 本体元素] [--form F] [--text 关键词]`
+列出候选（含本体元素）与证据计数；用哪些由你决定，并在 decide 时记录 `used_units`。
+如果工作区从知识库继承了知识（`stages/0_inherit/knowledge` 存在），它们同样要按任务判断是否适用，
+可以修正、收窄或撤回。
+
 ## 本体（可选）
 
 结构性知识（表 / 列 / 主键 / join / 度量，概念与概念间关系，列到概念的映射）可以写成本体，
-放在 `knowledge/ontology/<name>.{semantic_model,ontology,mapping}.yaml`（Apache Ossie 0.2 + EOB 扩展，
+放在 `knowledge/ontology/<name>.{semantic_model,ontology,mapping}.yaml`（多份本体各占一个子目录 `knowledge/ontology/<name>/`）（Apache Ossie 0.2 + EOB 扩展，
 EOB 信息写在 `custom_extensions`，`vendor_name: EOB`，`data` 为 JSON 字符串）。
+本体元素本身也是知识（`form=schema`，id 形如 `ontology/[<子目录>/]join/<名字>`），可以对它记证据、派生或撤回；
 κ 用 `about: ["Product", "Sale.product", "sales.Amount"]` 引用本体元素；`ws check` 会检查引用能否解析，
 以及 mapping 的 `expression` 是否是存在的 `dataset.field`。
 `python -c "from knosis.knowledge import ontology; help(ontology)"` 有格式说明与构造函数。
