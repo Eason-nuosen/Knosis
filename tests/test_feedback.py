@@ -104,3 +104,15 @@ def test_driver_auto_feedback_per_round(ngd_root, tmp_path, monkeypatch):
     assert [p.name for p in (fork / "knowledge/feedback").iterdir()] == ["001-refine-r1.json"]
     assert w.status(fork)["feedback"]["mode"] == "none"
     assert not (w.fork(ws, tmp_path / "none", "none") / "knowledge/feedback").exists()
+
+
+def test_full_mode_requires_all_dev(ngd_root, tmp_path):
+    ws = make(ngd_root, tmp_path, feedback_full=True)
+    dev = load_units(ws / "tasks/dev.jsonl")
+    path = ws / "stages/1_explore/part.jsonl"
+    write_units(path, [{"id": dev[0]["id"], "answer": 0}])
+    with pytest.raises(ValueError, match="answering all dev tasks"):
+        feedback.submit(ws, path)
+    write_units(path, [{"id": t["id"], "answer": gold(t["id"])} for t in dev])
+    assert feedback.submit(ws, path)["metrics"]["answer_set_em"] == 1.0
+    assert "必须回答全部开发题" in w.feedback_note(ws, w.status(ws))

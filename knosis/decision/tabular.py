@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from pathlib import Path
+
 from ..knowledge import active, load_units
 from ..knowledge.evidence import run_check
 from . import register, register_knowledge
@@ -73,12 +75,16 @@ def score_knowledge(ws, state, ds) -> dict:
     frames = {name: data.iloc[task.meta[name]].assign(row_id=lambda f: f.index).reset_index(drop=True)
               for name in ("train", "test")}
     frames = {k: f[["row_id", *[c for c in f.columns if c != "row_id"]]] for k, f in frames.items()}
+    from ..tools import read_tables
+
+    # 其他可见表（dev / test 特征）照常提供，只把 train 换成带标签的留出行。
+    visible = {name: frame for name, (_, frame) in read_tables([Path(ws) / "data"]).items()}
     items = []
     for unit in active(load_units(ws / "knowledge/units.jsonl")):
         if unit.get("check", {}).get("kind") != "sql":
             continue
-        train, _ = run_check(unit, ws, {"train": frames["train"]})
-        held, note = run_check(unit, ws, {"train": frames["test"]})
+        train, _ = run_check(unit, ws, visible | {"train": frames["train"]})
+        held, note = run_check(unit, ws, visible | {"train": frames["test"]})
         items.append({"id": unit["id"], "status": unit["status"], "train": train, "heldout": held, "note": note[:200]})
     holds = [i for i in items if i["train"] == "support"]
     return {"checks": len(items), "support_on_train": len(holds),

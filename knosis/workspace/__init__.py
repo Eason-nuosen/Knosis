@@ -60,9 +60,10 @@ def commit(ws, message):
     )
 
 
-def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, kb_form=None, **options) -> Path:
+def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, kb_form=None, feedback_full=False, **options) -> Path:
     """`feedback` / `budget`：dev 题反馈的模式（answer / score / none）与提交次数上限；
-    `kb`：从独立知识库继承初始知识（`kb_form` 只继承该形式，如 method），快照为 K_inherit；其余参数给导出器。"""
+    `kb`：从独立知识库继承初始知识（`kb_form` 只继承该形式，如 method），快照为 K_inherit；
+    `feedback_full`：每次提交必须覆盖全部 dev 题（默认可以只交一部分）；其余参数给导出器。"""
     from ..tools import tools_markdown
 
     ws = Path(out or f"ws/{benchmark}-{scenario}").resolve()
@@ -99,7 +100,8 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
         "benchmark": benchmark, "scenario": scenario, "options": options,
         "stage": "explore", "round": 1, "holdout": exported["holdout"],
         "output": exported["output"], "extras": exported.get("extras", []), "python": sys.executable,
-        "feedback": {"mode": feedback if exported["dev"] else "none", "budget": budget},
+        "feedback": {"mode": feedback if exported["dev"] else "none", "budget": budget,
+                     "full": bool(feedback_full)},
         **({"kb": inherited, "exclude": exclude} if kb else {}),
         "created": datetime.now(timezone.utc).isoformat(),
     })
@@ -112,9 +114,11 @@ def feedback_note(ws, state) -> str:
     """阶段提示里关于 dev 反馈的一段话。"""
     if state["feedback"]["mode"] == "none":
         return "本工作区没有 dev 反馈。"
-    note = (f"`tasks/dev.jsonl` 是开发题（与测试题不重叠）。按 decide 的交付格式回答（可以只答一部分），"
+    note = (f"`tasks/dev.jsonl` 是开发题（与测试题不重叠）。按 decide 的交付格式回答，"
             f"运行 `knosis feedback submit <文件>` 得到逐题结果"
             f"{'和正确答案' if state['feedback']['mode'] == 'answer' else '（只给对错与分数）'}，"
+            f"{'每次必须回答全部开发题' if state['feedback'].get('full') else '可以自己选择回答哪些开发题'}；"
+            f"回看每道题的结果，答对和答错的都可以总结出知识（依据写成证据，method=feedback），"
             f"记录写入 `knowledge/feedback/`；本工作区还剩 {feedback.left(ws, state)} 次。")
     last = feedback.own(ws)[-1:]
     if last:
@@ -134,7 +138,9 @@ def next_prompt(ws) -> str:
         write_units(ws / "tasks/tasks.jsonl", [t for t in exported["tasks"] if t["id"] not in exclude])
     template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
     note = CONTROL if state.get("knowledge") == "none" else ""
-    return Template(template).substitute(state, output=state["output"] or "（本数据集没有下游预测）",
+    # 模板总会带 $control；旧工作区的模板可能没有，缺的变量按空值处理。
+    return Template(template).substitute({"control": "", "feedback": "", **state},
+                                         output=state["output"] or "（本数据集没有下游预测）",
                                          feedback=feedback_note(ws, state), control=note)
 
 
@@ -215,6 +221,11 @@ def stage_issues(ws, state):
                     issues.append(f"{unit['id']}: method check must live under knowledge/checks/")
                 elif not portable(ws, unit)[0]:
                     issues.append(f"{unit['id']}: method check is not self-contained (fails with only data/ and knowledge/)")
+    if state["stage"] == "refine" and state["feedback"].get("full") and state["feedback"]["mode"] != "none":
+        path = directory / f"dev_{state['output']}"
+        dev = {t["id"] for t in load_units(ws / "tasks/dev.jsonl")}
+        if not path.exists() or dev - set(prediction_ids(path)[0]):
+            issues.append(f"{path.relative_to(ws)} must answer all {len(dev)} dev tasks")
     if state["stage"] == "decide":
         issues.extend(prediction_issues(ws, state))
     return list(dict.fromkeys(issues))

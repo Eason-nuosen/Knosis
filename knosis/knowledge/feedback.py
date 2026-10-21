@@ -42,6 +42,8 @@ def submit(ws, path) -> dict:
     ids, _ = prediction_ids(path)
     if set(ids) - dev:
         raise ValueError(f"feedback only accepts dev ids; unknown: {sorted(set(ids) - dev, key=str)[:10]}")
+    if state["feedback"].get("full") and dev - set(ids):
+        raise ValueError(f"this workspace requires answering all dev tasks; missing: {sorted(dev - set(ids), key=str)[:10]}")
     ds = open_dataset(state["benchmark"], state["scenario"], state["options"])
     result = SCORERS[state["benchmark"]](ws, state, ds, path, ids)
     items = result["items"] if state["feedback"]["mode"] == "answer" else [

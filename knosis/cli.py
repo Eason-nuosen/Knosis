@@ -38,6 +38,7 @@ def workspace_parser(sub):
                       help="导出器的其他参数，如 repeat=0、task=driver-dnf；值按 YAML 解析")
     init.add_argument("--feedback", choices=["answer", "score", "none"], default="answer")
     init.add_argument("--budget", type=int, default=20, help="反馈提交次数上限")
+    init.add_argument("--feedback-full", action="store_true", help="每次反馈必须回答全部 dev 题")
     init.add_argument("--kb", help="从独立知识库继承初始知识（K_inherit）")
     init.add_argument("--kb-form", help="只继承该形式的知识，如 method")
     for name in ("next", "check", "status"):
@@ -55,6 +56,7 @@ def workspace_parser(sub):
     run.add_argument("--agent", choices=["codex", "claude"], default="codex")
     run.add_argument("--model")
     run.add_argument("--effort", help="codex 的 model_reasoning_effort，如 medium")
+    run.add_argument("--note", help="附加在每个阶段提示末尾的实验说明（如强制使用某工具）")
     run.add_argument("--stage", nargs="+", choices=STAGE_NAMES)
     run.add_argument("--rounds", type=int, default=1)
 
@@ -69,7 +71,7 @@ def workspace_command(args):
                    if v is not None}
         options |= {k: yaml.safe_load(v) for k, v in (item.split("=", 1) for item in args.option)}
         print(workspace.init(args.benchmark, args.scenario, args.out, args.feedback, args.budget,
-                             kb=args.kb, kb_form=args.kb_form, **options))
+                             kb=args.kb, kb_form=args.kb_form, feedback_full=args.feedback_full, **options))
     elif args.ws_cmd == "next":
         print(workspace.next_prompt(args.dir))
     elif args.ws_cmd == "status":
@@ -81,7 +83,7 @@ def workspace_command(args):
     elif args.ws_cmd == "fork":
         print(workspace.fork(args.dir, args.out, args.knowledge, args.drop))
     elif args.ws_cmd == "run":
-        workspace.run(args.dir, args.agent, args.stage, args.rounds, args.model, args.effort)
+        workspace.run(args.dir, args.agent, args.stage, args.rounds, args.model, args.effort, args.note)
 
 
 def ontology_command(args):

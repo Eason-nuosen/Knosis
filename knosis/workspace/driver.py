@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from ..knowledge import feedback, load_units
-from . import check, goto, next_prompt, save_state, stage_dir, stage_issues, status
+from . import check, goto, next_prompt, prediction_ids, save_state, stage_dir, stage_issues, status
 
 
 def agent_command(agent, ws, prompt, model=None, effort=None):
@@ -27,11 +27,15 @@ def submit_round(ws, state, directory) -> None:
     path = directory / f"dev_{state['output']}"
     submitted = {r["submitted"] for r in feedback.own(ws)}
     if path.exists() and str(path.relative_to(ws)) not in submitted and feedback.left(ws, state) > 0:
-        feedback.submit(ws, path)
+        dev = {t["id"] for t in load_units(ws / "tasks/dev.jsonl")}
+        ids, _ = prediction_ids(path)
+        # 要求全做时不完整的文件不提交，由验收报出缺题，带着问题重试。
+        if not state["feedback"].get("full") or dev <= set(ids):
+            feedback.submit(ws, path)
 
 
-def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None) -> None:
-    """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。"""
+def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=None) -> None:
+    """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。`note`：附加在每个阶段提示末尾的实验说明。"""
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
     ws = Path(ws).resolve()
@@ -39,7 +43,8 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None) -> No
     for stage in stages or ["explore", "extract"]:
         goto(ws, stage)
         for _ in range(rounds if stage == "refine" else 1):
-            prompt = next_prompt(ws) + "\n驱动模式：由运行器验收和提交，不要自行运行 ws check 或切换阶段。"
+            prompt = next_prompt(ws) + (f"\n\n## 本次实验的附加要求\n\n{note}\n" if note else "") + \
+                "\n驱动模式：由运行器验收和提交，不要自行运行 ws check 或切换阶段。"
             directory = stage_dir(ws, status(ws))
             issues = []
             for attempt in range(2):
@@ -61,7 +66,7 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None) -> No
                     if issues:
                         save_state(ws, before)
                 record = {"stage": stage, "round": before["round"], "attempt": attempt + 1,
-                          "agent": agent, "model": model, "effort": effort, "seconds": time.monotonic() - started,
+                          "agent": agent, "model": model, "effort": effort, "note": note, "seconds": time.monotonic() - started,
                           "units": len(load_units(ws / "knowledge/units.jsonl")), "issues": issues}
                 with (ws / ".knosis/runs.jsonl").open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")
