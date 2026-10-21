@@ -105,13 +105,13 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 测试题直到 decide 才生成；反馈只接受 dev 题）。驱动模式下 agent 进程带 `KNOSIS_DEPTH=1`，不能再起 agent，也不能运行 `knosis eval`。
 这不是安全边界：同机的 agent 仍可能读到原始数据目录，正式评测请把 `data/` 放在 agent 环境之外。
 
-## 现状（v0.3）
+## 现状（v0.4）
 
 10 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
 
 | 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
 | --- | --- | --- | --- | --- | --- |
-| ngdbench | ngd-fin | 答案 JSONL | 答案集合 EM / F1；参照：照抄含噪图答案 | 50 题 | 其他 4 个域的导出模板 |
+| ngdbench | ngd-fin | 答案 JSONL（可加噪声断言） | 答案集合 EM / F1；噪声断言 P/R；参照：照抄含噪图答案 | 50 题；演示题集 10 / 20 | NL 题面大量与 Cypher 不一致，见 [demos](docs/demos.md)；其他 4 个域的导出模板 |
 | tabarena | 51 个数据集 | 预测 CSV | RMSE / accuracy / AUC / log loss；参照：训练先验 | 默认 0，`--dev N` 留出训练行 | — |
 | relbench | 库名，`-o task=` | 预测 CSV | AUROC / MAE / MAP@k；参照：平凡基线 | val 划分 | — |
 | bibench | 用例 id 或 `all` | 表 JSONL | 上游匹配规则的 success；`-o metadata=true` 给初始本体 | all 模式 20 例 | — |
@@ -124,11 +124,12 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 
 | 部分 | 状态 |
 | --- | --- |
-| 知识层 | κ 检查覆盖必填字段、来源（数据文件 / 反馈记录）、I1、I5、本体跨文件引用；I2–I4 未实现 |
-| 工具层 | sql / profile / joins / newton 可用；ULTRA / TabPFN 接口已适配，真实 GPU 推断待验收 |
-| agent 接入 | Codex 驱动模式在 NGD-Fin、TabArena 跑通端到端（含 refine 自动反馈）；Claude Code 接口相同，未做 smoke |
+| 知识层 | κ（粒度 instance / relation / dataset / method / utility）+ 证据账本 + 可执行检查 + 本体 + skill（解题集）；检查必填字段、来源、I1、I2、I5、状态与证据一致、证据过期、method 脚本可脱离原工作区运行；I3、I4 未实现 |
+| 知识库 | 独立知识库：继承（可按粒度）、写回、导入 ontology-bench 标注（可去 GT） |
+| 工具层 | sql / profile / joins / fit / newton / tabpfn（含 cv，本机 CPU 推断已验证）可用；ULTRA 只适配接口 |
+| agent 接入 | Codex 驱动模式在单表、方程、多表、KG 四类场景跑通演示（含 refine 自动反馈），结果见 [docs/demos.md](docs/demos.md)；Claude Code 接口相同，未做 smoke |
 
-路线：refine 的工具进化、L2 复杂查询、跨模型族的 transmission test。设计背景见 [docs/design.md](docs/design.md)。
+范围与定位见 [docs/scope.md](docs/scope.md)；路线：跨 agent 读者对照、只继承 method / skill 的迁移实验、L2 复杂查询。设计背景见 [docs/design.md](docs/design.md)。
 
 ## 扩展
 
