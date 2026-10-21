@@ -1,0 +1,36 @@
+# NGD-Fin 演示题集（人工核对，2026-10-21）。
+# 上游 NL 题面常丢 Cypher 常数、否定翻转、把关系/端点说错（约七成以上的题有问题），
+# 这里从通过结构过滤的题中挑出 30 道，按 Cypher 的真实语义重写题面；答案仍取上游 clean_answer。
+# 计数题按 Cypher 的语义是「关系（行）数」，题面写明；`不…` 类题只统计该属性有取值的节点。
+dev:
+  complex_query_agg/1515: Count the repayment relationships (Account_Repay_Loan) from accounts whose accountType is 'certificate of deposit' to loans.
+  complex_query_agg/47: Count the sign-in relationships (Medium_SignIn_Account) from unblocked mediums (isBlocked is false) to accounts.
+  complex_query_agg/699: Count the investment relationships (Company_Invest_Company) from companies whose city is 'Goma' to other companies.
+  complex_query_agg/1252: Count the deposit relationships (Loan_Deposit_Account) from loans whose loanAmount is 98962630.0 to accounts.
+  complex_query_agg/3256: Count the deposit relationships (Loan_Deposit_Account) from loans whose balance is 38010358.04 to accounts.
+  complex_query_noagg/3052: Return the node IDs of companies linked by an investment relationship (Company_Invest_Company, either direction) to a company whose city ends with 'Irkutsk'.
+  complex_query_noagg/2070: Return the node IDs of accounts owned (Person_Own_Account) by persons whose city is 'Trieste'.
+  complex_query_noagg/2335: Return the node IDs of accounts owned (Person_Own_Account) by persons whose personName is 'Lomer'.
+  complex_query_noagg/4156: Return the node IDs of companies invested in (Company_Invest_Company) by companies whose business is 'Stable'.
+  complex_query_noagg/1083: Return the node IDs of companies invested in (Company_Invest_Company) by companies whose country is 'Azerbaijan'.
+test:
+  complex_query_agg/2786: Count the transfer relationships (Account_Transfer_Account) from accounts whose freqLoginType is 'PHONE' to other accounts.
+  complex_query_agg/295: Among persons that have a country, count those whose country does not start with 'Indonesia'.
+  complex_query_agg/396: What is the maximum (latest) birthday among all persons?
+  complex_query_agg/697: Count the ownership relationships (Company_Own_Account) from companies whose city is 'Southampton' to accounts.
+  complex_query_agg/389: What is the minimum (earliest) createTime among all companies?
+  complex_query_agg/3971: Count the deposit relationships (Loan_Deposit_Account) from loans whose interestRate is 0.016 to accounts.
+  complex_query_agg/354: How many Account nodes are there in the graph?
+  complex_query_agg/1168: Among mediums that have a riskLevel, count those whose riskLevel does not end with 'Moderate risk'.
+  complex_query_agg/3156: For each account that receives a deposit (Loan_Deposit_Account) from a loan whose interestRate is 0.035, count the loans with loanAmount 72963297.0 that this account repays (Account_Repay_Loan); return the account node ID and the count, only for accounts with a nonzero count.
+  complex_query_agg/261: For each account that receives a deposit (Loan_Deposit_Account) from a loan whose interestRate is 0.047, count the loans with interestRate 0.056 that this account repays (Account_Repay_Loan); return the account node ID and the count, only for accounts with a nonzero count.
+  complex_query_noagg/2061: Return the node IDs of accounts owned (Company_Own_Account) by companies whose country is 'Burma'.
+  complex_query_noagg/3899: Return the node IDs of loans applied for (Company_Apply_Loan) by companies whose city contains 'Canberra'.
+  complex_query_noagg/2336: Return the node IDs of companies guaranteed (Company_Guarantee_Company) by companies whose country is 'Kazakhstan'.
+  complex_query_noagg/97: Return the node IDs of companies guaranteed (Company_Guarantee_Company) by companies whose country is 'Democratic_Republic_of_the_Congo'.
+  complex_query_noagg/240: Return the node IDs of persons guaranteed (Person_Guarantee_Person) by persons whose personName is 'Esambayev'.
+  complex_query_noagg/410: Return the node IDs of mediums linked by a sign-in relationship (Medium_SignIn_Account, either direction) to accounts whose phonenum is '711-8657'.
+  complex_query_noagg/2352: Return the node IDs of companies invested in (Company_Invest_Company) by companies whose city is 'Baoding'.
+  complex_query_noagg/1813: Return the node IDs of companies linked by an investment relationship (Company_Invest_Company, either direction) to a company whose business starts with 'Spa Town'.
+  complex_query_noagg/4227: For loans applied for (Company_Apply_Loan) by the company whose url is 'https://www.skywardslapping.info', return each loan's loanUsage together with the email of each account the loan deposits into (Loan_Deposit_Account).
+  complex_query_noagg/1114: Return the node IDs of persons linked by a guarantee relationship (Person_Guarantee_Person, either direction) to the person whose personId is 307.

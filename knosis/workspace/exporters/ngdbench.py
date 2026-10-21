@@ -92,10 +92,12 @@ QUERY_HELP = {
 
 
 @register("ngdbench")
-def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="cypher", noise_report=False, **opts) -> dict:
+def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="cypher", noise_report=False,
+           curated=None, **opts) -> dict:
     """`dev`：用于反馈的开发题数；`limit`：抽样的测试题数（NGD-Fin 全量约 8700 题）。
     `question`：`cypher` 每题同时给自然语言问题与 Cypher；`nl` 只给自然语言问题，且只用题面完整（`nl_complete`）的题。
-    `noise_report`：为真时噪声断言 `noise.jsonl` 是必交物，并要求把识别噪声的方法写成元知识。"""
+    `noise_report`：为真时噪声断言 `noise.jsonl` 是必交物，并要求把识别噪声的方法写成元知识。
+    `curated`：用 `exporters/curated/<名字>.yaml` 里人工核对过的题集（固定的 dev / test 与重写的题面），此时只给 NL 题面。"""
     ws = Path(ws)
     clean = ds.read("clean")
     graph = ds.read("perturbed") if "perturbed" in ds.files else clean.copy()
@@ -123,6 +125,15 @@ def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="
     indices = {i * (len(tasks) - 1) // max(1, n_examples - 1) for i in range(n_examples)}
     examples = [task for i, task in enumerate(tasks) if i in indices]
     dev_tasks, tests = split([task for i, task in enumerate(tasks) if i not in indices], dev, limit, seed)
+    if curated:
+        import yaml
+
+        spec = yaml.safe_load((Path(__file__).parent / "curated" / f"{curated}.yaml").read_text(encoding="utf-8"))
+        kinds = {task.id: task.kind for task in ds.tasks}
+        pick = lambda part: [{"id": f"{ds.scenario}/{k}", "kind": kinds[f"{ds.scenario}/{k}"], "question": q}  # noqa: E731
+                             for k, q in spec[part].items()]
+        dev_tasks, tests, question = pick("dev"), pick("test"), "nl"
+        examples = []  # 上游题面不可靠，人工题集不再从全量题里挑示例
     return {
         "brief": render(
             f"ngdbench-{ds.scenario}.md", **graph_summary(graph),
