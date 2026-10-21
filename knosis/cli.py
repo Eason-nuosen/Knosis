@@ -4,7 +4,7 @@
     knosis ws init|next|check|status|goto|fork|run ...
     knosis tool list|card|run ...
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
-    knosis knowledge check|verify|select|trace|evidence add|evidence import ... [--ws <ws>]
+    knosis knowledge check|verify|select|skills|index|trace|evidence add|evidence import ... [--ws <ws>]
     knosis kb init <dir> | merge <ws> --kb <dir> | import-ontology <src> --kb <dir> [--strip-gt]
     knosis feedback submit <dev 预测文件> [--ws <ws>] | list [--ws <ws>]
     knosis eval <ws>
@@ -40,7 +40,7 @@ def workspace_parser(sub):
     init.add_argument("--budget", type=int, default=20, help="反馈提交次数上限")
     init.add_argument("--feedback-full", action="store_true", help="每次反馈必须回答全部 dev 题")
     init.add_argument("--kb", help="从独立知识库继承初始知识（K_inherit）")
-    init.add_argument("--kb-form", help="只继承该形式的知识，如 method")
+    init.add_argument("--kb-scope", help="只继承这些粒度的知识，逗号分隔，如 method 或 method,relation")
     for name in ("next", "check", "status"):
         ws.add_parser(name).add_argument("dir", nargs="?", default=".")
     goto = ws.add_parser("goto")
@@ -71,7 +71,7 @@ def workspace_command(args):
                    if v is not None}
         options |= {k: yaml.safe_load(v) for k, v in (item.split("=", 1) for item in args.option)}
         print(workspace.init(args.benchmark, args.scenario, args.out, args.feedback, args.budget,
-                             kb=args.kb, kb_form=args.kb_form, feedback_full=args.feedback_full, **options))
+                             kb=args.kb, kb_scope=args.kb_scope.split(",") if args.kb_scope else None, feedback_full=args.feedback_full, **options))
     elif args.ws_cmd == "next":
         print(workspace.next_prompt(args.dir))
     elif args.ws_cmd == "status":
@@ -115,8 +115,16 @@ def knowledge_parser(sub):
     select.add_argument("--ws", default=".")
     select.add_argument("--about", nargs="+", default=[])
     select.add_argument("--form")
+    select.add_argument("--scope", choices=["instance", "relation", "dataset", "method", "utility"])
     select.add_argument("--text")
     select.add_argument("--include-inactive", action="store_true")
+    skills = kn.add_parser("skills", help="列出 skill（如何运用知识解某类任务），附效果证据计数")
+    skills.add_argument("--ws", default=".")
+    skills.add_argument("--text")
+    skills.add_argument("--include-inactive", action="store_true")
+    index = kn.add_parser("index", help="以对象为键的视图：某张表 / 某列 / 某节点上有哪些知识、被决策引用过几次")
+    index.add_argument("--ws", default=".")
+    index.add_argument("--prefix", help="只看以此开头的对象，如 data/train.parquet#col/")
     trace = kn.add_parser("trace", help="一条知识的发现途径：派生链与证据")
     trace.add_argument("unit")
     trace.add_argument("--ws", default=".")
@@ -167,9 +175,19 @@ def knowledge_command(args):
         for entry in knowledge.verify(ws, args.unit):
             print(entry["id"], entry["unit"], entry["verdict"], entry["note"][:200])
     elif args.kn_cmd == "select":
+        from .knowledge import scope_of
+
         for unit in select.select(ws / "knowledge", args.about, args.form, args.text, args.include_inactive, root=ws):
-            print(json.dumps({k: unit[k] for k in ("id", "form", "status", "content", "condition", "about", "evidence")
-                              if k in unit}, ensure_ascii=False))
+            if args.scope and scope_of(unit) != args.scope:
+                continue
+            print(json.dumps({"scope": scope_of(unit)} | {k: unit[k] for k in (
+                "id", "form", "status", "content", "condition", "about", "evidence") if k in unit}, ensure_ascii=False))
+    elif args.kn_cmd == "skills":
+        for skill in select.select_skills(ws / "knowledge", args.text, args.include_inactive):
+            print(json.dumps(skill, ensure_ascii=False))
+    elif args.kn_cmd == "index":
+        for anchor, entry in select.index(ws / "knowledge", ws, args.prefix).items():
+            print(json.dumps({"anchor": anchor, **entry}, ensure_ascii=False))
     elif args.kn_cmd == "trace":
         history = [u for d in snapshots(ws) for u in knowledge.load_units(d / "units.jsonl")]
         print(knowledge.trace(ws / "knowledge", args.unit, history), end="")

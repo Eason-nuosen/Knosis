@@ -57,4 +57,46 @@ def submit(ws, path) -> dict:
               "created": datetime.now(timezone.utc).isoformat(), "metrics": result["metrics"], "items": items}
     (directory / f"{record['id']}.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=1, default=str) + "\n", encoding="utf-8")
+    used = path.with_name(f"{path.stem}_used_units.jsonl")
+    if used.exists():
+        utility(ws, record, load_units(used), {t["id"]: t.get("kind", "all") for t in load_units(ws / "tasks/dev.jsonl")})
     return record
+
+
+def utility(ws, record, used, kinds) -> None:
+    """效用知识（scope=utility）：按题型统计每条知识「用到时 / 没用到时」的 dev 正确率，写成候选 κ 与 feedback 证据。
+
+    `used`：与提交文件同名的 `<文件名>_used_units.jsonl`，每行 `{id, used_units}`。只用 dev 反馈，不碰测试题。
+    """
+    from .evidence import add_evidence
+    from .units import write_units
+
+    ok = {item["id"]: bool(item.get("ok")) for item in record["items"]}
+    cited = {row["id"]: set(row.get("used_units", [])) for row in used if row["id"] in ok}
+    from .skills import load_skills, skill_id
+
+    units = load_units(ws / "knowledge/units.jsonl")
+    known = {u["id"] for u in units} | {skill_id(s) for s in load_skills(ws / "knowledge")}
+    stats = {}
+    for tid, refs in cited.items():
+        for uid in refs & known:
+            stats.setdefault((uid, kinds.get(tid, "all")), []).append(ok[tid])
+    fresh, evidence = {}, []
+    for (uid, kind), hits in stats.items():
+        others = [ok[t] for t in cited if kinds.get(t, "all") == kind and uid not in cited[t]]
+        rate = sum(hits) / len(hits)
+        base = sum(others) / len(others) if others else None
+        content = (f"在 {kind} 类 dev 题上，用到 {uid} 的 {len(hits)} 题答对 {sum(hits)} 题（{rate:.0%}）；"
+                   + (f"没用到的 {len(others)} 题答对率 {base:.0%}。" if others else "同类题都用到了它。"))
+        unit_id = f"utility/{uid}/{kind}"
+        fresh[unit_id] = {"id": unit_id, "content": content, "form": "fact", "scope": "utility",
+                          "condition": f"统计自反馈记录 {record['id']}，样本小，相关不等于因果；可用 ws fork --drop 做消融",
+                          "provenance": f"feedback:{record['id']}", "status": "inferred",
+                          "derived_from": [] if uid.startswith("skill:") else [uid],
+                          "meta": {"of": uid, "kind": kind, "n_used": len(hits), "acc_used": rate, "n_other": len(others), "acc_other": base}}
+        if base is not None and rate != base:
+            evidence.append({"unit": unit_id, "verdict": "support" if rate > base else "refute", "method": "feedback",
+                             "source": f"feedback:{record['id']}", "note": content})
+    if fresh:
+        write_units(ws / "knowledge/units.jsonl", [u for u in units if u["id"] not in fresh] + list(fresh.values()))
+        add_evidence(ws / "knowledge", evidence)

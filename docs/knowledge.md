@@ -7,6 +7,7 @@ knowledge/
 ├── units.jsonl                       每行一个 κ
 ├── evidence.jsonl                    每行一条证据
 ├── checks/<id>.py                    可选，单元的可执行检查
+├── skills/<名字>/SKILL.md            可选，如何运用知识解某类任务（解题集）
 ├── ontology/                         可选，Apache Ossie 0.2 三文件 + EOB 扩展；多份本体各占一个子目录
 │   ├── <name>.semantic_model.yaml    core：表、列、主键、join、度量
 │   ├── <name>.ontology.yaml          概念、概念间关系、单位与约束（不提表和列）
@@ -33,13 +34,14 @@ knowledge/
 | --- | --- | --- |
 | `id` | 是 | 工作区内唯一 |
 | `content` | 是 | 知识内容（自然语言 / 公式 / 三元组文本） |
-| `form` | 是 | `finding` / `fact` / `rule` / `formula` / `schema` / `tool` / `method`（元知识：如何发现或验证某类知识） |
+| `form` | 是 | 表达形式：`finding` / `fact` / `rule` / `formula` / `schema` / `tool` / `method` |
+| `scope` | 否 | 粒度：`instance` / `relation` / `dataset` / `method` / `utility`；不写时由 `scope_of` 按 form 与来源推断 |
 | `provenance` | 是 | 来源，见下 |
 | `status` | 是 | `observed` / `inferred` / `verified` / `contested`（有反驳、未定论）/ `retracted` / `stale` |
 | `condition` | 否 | 适用条件与已知例外 |
 | `derived_from` | 否 | 父单元 id |
 | `support` | 否 | 独立支持数 |
-| `about` | 否 | 引用的本体元素名（见下），有本体时必须能解析 |
+| `about` | 否 | 锚定的对象：本体元素名（有本体时必须能解析）或数据位置 `data/...#...`；`knosis knowledge index` 按对象反查 |
 | `check` | 否 | 可执行检查，见「证据」 |
 | `meta` | 否 | 任意附加信息 |
 
@@ -76,9 +78,30 @@ knowledge/
 **证据链**：`knosis knowledge trace <id>` 按派生关系列出每个单元与它的证据，即这条知识的发现途径。
 **选取**：`knosis knowledge select [--about ...] [--form ...] [--text ...]` 按任务筛选（含本体元素）并附证据计数。
 
+**效用**：dev 提交旁附 `<文件名>_used_units.jsonl`（每行 `{id, used_units}`）时，`feedback submit` 按题型统计每条知识 / skill
+「用到时 / 没用到时」的 dev 正确率，写成 `scope=utility` 的候选 κ（id `utility/<知识>/<题型>`）与 feedback 证据。
+utility 只能由 feedback / ablation 证据支持为 verified。测试题上的同类统计只写进评测报告（`eval.json` 的 `utility`），不写回知识层。
+
+## skill（解题集）
+
+`skills/<名字>/SKILL.md`，Codex / Claude Code 的 skill 格式，头部 YAML：
+
+| 字段 | 说明 |
+| --- | --- |
+| `name` | 与目录名相同 |
+| `description` | 一句话 |
+| `when` | 适用的题型与条件 |
+| `uses` | 引用的知识 id（κ 或本体单元） |
+| `derived_from` | 总结自哪些反馈记录（可选） |
+| `status` | `active` / `stale` / `retracted` |
+
+检查：`uses` 能解析；所用知识被撤回或失效后 skill 须为 stale / retracted；`derived_from` 指向存在的反馈记录。
+效果记为证据（unit 为 `skill:<名字>`）；决策时在 `used_units` 里引用 `skill:<名字>`。skill 不按 agent 分开记录。
+
 ## 独立知识库
 
-`knosis kb init <dir>` 建库（git 仓库，布局同上）。`knosis ws init ... --kb <dir> [--kb-form method]` 继承（可只继承某种形式）；
+`knosis kb init <dir>` 建库（git 仓库，布局同上）。`knosis ws init ... --kb <dir> [--kb-scope method,skill]` 继承（可只继承某些粒度；
+本体随 relation / dataset、skill 随 `skill` 一并继承）；
 同一数据集上，知识库反馈记录里出现过的题目不进新工作区的测试集。`knosis kb merge <ws> --kb <dir>` 写回：
 κ 按 id 合并、证据追加、反馈记录改名为 `<工作区>.<id>` 并改写引用，写回后整体检查，不通过就拒绝。
 `knosis kb import-ontology <标注目录> --kb <dir> [--strip-gt]` 导入已有本体（如 ontology-bench 的标注），

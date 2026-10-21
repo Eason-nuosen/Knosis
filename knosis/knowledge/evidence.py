@@ -5,7 +5,7 @@
 
 `verdict`：support（支持）/ refute（反驳）/ undetermined（无法判定：条件或测量无法确认）/
 not_applicable（前提不成立，不算支持也不算反例）。
-`method`：check（Knosis 重跑单元的可执行检查）/ tool / data / feedback / derivation / human。
+`method`：check（Knosis 重跑单元的可执行检查）/ tool / data / feedback / ablation（去掉该知识对比）/ derivation / human。
 `inputs`：这条证据依赖的数据文件指纹；文件变了，证据就过期，相关知识需要重验或标为 stale。
 知识的状态仍由 agent 写，`units.check_units` 检查它和证据是否一致。
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 from .units import load_units, source_issues, write_units
 
 VERDICTS = {"support", "refute", "undetermined", "not_applicable"}
-METHODS = {"check", "tool", "data", "feedback", "derivation", "human"}
+METHODS = {"check", "tool", "data", "feedback", "ablation", "derivation", "human"}
 
 
 def load_evidence(directory) -> list[dict]:

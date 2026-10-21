@@ -10,6 +10,11 @@ FORMS = {"finding", "fact", "rule", "formula", "schema", "tool", "method"}
 # contested：有反驳证据、尚未定论；仍可使用，但使用者应知道它有争议。
 STATUSES = {"observed", "inferred", "verified", "contested", "retracted", "stale"}
 INACTIVE = {"retracted", "stale"}
+# 粒度（知识说的是什么）：instance 某个具体对象；relation 对象之间的结构（join、本体关系）；
+# dataset 这份数据整体的规律 / 分布 / 公式；method 如何发现或验证知识（元知识）；
+# utility 哪些知识或对象对哪类任务有用（由反馈或消融支持）。与 form（表达形式）正交；不写时由 `scope_of` 推断。
+SCOPES = ("instance", "relation", "dataset", "method", "utility")
+POINT = ("#node/", "#edge/", "#row/")
 REQUIRED = ("id", "content", "form", "provenance", "status")
 
 
@@ -40,6 +45,22 @@ def source_issues(source: str, root=None) -> list[str]:
     return []
 
 
+def scope_of(unit) -> str:
+    """显式的 `scope`；否则 method 形式 → method，join / 关系类 schema → relation，
+    来源全部定位到单个节点 / 边 / 行 → instance，其余 → dataset。"""
+    if unit.get("scope"):
+        return unit["scope"]
+    if unit.get("form") == "method":
+        return "method"
+    text = f"{unit.get('id', '')} {unit.get('provenance', '')}"
+    if unit.get("form") == "schema" and any(k in text for k in ("join/", "relation/", "relationship/")):
+        return "relation"
+    sources = [s.strip() for s in unit.get("provenance", "").split(";") if s.strip()]
+    if sources and all(any(p in s for p in POINT) for s in sources):
+        return "instance"
+    return "dataset"
+
+
 def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology_refs=None,
                 evidence=None) -> list[str]:
     """返回问题清单，空 = 通过。
@@ -66,6 +87,8 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
         for key, choices in (("form", FORMS), ("status", STATUSES)):
             if unit.get(key) not in choices:
                 issues.append(f"{name}: invalid {key}: {unit.get(key)}")
+        if "scope" in unit and unit["scope"] not in SCOPES:
+            issues.append(f"{name}: invalid scope: {unit['scope']}")
         parents = unit.get("derived_from", [])
         sources = [s.strip() for s in unit.get("provenance", "").split(";")]
         if "derived" in sources and not parents:
@@ -82,8 +105,12 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
             issues += [f"{name}: {issue}" for issue in evidence_issues(unit, evidence.get(name, []))]
         if ontology_refs is not None:
             for ref in unit.get("about", []):
-                if ref not in ontology_refs:
+                if not ref.startswith("data/") and ref not in ontology_refs:
                     issues.append(f"{name}: unknown ontology ref in about: {ref}")
+        # about 也可以直接锚定到数据位置（用于「以对象为键」的反查）。
+        for ref in unit.get("about", []):
+            if ref.startswith("data/"):
+                issues += [f"{name}: about {issue}" for issue in source_issues(ref, root)]
     return issues
 
 
@@ -95,6 +122,9 @@ def evidence_issues(unit, entries) -> list[str]:
     decisive = [e for e in entries if e["verdict"] in {"support", "refute"}]
     if decisive and decisive[-1]["verdict"] == "refute" and unit.get("status") not in {"contested", *INACTIVE}:
         issues.append(f"latest evidence {decisive[-1]['id']} refutes it; status must be contested, retracted or stale")
+    if scope_of(unit) == "utility" and unit.get("status") == "verified" and not any(
+            e["method"] in {"feedback", "ablation"} for e in supports):
+        issues.append("utility knowledge can only be verified by feedback or ablation evidence")
     roots = {e["source"].split("#", 1)[0] for e in supports}
     if isinstance(unit.get("support"), int) and unit["support"] > len(roots):
         issues.append(f"I2: support={unit['support']} exceeds {len(roots)} independent supporting sources")

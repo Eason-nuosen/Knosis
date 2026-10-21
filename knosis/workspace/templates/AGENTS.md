@@ -14,6 +14,7 @@
 - `knowledge/units.jsonl`：当前知识层，每行一个 κ。
 - `knowledge/evidence.jsonl`：证据账本，每行一次验证结果（用命令写，不要手改）。
 - `knowledge/checks/`：单元的可执行检查脚本（可选）。
+- `knowledge/skills/<名字>/SKILL.md`：解题集，如何运用知识解某类任务（可选，见下文）。
 - `knowledge/ontology/`（可选）：本体，Ossie 三文件格式，见下文。
 - `knowledge/feedback/`：dev 反馈记录（只读，由 `knosis feedback submit` 写入）。
 - `.knosis/state.json`：阶段状态；历史知识快照在 `stages/`。
@@ -29,8 +30,13 @@ Python 使用 `$python`；已安装 pandas、pyarrow 等数据依赖。
 `form` 为 finding / fact / rule / formula / schema / tool / method；
 `method` 是元知识：「如何发现或验证某类知识」的步骤与适用条件，可以附可执行检查，换一份数据也能照做。
 `status` 为 observed / inferred / verified / contested / retracted / stale。
-可选：`condition`（条件与例外）、`derived_from`（父单元 id 列表）、
-`support`（独立支持数）、`about`（引用的本体元素）、`check`（可执行检查，见下）、`meta`（分数、反例数等）。
+可选：`scope`（粒度，见下）、`condition`（条件与例外）、`derived_from`（父单元 id 列表）、
+`support`（独立支持数）、`about`（引用的本体元素或数据位置，如 `data/train.parquet#col/bmi`）、
+`check`（可执行检查，见下）、`meta`（分数、反例数等）。
+
+`scope` 说明一条知识在讲什么：`instance` 某个具体对象（行、节点、边）；`relation` 对象之间的结构（join、本体关系）；
+`dataset` 这份数据整体的规律、分布、公式；`method` 如何发现或验证某类知识（只写步骤，结论另写成别的粒度）；
+`utility` 哪些知识对哪类题有用（Knosis 会根据 dev 反馈自动生成候选）。不写时按 form 与来源自动推断。
 
 来源写法：
 
@@ -61,9 +67,19 @@ not_applicable（前提不成立）：
 ## 选取知识
 
 知识正确不等于对当前任务有用。`knosis knowledge select [--about 本体元素] [--form F] [--text 关键词]`
-列出候选（含本体元素）与证据计数；用哪些由你决定，并在 decide 时记录 `used_units`。
+列出候选（含本体元素）与证据计数，`--scope` 按粒度筛选；`knosis knowledge index --prefix data/...`
+按对象反查相关知识。用哪些由你决定，并在 decide 时记录 `used_units`。
 如果工作区从知识库继承了知识（`stages/0_inherit/knowledge` 存在），它们同样要按任务判断是否适用，
 可以修正、收窄或撤回。
+
+## skill：如何运用知识（解题集）
+
+知识是对环境的理解，与谁来用无关；skill 是用法：遇到某类题，按什么步骤、调用哪些知识去解。
+skill 不讲对错，只讲有没有效；回看反馈时，答对的题可以总结出有效的解法，答错的题可以总结出要避开的做法。
+写在 `knowledge/skills/<名字>/SKILL.md`，头部 YAML：`name`（与目录名相同）、`description`（一句话）、
+`when`（适用的题型与条件）、`uses`（引用的知识 id）、`derived_from`（总结自哪些反馈记录，可选）、
+`status`（active / stale / retracted）；正文写步骤。引用的知识被撤回后，skill 须改为 stale 或 retracted。
+`knosis knowledge skills` 列出已有 skill；decide 时用到的 skill 在 `used_units` 里写成 `skill:<名字>`。
 
 ## 本体（可选）
 

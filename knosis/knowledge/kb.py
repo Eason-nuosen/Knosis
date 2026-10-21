@@ -17,9 +17,9 @@ import tempfile
 from pathlib import Path
 
 from .evidence import data_inputs, load_evidence, run_check
-from .units import load_units, write_units
+from .units import load_units, scope_of, write_units
 
-PARTS = ("ontology", "checks", "feedback")
+PARTS = ("ontology", "checks", "skills", "feedback")
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
 
 
@@ -43,23 +43,26 @@ def init_kb(kb) -> Path:
     return kb
 
 
-def inherit(kb, target, form=None) -> dict:
-    """把 KB 当前版本复制到知识层目录 `target`；`form` 给定时只继承该形式的 κ（如只继承 method 元知识）。"""
+def inherit(kb, target, scopes=None) -> dict:
+    """把 KB 当前版本复制到知识层目录 `target`；`scopes` 给定时只继承这些粒度的 κ（如只继承 method 元知识），
+    本体属于 relation / dataset，只在继承这两者之一时一并复制。"""
     kb, target = Path(kb).resolve(), Path(target)
     units = load_units(kb / "units.jsonl")
-    if form:
-        kept = {u["id"] for u in units if u["form"] == form}
+    scopes = list(scopes) if scopes else None
+    if scopes:
+        kept = {u["id"] for u in units if scope_of(u) in scopes}
         # 只继承一部分时，被丢掉的父单元不再可解析，派生关系记进 meta。
         units = [{**u, "derived_from": [p for p in u.get("derived_from", []) if p in kept],
                   "meta": {**u.get("meta", {}), "inherited_derived_from": u.get("derived_from", [])}}
                  for u in units if u["id"] in kept]
     ids = {u["id"] for u in units}
     write_units(target / "units.jsonl", units)
-    write_units(target / "evidence.jsonl", [e for e in load_evidence(kb) if e["unit"] in ids or not form])
+    write_units(target / "evidence.jsonl", [e for e in load_evidence(kb) if e["unit"] in ids or not scopes])
     for part in PARTS:
-        if (kb / part).is_dir() and (part != "ontology" or not form):
+        wanted = {"ontology": {"relation", "dataset"}, "skills": {"skill"}}.get(part)
+        if (kb / part).is_dir() and (not scopes or not wanted or wanted & set(scopes)):
             shutil.copytree(kb / part, target / part, dirs_exist_ok=True, ignore=IGNORE)
-    return {"path": str(kb), "version": git(kb, "rev-parse", "--short", "HEAD"), "form": form, "units": len(units)}
+    return {"path": str(kb), "version": git(kb, "rev-parse", "--short", "HEAD"), "scopes": scopes, "units": len(units)}
 
 
 def seen_items(kb, benchmark, scenario) -> set:
@@ -99,7 +102,7 @@ def merge(ws, kb) -> str:
     # 可执行的元知识要能离开原工作区运行；跑不通的记一条「无法判定」证据，写回 KB。
     extra = []
     for unit in load_units(source / "units.jsonl"):
-        if unit["form"] == "method" and unit.get("check", {}).get("kind") == "python":
+        if scope_of(unit) == "method" and unit.get("check", {}).get("kind") == "python":
             ok, note = portable(ws, unit)
             if not ok:
                 extra.append({"unit": unit["id"], "verdict": "undetermined", "method": "check",
@@ -122,7 +125,7 @@ def merge(ws, kb) -> str:
     known = {key(e) for e in old}
     new = [json.loads(rewrite(json.dumps(e, ensure_ascii=False))) for e in load_evidence(source)]
     new = [{**e, "id": f"e-{len(old) + i + 1:04d}"} for i, e in enumerate(x for x in new if key(x) not in known)]
-    for part in ("ontology", "checks"):
+    for part in ("ontology", "checks", "skills"):
         if (source / part).is_dir():
             shutil.copytree(source / part, kb / part, dirs_exist_ok=True, ignore=IGNORE)
     (kb / "feedback").mkdir(exist_ok=True)
@@ -133,6 +136,11 @@ def merge(ws, kb) -> str:
         record.setdefault("benchmark", state["benchmark"])
         record.setdefault("scenario", state["scenario"])
         (kb / "feedback" / f"{record['id']}.json").write_text(json.dumps(record, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    for path in (kb / "skills").glob("*/SKILL.md"):
+        text = path.read_text(encoding="utf-8")
+        for old, new in renames.items():
+            text = re.sub(rf"(?<![\w.]){re.escape(old)}(?![\w])", new, text)
+        path.write_text(text, encoding="utf-8")
     write_units(kb / "units.jsonl", list(units.values()))
     write_units(kb / "evidence.jsonl", old + new)
     issues = check_knowledge(kb)

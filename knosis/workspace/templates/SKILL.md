@@ -21,6 +21,8 @@ status 为 observed/inferred/verified/contested/retracted/stale。
 每次验证记一条证据（support/refute/undetermined/not_applicable）：可执行检查写进 `check` 后运行
 `knosis knowledge verify`，其他用 `knosis knowledge evidence add`；verified 需要支持证据，被反驳要改状态。
 用 `knosis knowledge select` 按任务挑知识，`knosis knowledge trace <id>` 看证据链。
+知识按粒度分 instance / relation / dataset / method / utility；「如何运用知识解某类题」写成
+`knowledge/skills/<名字>/SKILL.md`（解题集，讲有没有效，不讲对错）。
 记录 condition、derived_from 和验证支持数与反例数；来源定位到 data 文件的行、列、节点或边，
 工具来源为 `tool:<name>@<version>(...)`，多来源用 ` ; ` 连接。
 结构性知识可写成 `knowledge/ontology/` 下的 Ossie 三文件本体，κ 用 `about` 引用本体元素。

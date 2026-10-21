@@ -22,7 +22,7 @@ from pathlib import Path
 from string import Template
 
 from ..data import LOADERS, load_dataset
-from ..knowledge import check_knowledge, check_units, feedback, load_units, ontology_docs, write_units
+from ..knowledge import check_knowledge, check_units, feedback, load_units, ontology_docs, scope_of, write_units
 from ..knowledge.kb import inherit, seen_items
 from .exporters import EXPORTERS
 
@@ -60,9 +60,9 @@ def commit(ws, message):
     )
 
 
-def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, kb_form=None, feedback_full=False, **options) -> Path:
+def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, kb_scope=None, feedback_full=False, **options) -> Path:
     """`feedback` / `budget`：dev 题反馈的模式（answer / score / none）与提交次数上限；
-    `kb`：从独立知识库继承初始知识（`kb_form` 只继承该形式，如 method），快照为 K_inherit；
+    `kb`：从独立知识库继承初始知识（`kb_scope` 只继承这些粒度，如 ["method"]），快照为 K_inherit；
     `feedback_full`：每次提交必须覆盖全部 dev 题（默认可以只交一部分）；其余参数给导出器。"""
     from ..tools import tools_markdown
 
@@ -80,7 +80,7 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
     write_units(ws / "knowledge/units.jsonl", [])
     inherited, exclude = None, []
     if kb:
-        inherited = inherit(kb, ws / "knowledge", kb_form)
+        inherited = inherit(kb, ws / "knowledge", kb_scope)
         copy_knowledge(ws / "knowledge", ws / "stages/0_inherit/knowledge")
         # 继承来的反馈可能带着答案：同一数据集上，它们出现过的题目不再进测试集。
         seen = seen_items(kb, benchmark, scenario)
@@ -216,7 +216,7 @@ def stage_issues(ws, state):
 
         # 元知识要能被别人照做：它的检查脚本只能依赖 data/ 与 knowledge/。
         for unit in units:
-            if unit["form"] == "method" and unit.get("check", {}).get("kind") == "python" and unit["status"] not in {"retracted", "stale"}:
+            if scope_of(unit) == "method" and unit.get("check", {}).get("kind") == "python" and unit["status"] not in {"retracted", "stale"}:
                 if not unit["check"]["path"].startswith("knowledge/"):
                     issues.append(f"{unit['id']}: method check must live under knowledge/checks/")
                 elif not portable(ws, unit)[0]:

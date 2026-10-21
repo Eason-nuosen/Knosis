@@ -1,7 +1,8 @@
 ## 目标
 
 使用当前知识层完成下游任务；只采用仍有效的知识，不使用 stale 或 retracted 单元。
-知识正确不等于对这些题有用：先用 `knosis knowledge select` 挑出相关知识，再决定用哪些。
+知识正确不等于对这些题有用：先用 `knosis knowledge select` 挑出相关知识、`knosis knowledge skills` 看有没有适用的解法，
+再决定用哪些；用到的 skill 在 `used_units` 里写成 `skill:<名字>`。
 
 ## 输入
 

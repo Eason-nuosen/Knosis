@@ -4,6 +4,7 @@
 可以合并重复、概括条件规则、重新验证、修复冲突，撤回不成立的知识，并将受影响的派生知识标为 stale。
 反馈结果本身也是知识的来源：从中得到的结论照常写成 κ，反馈对某条知识的支持或反驳记为证据（method=feedback）。
 继承来的知识与本体同样可以修正；修正时保留证据链。
+回看反馈后，把「怎样用知识解这类题」总结成 skill（新建或修改 `knowledge/skills/`）。
 
 ## 输入
 
@@ -16,7 +17,9 @@ $feedback
 
 更新 `knowledge/units.jsonl`（需要时也更新本体）；
 `stages/3_refine/round_$round/changelog.md` 记录变更、理由和验证结果。
-有 dev 题时，用本轮的知识回答并写到 `stages/3_refine/round_$round/dev_$output`；
+有 dev 题时，用本轮的知识回答并写到 `stages/3_refine/round_$round/dev_$output`，
+同目录可附 `dev_<同名>_used_units.jsonl`（每行 `{"id": 题目, "used_units": [知识 id 或 skill:<名字>]}`）：
+提交反馈时 Knosis 据此按题型统计每条知识与 skill 的效用（scope=utility 的候选与证据）；
 驱动模式下运行器在本轮结束时会自动提交它拿一次反馈，结果出现在下一轮的提示里。
 代码与工具结果放在当前轮目录。
 

@@ -129,7 +129,7 @@ def test_kb_inherit_merge_and_fork(ngd_root, tmp_path):
     assert w.stage_issues(ws2, w.status(ws2)) == ["missing or empty predictions: stages/4_decide/predictions.jsonl"]
 
     # 只继承元知识。
-    ws3 = make(ngd_root, tmp_path / "ws3", kb=base, kb_form="method")
+    ws3 = make(ngd_root, tmp_path / "ws3", kb=base, kb_scope=["method"])
     assert [u["id"] for u in load_units(ws3 / "knowledge/units.jsonl")] == ["m"]
     write_units(ws3 / "knowledge/units.jsonl", [unit("m", form="method"), unit("n")])
     fork = w.fork(ws3, tmp_path / "fork", "K_inherit")
@@ -178,3 +178,73 @@ def test_method_checks_must_be_self_contained(ngd_root, tmp_path):
     assert "bad: method check is not self-contained (fails with only data/ and knowledge/)" in issues
     assert "outside: method check must live under knowledge/checks/" in issues
     assert not any(i.startswith("good:") for i in issues)
+
+
+def test_scope_inference_and_index(ngd_root, tmp_path):
+    from knosis.knowledge import scope_of
+    from knosis.knowledge.select import index
+
+    assert scope_of(unit("a")) == "instance"
+    assert scope_of(unit("b", provenance="data/graph.gpickle")) == "dataset"
+    assert scope_of(unit("c", form="method")) == "method"
+    assert scope_of({"id": "ontology/join/x", "form": "schema", "provenance": "o.yaml#relationship/x"}) == "relation"
+    assert scope_of(unit("d", scope="utility")) == "utility"
+    ws = make(ngd_root, tmp_path / "ws")
+    write_units(ws / "knowledge/units.jsonl", [unit("a", about=["data/graph.gpickle#node/A:1"]), unit("bad", scope="domain")])
+    assert any("invalid scope: domain" in i for i in check_knowledge(ws / "knowledge", root=ws))
+    write_units(ws / "stages/4_decide/used_units.jsonl", [{"id": "q", "used_units": ["a"]}])
+    view = index(ws / "knowledge", ws)
+    assert view["data/graph.gpickle#node/A:1"] == {"units": ["a", "bad"], "used_in": {"a": 1}}
+    assert view["data/graph.gpickle"]["units"] == ["a", "bad"]
+
+
+def write_skill(ws, name, uses, status="active", derived=()):
+    path = ws / "knowledge/skills" / name / "SKILL.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    head = {"name": name, "description": "d", "when": "w", "uses": list(uses), "status": status, "derived_from": list(derived)}
+    path.write_text("---\n" + json.dumps(head) + "\n---\n先做 A，再做 B。\n")
+
+
+def test_skills_checks_select_and_utility(ngd_root, tmp_path):
+    from knosis.knowledge.select import select_skills
+
+    ws = make(ngd_root, tmp_path / "ws")
+    write_units(ws / "knowledge/units.jsonl", [unit("a"), unit("r", status="retracted")])
+    write_skill(ws, "solve", ["a"])
+    write_skill(ws, "old", ["r"])
+    write_skill(ws, "ghost", ["nope"], derived=["missing-record"])
+    issues = check_knowledge(ws / "knowledge", root=ws)
+    assert any("old: uses inactive knowledge r" in i for i in issues)
+    assert any("ghost: unknown knowledge in uses: nope" in i for i in issues)
+    assert any("ghost: unknown feedback record" in i for i in issues)
+    assert not any("skill solve" in i for i in issues)
+    assert [s["name"] for s in select_skills(ws / "knowledge")] == ["ghost", "old", "solve"]
+
+    # dev 反馈附 used_units：按题型生成 utility 候选（κ 与 skill 都统计）
+    dev = load_units(ws / "tasks/dev.jsonl")
+    path = ws / "stages/1_explore/dev.jsonl"
+    write_units(path, [{"id": t["id"], "answer": int(t["id"].rsplit("/", 1)[1]) if i < 2 else -1} for i, t in enumerate(dev)])
+    write_units(ws / "stages/1_explore/dev_used_units.jsonl",
+                [{"id": t["id"], "used_units": ["a", "skill:solve"] if i < 2 else []} for i, t in enumerate(dev)])
+    feedback.submit(ws, path)
+    made = {u["id"]: u for u in load_units(ws / "knowledge/units.jsonl") if u.get("scope") == "utility"}
+    kind = dev[0]["kind"]
+    assert set(made) == {f"utility/a/{kind}", f"utility/skill:solve/{kind}"}
+    assert made[f"utility/a/{kind}"]["meta"]["acc_used"] == 1.0 and made[f"utility/a/{kind}"]["meta"]["acc_other"] == 0.0
+    assert {e["unit"]: e["verdict"] for e in load_evidence(ws / "knowledge")}[f"utility/a/{kind}"] == "support"
+    # utility 只能由反馈或消融证据支持为 verified
+    units = load_units(ws / "knowledge/units.jsonl")
+    write_units(ws / "knowledge/units.jsonl", [{**u, "status": "verified"} if u["id"] == f"utility/a/{kind}" else u for u in units])
+    assert not any(f"utility/a/{kind}: utility" in i for i in check_knowledge(ws / "knowledge", root=ws))
+
+
+def test_kb_inherits_skills_by_scope(ngd_root, tmp_path):
+    base = kb.init_kb(tmp_path / "kb")
+    ws = make(ngd_root, tmp_path / "ws1")
+    write_units(ws / "knowledge/units.jsonl", [unit("m", form="method"), unit("a")])
+    write_skill(ws, "solve", ["a"])
+    kb.merge(ws, base)
+    ws2 = make(ngd_root, tmp_path / "ws2", kb=base, kb_scope=["skill", "instance"])
+    assert (ws2 / "knowledge/skills/solve/SKILL.md").exists() and [u["id"] for u in load_units(ws2 / "knowledge/units.jsonl")] == ["a"]
+    ws3 = make(ngd_root, tmp_path / "ws3", kb=base, kb_scope=["method"])
+    assert not (ws3 / "knowledge/skills").exists()
