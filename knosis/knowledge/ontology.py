@@ -253,7 +253,9 @@ def is_oracle(ds: dict) -> bool:
     """dataset 是否由 GT 的逐题变换（query_metadata / transformation/）复现而来：SQL 视图，
     或其描述 / EOB note 明说是 GT 变换的产物，或带 GT 来源的变换步骤。"""
     ext = eob_data(ds)
-    return (bool(SQL.match(ds.get("source", "")))
+    # BI-Bench 的 SQL 视图都是按 query_metadata 复现的逐题变换；KramaBench 等的视图是标注者对原始文件的拆分 / 派生，不是 GT。
+    other = str((ext.get("raw") or {}).get("path", "")).startswith(("kramabench", "relbench", "fdabench"))
+    return (bool(SQL.match(ds.get("source", ""))) and not other
             or _text_hit(ds.get("description")) or _text_hit(ext.get("note"))
             or any(_forbidden(t) or _text_hit(t.get("note")) for t in ext.get("transforms", [])))
 
