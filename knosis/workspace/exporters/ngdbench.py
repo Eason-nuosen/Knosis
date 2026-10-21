@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -27,6 +28,51 @@ def graph_summary(graph):
 
 
 # BRIEF 里随题目形式变化的一段：题目给什么、答案形状怎么定。
+# ---------------------------------------------------------------- NL 题面是否完整
+
+LITERAL = re.compile(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|(?<![\w.$])(-?\d+(?:\.\d+)?)(?![\w.])")
+
+
+def literals(cypher: str) -> list[str]:
+    """Cypher 里题目自带的常数（字符串、数字）；不算 LIMIT / SKIP、变长路径 `*1..3` 与 0 / 1。"""
+    cypher = re.sub(r"\*\s*\d*\s*\.\.\s*\d*", "", re.sub(r"(?i)\b(LIMIT|SKIP)\s+\d+", "", cypher))
+    return [s or d or n for s, d, n in LITERAL.findall(cypher) if (s or d) or n not in ("0", "1", "-1")]
+
+
+def squash(text: str) -> str:
+    return re.sub(r"[^0-9a-z]", "", text.lower())
+
+
+def mentioned(value: str, question: str) -> bool:
+    if squash(value) and squash(value) in squash(question):
+        return True
+    try:
+        number = float(value)
+    except ValueError:
+        return False
+    return any(abs(number - float(n)) <= 1e-9 * max(1.0, abs(number))
+               for n in re.findall(r"-?\d+(?:\.\d+)?", question.replace(",", "")))
+
+
+def relation_words(cypher: str) -> set[str]:
+    """关系类型里的动词（`Person_Own_Account` → own，`produces_output` → prod / outp），取前 4 个字母。"""
+    words = set()
+    for group in re.findall(r"\[[^\]]*:\s*`?([A-Za-z_|]+)`?", cypher):
+        for rel in group.split("|"):
+            parts = rel.lower().split("_")
+            if len(parts) == 3 and rel[:1].isupper():  # 类型_动词_类型
+                parts = parts[1:2]
+            words |= {p[:4] for p in parts if len(p) > 2 and p not in {"entity", "has"}}
+    return words
+
+
+def nl_complete(question: str, cypher: str) -> bool:
+    """自然语言题面是否交代了 Cypher 的全部常数，且提到了所用关系。上游 NL 常丢常数或描述错关系（NGD-Fin 约 73% 的题）。"""
+    words = relation_words(cypher)
+    return (all(mentioned(v, question) for v in literals(cypher))
+            and (not words or any(w in squash(question) for w in words)))
+
+
 NOISE_SECTION = {
     False: "## 可选交付：噪声断言\n\ndecide 阶段除答案外，还可以交 `stages/4_decide/noise.jsonl`：",
     True: "## 必交：噪声断言与识别方法\n\n识别噪声的方法本身也是知识：把它写成 `form=method` 的单元（步骤、适用条件、已知局限），"
@@ -48,7 +94,7 @@ QUERY_HELP = {
 @register("ngdbench")
 def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="cypher", noise_report=False, **opts) -> dict:
     """`dev`：用于反馈的开发题数；`limit`：抽样的测试题数（NGD-Fin 全量约 8700 题）。
-    `question`：`cypher` 每题同时给自然语言问题与 Cypher；`nl` 只给自然语言问题，且只用有 NL 描述的题。
+    `question`：`cypher` 每题同时给自然语言问题与 Cypher；`nl` 只给自然语言问题，且只用题面完整（`nl_complete`）的题。
     `noise_report`：为真时噪声断言 `noise.jsonl` 是必交物，并要求把识别噪声的方法写成元知识。"""
     ws = Path(ws)
     clean = ds.read("clean")
@@ -71,7 +117,7 @@ def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="
         {"id": task.id, "kind": task.kind, "question": task.meta.get("nlp") or task.input}
         | ({"cypher": task.meta.get("query", "")} if question == "cypher" else {})
         for task in ds.tasks if task.kind.startswith(("complex_query", "query_results"))
-        and (question == "cypher" or task.meta.get("nlp"))
+        and (question == "cypher" or (task.meta.get("nlp") and nl_complete(task.meta["nlp"], task.meta.get("query", ""))))
     ]
     n_examples = min(6, len(tasks))
     indices = {i * (len(tasks) - 1) // max(1, n_examples - 1) for i in range(n_examples)}

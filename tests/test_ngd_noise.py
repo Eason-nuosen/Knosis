@@ -124,3 +124,16 @@ def test_score_knowledge_real(tmp_path):
     assert noise["edge"]["precision"] == pytest.approx(4 / 5) and noise["edge"]["recall"] == pytest.approx(4 / 11010)
     assert noise["edge_added"]["n_asserted"] == 2 and noise["edge_relabel"]["n_asserted"] == 2
     assert noise["missing_edge"]["precision"] == 1.0 and noise["missing_edge"]["n_true"] == 1807
+
+
+def test_nl_complete():
+    from knosis.workspace.exporters.ngdbench import nl_complete
+
+    assert nl_complete("Count accounts owned by people from Angeles.",
+                       "MATCH (a:Person {city: 'Angeles'})-[:Person_Own_Account]->(b) RETURN count(b) LIMIT 10")
+    assert not nl_complete("Determine the node ID of a loan applied for by a person with a specific birthday.",
+                           "MATCH (a:Person {birthday: '1985-11-30'})-[:Person_Apply_Loan]->(b) RETURN b")
+    assert not nl_complete("Count the number of persons each company guarantees.",
+                           "MATCH (a:Person)-[r:Person_Apply_Loan]-(b:Loan) RETURN count(b)")
+    assert nl_complete("Loans with amount 72402227 and rate 0.084.",
+                       "MATCH (a:Loan {loanAmount: 72402227.0, interestRate: 0.0840}) RETURN a")
