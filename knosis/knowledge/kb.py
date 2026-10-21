@@ -19,7 +19,7 @@ from pathlib import Path
 from .evidence import data_inputs, load_evidence, run_check
 from .units import load_units, scope_of, write_units
 
-PARTS = ("ontology", "checks", "skills", "feedback")
+PARTS = ("ontology", "checks", "skills", "feedback", "traces")
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
 
 
@@ -55,14 +55,18 @@ def inherit(kb, target, scopes=None) -> dict:
         units = [{**u, "derived_from": [p for p in u.get("derived_from", []) if p in kept],
                   "meta": {**u.get("meta", {}), "inherited_derived_from": u.get("derived_from", [])}}
                  for u in units if u["id"] in kept]
+    version = git(kb, "rev-parse", "--short", "HEAD")
+    # 标记来自知识库：其中 `data/` 来源指向产生它时的环境，见 `source_issues`。
+    units = [{**u, "meta": {**u.get("meta", {}), "inherited": u.get("meta", {}).get("inherited", version)}} for u in units]
     ids = {u["id"] for u in units}
     write_units(target / "units.jsonl", units)
-    write_units(target / "evidence.jsonl", [e for e in load_evidence(kb) if e["unit"] in ids or not scopes])
+    write_units(target / "evidence.jsonl", [{**e, "inherited": e.get("inherited", version)} for e in load_evidence(kb)
+                                           if e["unit"] in ids or not scopes])
     for part in PARTS:
         wanted = {"ontology": {"relation", "dataset"}, "skills": {"skill"}}.get(part)
         if (kb / part).is_dir() and (not scopes or not wanted or wanted & set(scopes)):
             shutil.copytree(kb / part, target / part, dirs_exist_ok=True, ignore=IGNORE)
-    return {"path": str(kb), "version": git(kb, "rev-parse", "--short", "HEAD"), "scopes": scopes, "units": len(units)}
+    return {"path": str(kb), "version": version, "scopes": scopes, "units": len(units)}
 
 
 def seen_items(kb, benchmark, scenario) -> set:
@@ -87,7 +91,8 @@ def merge(ws, kb) -> str:
     """把工作区当前知识层写回 KB，返回新版本号。
 
     κ 按 id 合并（工作区版本覆盖，旧版本留在 KB 的 git 历史里）；证据追加未见过的；
-    工作区新产生的反馈记录改名为 `<工作区名>.<id>`，并改写指向它们的来源。
+    工作区新产生的反馈记录改名为 `<工作区名>.<id>`，并改写指向它们的来源；
+    被引用的轨迹（`data/traces/<id>.jsonl`）复制进 KB 的 `traces/`，来源改写为 `knowledge/traces/...`，继承后仍能定位。
     """
     from . import check_knowledge
     from ..workspace import status
@@ -97,6 +102,7 @@ def merge(ws, kb) -> str:
     renames = {p.stem: f"{ws.name}.{p.stem}" for p in (source / "feedback").glob("*.json") if "." not in p.stem}
 
     def rewrite(text):
+        text = text.replace("data/traces/", "knowledge/traces/")
         return re.sub(r"feedback:([^#;\s]+)", lambda m: f"feedback:{renames.get(m.group(1), m.group(1))}", text)
 
     # 可执行的元知识要能离开原工作区运行；跑不通的记一条「无法判定」证据，写回 KB。
@@ -128,6 +134,12 @@ def merge(ws, kb) -> str:
     for part in ("ontology", "checks", "skills"):
         if (source / part).is_dir():
             shutil.copytree(source / part, kb / part, dirs_exist_ok=True, ignore=IGNORE)
+    text = "".join(p.read_text(encoding="utf-8") for p in (source / "units.jsonl", source / "evidence.jsonl") if p.exists())
+    cited = set(re.findall(r"data/traces/([^#;\s\"]+?)\.jsonl", text))
+    for name in cited:
+        for path in (ws / "data/traces").glob(f"{name}.*"):
+            (kb / "traces").mkdir(exist_ok=True)
+            shutil.copy2(path, kb / "traces" / path.name)
     (kb / "feedback").mkdir(exist_ok=True)
     for path in (source / "feedback").glob("*.json"):
         record = json.loads(path.read_text(encoding="utf-8"))

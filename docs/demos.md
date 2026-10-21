@@ -1,6 +1,6 @@
 # 演示结果（v0.4，2026-10-21）
 
-四类场景（单表、方程、多表、KG）上各跑通了一个小规模演示：agent 在任务中提出、验证、修订知识，Knosis 记录证据、评测知识与任务。
+四类场景（单表、方程、多表、KG）上各跑通了一个小规模演示，另有从 agent 轨迹提取知识的演示（§5）：agent 在任务中提出、验证、修订知识，Knosis 记录证据、评测知识与任务。
 全部用 Codex（`gpt-6.1-sol`，reasoning effort medium）驱动模式：explore → extract → refine（2 轮，带 dev 反馈）→ decide。
 **每个设置只跑一次、题量很小，数字只说明流程跑通与现象，不构成统计结论。** 工作区在 `ws/`（不入仓）。
 
@@ -99,6 +99,65 @@ NGD-Fin 通过上述检查的题里仍有 36% 有结构问题。演示改用人�
 给答案时 agent 能对比正确答案与自己的查询结果，推断出具体哪些边 / 属性是噪声并写成可执行的检测方法；只给对错时学得更慢，几乎不产出噪声知识。
 两组共同失败的题集中在补不回缺失边、认不出被改的属性值、首跳属性被改的多跳计数。
 
+## 5. 从 agent 轨迹提取知识
+
+入口 `knosis ws init traces <名字> -o paths=<轨迹> [-o env=<轨迹当时的数据目录>]`。支持四种格式：
+Codex rollout、Claude Code 会话、逐步记录（agent-rsi 的 AppWorld ReAct）、OpenAI 风格 messages。
+四种格式都统一成步骤序列，知识的来源写到 `data/traces/<id>.jsonl#step/<n>`。
+BRIEF 要求把轨迹里的话当成那个 agent 的说法，而不是事实：有环境的就复核，没有环境的保持 inferred。
+打分器报告三项：
+- `cites_trace`：引用了真实存在的步骤的知识占比；
+- `env_verified`：有触及环境的支持证据的占比；
+- `trace_checked`：只核对了与轨迹记录一致的占比。
+
+**A. Codex 从自己的轨迹提取（有环境）。** 源轨迹是 §4 中「不带知识直接做 NGD 测试 20 题」的那次 Codex 运行：33 步，13 次工具调用，测试 EM 0.65；
+提取时给了同一张含噪图作为环境。explore → extract → refine 共约 17 分钟，产出 37 条知识，其中 4 条为 method，另有 2 个 skill。
+22 条 verified，4 条候选被反驳后撤回；`env_verified` 0.97。
+- 典型例子：原轨迹第 23、27 步声称「按 (loanAmount, loanUsage) 组内一致的利率修复了异常利率」。
+  在环境上复算后，这次修复实际改动 0 个节点（`explore/rate-repair-no-effect`），于是候选「组内修复有效」被反驳撤回。
+- 其余知识：类型以 ID 前缀为准（1008 个节点 label 冲突）、平行边计数式 E=U+D、二跳连接的 multiplicity、日期 / 类别 / 利率的质量筛查。
+
+**迁移检验**：把提取出的知识 `kb merge` 进知识库，在源轨迹没见过的 10 道题（原 dev 题）上只跑 decide：
+
+| 条件 | 测试 EM（两次运行） | 受噪声影响题 EM |
+| --- | --- | --- |
+| 不带知识 | 0.70 / 0.70 | 0.625 |
+| 继承轨迹知识（K_inherit） | 0.30 / 0.30 | 0.125 |
+
+两次运行逐题对错完全相同，所以差距不是运行噪声。原因是：
+- 含噪图里有被改关系的边，例如 Person→Account 的边被标成 `Company_Own_Account`。
+- 不带知识的 agent 按「操作名 + 端点前缀」把这类边修回来了。
+- 继承的知识如实记录了「7706 条冲突边大多没有唯一修复」。agent 据此改成按原始 label 查询、不修复，于是漏掉了这些边。
+
+这些知识是对的，但对任务有害。源轨迹没有任何答案反馈，提取阶段无法得知哪种修复策略对任务有用，utility 全部空白。
+这说明：从无反馈的轨迹中提取的知识，进入决策前需要经过 utility 检验（dev 反馈或消融），只验证正确性不够。
+
+**B. agent-rsi 的 AppWorld 轨迹（无环境）。** 源数据如下：
+- Qwen3.8-27B 在 test_normal 上的 6 条 Spotify 轨迹，成功 4 条、失败 2 条，共 382 步。
+- 来自 pod 上 `runs/baseline/eval/qwen3_8/none_seed0`，为只读拷贝。
+
+提取约 16 分钟，产出 43 条知识（6 条撤回）和 3 个 skill。`env_verified` 0，`trace_checked` 1.0：
+所有检查都只能核对「说法与轨迹记录一致」，因此只有方法类知识标了 verified，其余保持 inferred。
+用 agent-rsi 流水线在真实环境中验证过的 356 条 Spotify 知识作参照（来自另一批轨迹，场景不重叠），逐条比对：
+
+| 对照 agent-rsi | 条数 |
+| --- | --- |
+| 只关于轨迹文件本身（截断、可见性等），不比 | 7 |
+| 一致 | 7 |
+| agent-rsi 更精确，兼容 | 5 |
+| agent-rsi 未覆盖 | 18 |
+| 矛盾 | 0 |
+
+- 一致的例子：登录后要显式传 `access_token`，否则返回 401；`play_music` 的 song / album / playlist / queue_position 至多选一个；liked、song library、downloaded 是不同集合。
+- agent-rsi 更精确的例子：`page_limit` 大于 20 时报 422，默认等价于 5。这类结论要在环境里做实验才能得到，轨迹里看不出来。
+- 未覆盖的部分有三类：任务结果层面的教训（「每步 API 都成功但任务失败」「局部成功不等于验收通过」）、聚合与集合推理方法、phone app 的语义。
+- 判定由子 agent 逐条比对完成，没有人工复核。
+
+**改动**：知识库合并时，被引用的轨迹会复制进 KB 的 `traces/`，来源改写为 `knowledge/traces/...`，继承后仍能定位。
+继承来的单元和证据会打上 `inherited` 标记，规则如下：
+- 其中 `data/` 来源指向产生它的那个环境，新工作区的数据布局可能不同（轨迹工作区是 `data/env/`，NGD 是 `data/`），文件不存在时不判定；
+- 文件存在但内容变了，照旧判过期。
+
 ## 知识层的使用情况
 
 | 演示 | κ 数 | 粒度分布 | skill | 被反驳的证据 |
@@ -115,4 +174,5 @@ utility 由 dev 提交附带的 `used_units` 自动生成；KramaBench 上它暴
 - 每个设置一次运行、题量小；对照组之间的差异多数在噪声范围内。
 - GT 隔离是软隔离（原始数据与 agent 在同一台机器）。
 - KramaBench 的字符串近似题、方程的符号等价未用 LLM 裁判。
-- 尚未做：Claude Code 驱动、跨 agent 读者对照、只继承 method / skill 到新工作区的迁移实验、Burr / AlphaBench / text 的端到端演示。
+- 轨迹提取的 `env_verified` 对检查类证据按「依赖输入里有环境文件」判断；`data_inputs` 记的是工作区全部数据文件，会偏宽。
+- 尚未做：Claude Code 驱动（Claude Code 轨迹已能读入，未单独演示）、跨 agent 读者对照、只继承 method / skill 到新工作区的迁移实验、Burr / AlphaBench / text 的端到端演示。

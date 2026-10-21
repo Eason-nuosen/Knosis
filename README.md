@@ -38,7 +38,7 @@ pytest -q
 ```python
 from knosis import load_dataset, list_datasets, describe
 
-list_datasets()          # ngdbench relbench burr newtonbench llm-srbench alphabench kramabench tabarena bibench text
+list_datasets()          # ngdbench relbench burr newtonbench llm-srbench alphabench kramabench tabarena bibench text traces
 describe("ngdbench")     # 给 agent 读的说明（来源 / 布局 / 陷阱），不含 GT
 ds = load_dataset("ngdbench", "ngd-fin")
 ds.tasks[0]              # Task(id, input, answer, split, kind, meta)；answer 是 GT，只在评测时读
@@ -107,7 +107,7 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 
 ## 现状（v0.4）
 
-10 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
+11 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
 
 | 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
 | --- | --- | --- | --- | --- | --- |
@@ -121,13 +121,14 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 | newtonbench | 领域 | 定律函数源码 | 上游 RMSLE；实验用 `newton` 工具 | 按（难度, 版本）整组 | 符号等价（需 LLM） |
 | alphabench | evaluate（CSI300） | 因子判断 JSONL | 信号准确率、IC MAE / Spearman、分维度打分 | 50 题 | generate（需 Qlib 现算 IC）、美股 |
 | text | 语料路径 | 无（只评知识层） | 单元数、来源可定位率、引文核对 | 无 | — |
+| traces | 名字，`-o paths=` 轨迹（Codex / Claude Code / 逐步记录 / messages），可选 `-o env=` | 无（只评知识层） | 引用步骤有效率、环境复核率、只核对轨迹的比例 | 无 | 迁移收益另做：合进知识库后在新题上对比 |
 
 | 部分 | 状态 |
 | --- | --- |
 | 知识层 | κ（粒度 instance / relation / dataset / method / utility）+ 证据账本 + 可执行检查 + 本体 + skill（解题集）；检查必填字段、来源、I1、I2、I5、状态与证据一致、证据过期、method 脚本可脱离原工作区运行；I3、I4 未实现 |
-| 知识库 | 独立知识库：继承（可按粒度）、写回、导入 ontology-bench 标注（可去 GT） |
+| 知识库 | 独立知识库：继承（可按粒度）、写回（被引用的轨迹随知识带走）、导入 ontology-bench 标注（可去 GT） |
 | 工具层 | sql / profile / joins / fit / newton / tabpfn（含 cv，本机 CPU 推断已验证）可用；ULTRA 只适配接口 |
-| agent 接入 | Codex 驱动模式在单表、方程、多表、KG 四类场景跑通演示（含 refine 自动反馈），结果见 [docs/demos.md](docs/demos.md)；Claude Code 接口相同，未做 smoke |
+| agent 接入 | Codex 驱动模式在单表、方程、多表、KG 四类场景跑通演示（含 refine 自动反馈），以及从 Codex 自身轨迹与 agent-rsi AppWorld 轨迹提取知识，结果见 [docs/demos.md](docs/demos.md)；Claude Code 接口相同，未做 smoke |
 
 范围与定位见 [docs/scope.md](docs/scope.md)；路线：跨 agent 读者对照、只继承 method / skill 的迁移实验、L2 复杂查询。设计背景见 [docs/design.md](docs/design.md)。
 

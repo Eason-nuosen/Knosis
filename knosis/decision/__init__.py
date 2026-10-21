@@ -17,7 +17,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from ..knowledge import INACTIVE, load_units
+from ..knowledge import INACTIVE, all_ontology_units, load_units, ontology_docs, skills
 
 SCORERS: dict[str, Callable] = {}
 KNOWLEDGE_SCORERS: dict[str, Callable] = {}
@@ -72,11 +72,14 @@ def usage(ws) -> dict:
         return {"reported": False, "units": len(units)}
     rows = load_units(path)
     cited = [uid for row in rows for uid in row.get("used_units", [])]
+    # 本体单元与 skill 也可以被引用。
+    known = set(units) | {u["id"] for u in all_ontology_units(ontology_docs(Path(ws) / "knowledge"))}
+    known |= {skills.skill_id(s) for s in skills.load_skills(Path(ws) / "knowledge")}
     return {
         "reported": True, "units": len(units), "predictions": len(rows),
         "with_knowledge": sum(bool(row.get("used_units")) for row in rows) / max(1, len(rows)),
-        "distinct_units_used": len(set(cited) & set(units)),
-        "unknown_units": sorted(set(cited) - set(units)),
+        "distinct_units_used": len(set(cited) & known),
+        "unknown_units": sorted(set(cited) - known),
         "inactive_units": sorted({uid for uid in cited if units.get(uid, {}).get("status") in INACTIVE}),
     }
 
@@ -125,5 +128,5 @@ def mean(rows, key) -> float:
 
 
 from . import (  # noqa: E402,F401
-    alphabench, bibench, burr, graph_qa, kramabench, llm_srbench, newtonbench, relbench, tabular, text,
+    alphabench, bibench, burr, graph_qa, kramabench, llm_srbench, newtonbench, relbench, tabular, text, traces,
 )

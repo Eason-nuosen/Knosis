@@ -1,0 +1,13 @@
+# ngd-fin-demo 的 10 道 dev 题作测试集（无 dev）：用于检验「从解测试题的轨迹里提取的知识」能否迁移到没见过的题。
+dev: {}
+test:
+  complex_query_agg/1515: Count the repayment relationships (Account_Repay_Loan) from accounts whose accountType is 'certificate of deposit' to loans.
+  complex_query_agg/47: Count the sign-in relationships (Medium_SignIn_Account) from unblocked mediums (isBlocked is false) to accounts.
+  complex_query_agg/699: Count the investment relationships (Company_Invest_Company) from companies whose city is 'Goma' to other companies.
+  complex_query_agg/1252: Count the deposit relationships (Loan_Deposit_Account) from loans whose loanAmount is 98962630.0 to accounts.
+  complex_query_agg/3256: Count the deposit relationships (Loan_Deposit_Account) from loans whose balance is 38010358.04 to accounts.
+  complex_query_noagg/3052: Return the node IDs of companies linked by an investment relationship (Company_Invest_Company, either direction) to a company whose city ends with 'Irkutsk'.
+  complex_query_noagg/2070: Return the node IDs of accounts owned (Person_Own_Account) by persons whose city is 'Trieste'.
+  complex_query_noagg/2335: Return the node IDs of accounts owned (Person_Own_Account) by persons whose personName is 'Lomer'.
+  complex_query_noagg/4156: Return the node IDs of companies invested in (Company_Invest_Company) by companies whose business is 'Stable'.
+  complex_query_noagg/1083: Return the node IDs of companies invested in (Company_Invest_Company) by companies whose country is 'Azerbaijan'.

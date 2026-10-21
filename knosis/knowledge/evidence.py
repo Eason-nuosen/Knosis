@@ -52,9 +52,11 @@ def data_inputs(root, paths=None) -> dict:
 
 
 def expired(entry, root) -> list[str]:
-    """证据依赖的数据文件里已变化或消失的。"""
+    """证据依赖的数据文件里已变化或消失的。继承来的证据：文件不存在说明换了环境布局，不在这里判定；存在而内容变了才算过期。"""
     root = Path(root)
-    return [p for p, fp in entry.get("inputs", {}).items() if not (root / p).exists() or fingerprint(root / p) != fp]
+    gone = lambda p: not (root / p).exists()  # noqa: E731
+    return [p for p, fp in entry.get("inputs", {}).items()
+            if (not entry.get("inherited") and gone(p)) or (not gone(p) and fingerprint(root / p) != fp)]
 
 
 def check_evidence(entries, unit_ids, root=None) -> list[str]:
@@ -71,7 +73,7 @@ def check_evidence(entries, unit_ids, root=None) -> list[str]:
         if entry.get("unit") not in unit_ids:
             issues.append(f"evidence {name}: unknown unit: {entry.get('unit')}")
         for source in str(entry.get("source", "")).split(";"):
-            issues += [f"evidence {name}: {issue}" for issue in source_issues(source.strip(), root)]
+            issues += [f"evidence {name}: {issue}" for issue in source_issues(source.strip(), root, bool(entry.get("inherited")))]
     return issues
 
 

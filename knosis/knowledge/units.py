@@ -29,15 +29,20 @@ def write_units(path, units: list[dict]) -> None:
     )
 
 
-def source_issues(source: str, root=None) -> list[str]:
-    """一个来源能否定位：`data/` 文件存在且在工作区数据目录内，`feedback:` 记录存在。"""
-    if root is None:
+def source_issues(source: str, root=None, inherited=False) -> list[str]:
+    """一个来源能否定位：`data/` 文件存在且在工作区数据目录内，`knowledge/` 文件（如继承来的轨迹）存在，`feedback:` 记录存在。
+
+    `inherited`：从知识库继承来的单元 / 证据，`data/` 指的是产生它时的环境，新工作区的数据布局可能不同，不检查。
+    """
+    if root is None or inherited and source.startswith("data/"):
         return []
     root = Path(root)
     if source.startswith("data/"):
         path = (root / source.split("#", 1)[0]).resolve()
         if not path.is_relative_to(root.resolve() / "data") or not path.exists():
             return [f"missing data source: {source}"]
+    if source.startswith("knowledge/") and not (root / source.split("#", 1)[0]).exists():
+        return [f"missing knowledge source: {source}"]
     if source.startswith("feedback:"):
         record = source.split("#", 1)[0].removeprefix("feedback:")
         if not (root / "knowledge/feedback" / f"{record}.json").exists():
@@ -93,8 +98,9 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
         sources = [s.strip() for s in unit.get("provenance", "").split(";")]
         if "derived" in sources and not parents:
             issues.append(f"{name}: derived provenance requires derived_from")
+        inherited = "inherited" in unit.get("meta", {})
         for source in sources:
-            issues += [f"{name}: {issue}" for issue in source_issues(source, root)]
+            issues += [f"{name}: {issue}" for issue in source_issues(source, root, inherited)]
         for parent in parents:
             if parent not in available:
                 issues.append(f"{name}: unknown derived_from: {parent}")
@@ -110,7 +116,7 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
         # about 也可以直接锚定到数据位置（用于「以对象为键」的反查）。
         for ref in unit.get("about", []):
             if ref.startswith("data/"):
-                issues += [f"{name}: about {issue}" for issue in source_issues(ref, root)]
+                issues += [f"{name}: about {issue}" for issue in source_issues(ref, root, inherited)]
     return issues
 
 

@@ -5,7 +5,7 @@ import pytest
 
 from knosis import Dataset, data_dir, describe, list_datasets, list_scenarios, load_dataset, read
 
-ALL = {"ngdbench", "relbench", "burr", "newtonbench", "llm-srbench", "alphabench", "kramabench", "tabarena", "bibench", "text"}
+ALL = {"ngdbench", "relbench", "burr", "newtonbench", "llm-srbench", "alphabench", "kramabench", "tabarena", "bibench", "text", "traces"}
 
 
 def write(path, text):
