@@ -15,9 +15,9 @@ OK_RMSLE = 0.01
 
 @register("newtonbench")
 def score(ws, state, ds, path, ids) -> dict:
+    module = upstream(ds.scenario, ds.root.parents[1])  # 先把上游根目录放进 sys.path，再导入它的 modules 包
     from modules.common.evaluation import extract_formula_from_function
 
-    module = upstream(ds.scenario, ds.root.parents[1])
     laws = __import__(f"modules.{ds.scenario}.laws", fromlist=["get_ground_truth_law"])
     predictions = answers(path)
     tasks = {t.id: t for t in ds.tasks}
