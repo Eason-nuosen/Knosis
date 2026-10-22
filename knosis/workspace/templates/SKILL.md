@@ -20,7 +20,8 @@ form 为 finding/fact/rule/formula/schema/tool/method（method 是「如何发�
 status 为 observed/inferred/verified/contested/retracted/stale。
 每次验证记一条证据（support/refute/undetermined/not_applicable）：可执行检查写进 `check` 后运行
 `knosis knowledge verify`，其他用 `knosis knowledge evidence add`；verified 需要支持证据，被反驳要改状态。
-用 `knosis knowledge select` 按任务挑知识，`knosis knowledge trace <id>` 看证据链。
+用 `knosis knowledge select` 按任务挑知识，`knosis knowledge trace <id>` 看证据链；
+有 `knowledge/outline.yaml` 时先用 `knosis knowledge outline` 看知识体系，新增的知识要补进大纲。
 知识按粒度分 instance / relation / dataset / method / utility；「如何运用知识解某类题」写成
 `knowledge/skills/<名字>/SKILL.md`（解题集，讲有没有效，不讲对错）。
 记录 condition、derived_from 和验证支持数与反例数；来源定位到 data 文件的行、列、节点或边，

@@ -158,6 +158,31 @@ BRIEF 要求把轨迹里的话当成那个 agent 的说法，而不是事实：�
 - 其中 `data/` 来源指向产生它的那个环境，新工作区的数据布局可能不同（轨迹工作区是 `data/env/`，NGD 是 `data/`），文件不存在时不判定；
 - 文件存在但内容变了，照旧判过期。
 
+## 6. 文本 → KG、MCP、知识体系（2026-10-22）
+
+三个演示都很小（单次 `codex exec`，reasoning effort medium），只说明接口能用。
+
+**autoschemakg 复现上游建图。** 用 NGD-Econ 上游的抽取文件（`kg_extraction/qwen2.5-14b-instruct_multi_financial.json`，664 段，
+Qwen2.5-14B 按 AutoSchemaKG 抽取）直接 `build`，与上游发布的 `multiEcon.gpickle` 对照（按名字比较，不分大小写）：
+我们的实体关系与事件关系边中 98.5% 出现在上游图里，节点名 99.5% 出现在上游图里，说明建图规则与上游一致。
+其中头尾实体都逐字出现在原段落的实体关系占 76%；其余是改写、缩写或幻觉，工具在 `meta.grounded` 里标出。产物：`ws/demo-askg-econ/`。
+
+**Codex 自己抽取并用图答题。** 文本是 PUMA 2023 年报中约 2500 字符的一段，后半段有 OCR 乱码（字符位移）。
+Codex 按工具写出的 AutoSchemaKG 提示词自己抽取（实体关系 26 条、事件—实体 11 条、事件关系 1 条），建图，给 15 个节点写概念，
+再用 `query` 查图回答 4 道事实题（CFO 是谁、重点市场、审计委员会主席交接、监事会扩员人数），4 题全对，每题附图中支撑边；
+乱码部分被跳过。耗时 64 秒，约 2.6 万 token。头尾逐字出现在原文的实体关系占 96%。产物：`ws/demo-askg-text/`（`answers.md`、`kg/`）。
+
+**Codex 只通过 MCP 操作知识层。** 在 newton 工作区的副本上，要求 Codex 不用 shell、只用 MCP：筛选 method、追溯证据链、
+看大纲草稿、新增一条派生的适用条件规则、记 derivation 证据、检查。全部完成，知识层检查前后都是 28 个原有问题、新增 0 个。
+第一次运行时所有 MCP 调用被拒：`codex exec` 下 MCP 调用默认需要审批而审批策略是 never，要给该服务设
+`default_tools_approval_mode="approve"`（见 [interfaces.md](interfaces.md)）。约 3 万 token。产物：`ws/demo-mcp-newton/`。
+
+**Codex 整理知识体系。** `knosis knowledge organize` 在 newton 工作区副本（44 条 κ、1 个 skill、1 条已撤回）上运行，
+一次通过验收（151 秒，约 5.9 万 token）。结果分三层：场景「独立发现定律并提交经过验证的函数」（下分审计、辨识、依赖检验、
+源码验证、反馈复核 5 节）、数据间关系（任务分组、实验接口）、数据本身（幂律诊断、观测质量、两道开发题各一节、独立验证）、
+另有归档节放撤回的单元。Codex 在 10 个节的 `notes` 里标出疑似重复或矛盾的单元，例如两条 utility 统计的是同两道题，不能当作独立支持；
+已撤回的「经典引力指数」假设与两道题的反馈结构矛盾。单元本身没有改动。产物：`ws/demo-organize-newton/knowledge/outline.yaml`。
+
 ## 知识层的使用情况
 
 | 演示 | κ 数 | 粒度分布 | skill | 被反驳的证据 |

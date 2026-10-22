@@ -16,4 +16,4 @@ __all__ = [
     "load_dataset", "list_datasets", "list_scenarios", "describe", "register",
     "Dataset", "Task", "Unit", "data_dir", "read",
 ]
-__version__ = "0.3.0"
+__version__ = "0.4.0"

@@ -4,11 +4,12 @@
     knosis ws init|next|check|status|goto|fork|run ...
     knosis tool list|card|run ...
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
-    knosis knowledge check|verify|select|skills|index|trace|evidence add|evidence import ... [--ws <ws>]
+    knosis knowledge check|verify|select|skills|index|trace|outline|organize|evidence add|evidence import ... [--ws <ws>]
     knosis kb init <dir> | merge <ws> --kb <dir> | import-ontology <src> --kb <dir> [--strip-gt]
     knosis feedback submit <dev 预测文件> [--ws <ws>] | list [--ws <ws>]
     knosis eval <ws>
     knosis install [--codex] [--claude]
+    knosis mcp [--ws <工作区或知识库>]
 """
 
 from __future__ import annotations
@@ -128,6 +129,16 @@ def knowledge_parser(sub):
     trace = kn.add_parser("trace", help="一条知识的发现途径：派生链与证据")
     trace.add_argument("unit")
     trace.add_argument("--ws", default=".")
+    outline = kn.add_parser("outline", help="知识体系大纲（knowledge/outline.yaml），渲染成 markdown")
+    outline.add_argument("--ws", default=".", help="工作区或知识库")
+    outline.add_argument("--draft", action="store_true", help="看按粒度生成的草稿")
+    outline.add_argument("--write", action="store_true", help="把草稿写成 outline.yaml（已有时拒绝）")
+    organize = kn.add_parser("organize", help="让 agent 结合已有知识整理出知识体系（写 outline.yaml）")
+    organize.add_argument("--ws", default=".", help="工作区或知识库")
+    organize.add_argument("--agent", choices=["codex", "claude"], default="codex")
+    organize.add_argument("--model")
+    organize.add_argument("--effort")
+    organize.add_argument("--prompt-only", action="store_true", help="只打印提示词（本会话的 agent 自己整理时用）")
     ev = kn.add_parser("evidence", help="证据账本").add_subparsers(dest="ev_cmd", required=True)
     add = ev.add_parser("add")
     add.add_argument("--ws", default=".")
@@ -168,7 +179,11 @@ def knowledge_command(args):
                 print(source, json.dumps(kb.import_ontology(source, args.kb, args.strip_gt), ensure_ascii=False))
         return
     ws = Path(args.ws).resolve()
-    if args.kn_cmd == "check":
+    if args.kn_cmd in {"outline", "organize"}:
+        outline_command(args)
+    elif args.kn_cmd == "check" and not (ws / "knowledge").is_dir():  # 知识库
+        report(knowledge.check_knowledge(ws))
+    elif args.kn_cmd == "check":
         history = {u["id"] for d in snapshots(ws) for u in knowledge.load_units(d / "units.jsonl")}
         report(knowledge.check_knowledge(ws / "knowledge", history, root=ws))
     elif args.kn_cmd == "verify":
@@ -201,6 +216,26 @@ def knowledge_command(args):
     else:
         for entry in knowledge.load_evidence(ws / "knowledge"):
             print(entry["id"], entry["unit"], entry["verdict"], entry["method"], entry["source"], entry.get("note", "")[:120])
+
+
+def outline_command(args):
+    from .knowledge import by_unit, load_evidence, outline
+    from .workspace import driver
+
+    kdir, root = driver.knowledge_dir(args.ws)
+    if args.kn_cmd == "organize":
+        if args.prompt_only:
+            print(driver.organize_prompt(args.ws))
+            return
+        report(driver.organize(args.ws, args.agent, args.model, args.effort))
+        return
+    current = None if args.draft or args.write else outline.load_outline(kdir)
+    if args.write:
+        if outline.load_outline(kdir) is not None:
+            raise SystemExit(f"{kdir / outline.FILE} exists")
+        print(outline.write_outline(kdir, outline.draft(kdir)))
+        return
+    print(outline.render(current or outline.draft(kdir), outline.members(kdir), by_unit(load_evidence(kdir), root)))
 
 
 def report(issues):
@@ -258,6 +293,7 @@ def main(argv: list[str] | None = None) -> None:
     install = sub.add_parser("install", help="安装 Codex / Claude Code skill")
     install.add_argument("--codex", action="store_true")
     install.add_argument("--claude", action="store_true")
+    sub.add_parser("mcp", help="以 MCP（stdio）暴露知识层与工具层").add_argument("--ws", default=".", help="工作区或知识库")
     args = p.parse_args(argv)
 
     if args.cmd == "list":
@@ -293,6 +329,10 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(evaluate(args.dir), ensure_ascii=False, indent=2))
     elif args.cmd == "install":
         install_skill(args.codex, args.claude)
+    elif args.cmd == "mcp":
+        from .mcp import serve
+
+        serve(args.ws)
     elif args.cmd == "tool":
         from .tools import card, list_tools, run_tool
 

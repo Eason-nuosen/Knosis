@@ -34,6 +34,67 @@ def submit_round(ws, state, directory) -> None:
             feedback.submit(ws, path)
 
 
+def knowledge_dir(path) -> tuple[Path, Path | None]:
+    """（知识层目录, 工作区根）：工作区的知识层在 knowledge/；知识库本身就是知识层目录，没有工作区根。"""
+    path = Path(path).resolve()
+    return (path / "knowledge", path) if (path / "knowledge").is_dir() else (path, None)
+
+
+def organize_prompt(path) -> str:
+    from string import Template
+
+    from ..knowledge import INACTIVE, check_knowledge, outline
+    from . import TEMPLATES
+
+    kdir, root = knowledge_dir(path)
+    draft = outline.write_outline(kdir, outline.draft(kdir), "outline.draft.yaml")
+    items = outline.members(kdir)
+    before = [i for i in check_knowledge(kdir, root=root) if not i.startswith("outline")]
+    note = ("（以下是整理前就有的问题，与本任务无关，可以保留：" + "；".join(before[:10]) + "）") if before else ""
+    return Template((TEMPLATES / "organize.md").read_text(encoding="utf-8")).substitute(
+        kdir=kdir, ws=path, draft=draft, check_note=note,
+        n_units=sum(1 for i in items.values() if i.get("form") != "skill" and not i["id"].startswith("ontology/")),
+        n_skills=sum(1 for i in items.values() if i.get("form") == "skill"),
+        n_inactive=sum(1 for i in items.values() if i.get("status") in INACTIVE))
+
+
+def organize_issues(path) -> list[str]:
+    from ..knowledge import check_knowledge, outline
+
+    kdir, root = knowledge_dir(path)
+    current = outline.load_outline(kdir)
+    if current is None:
+        return [f"missing {kdir / outline.FILE}"]
+    items = outline.members(kdir)
+    left = outline.unplaced(current, items)
+    issues = [i for i in check_knowledge(kdir, root=root) if i.startswith("outline")]
+    return issues + ([f"outline: {len(left)} active units not placed: {', '.join(left[:20])}"] if left else [])
+
+
+def organize(path, agent="codex", model=None, effort=None) -> list[str]:
+    """让 agent 结合已有知识整理出知识体系（outline.yaml）；不通过时带着问题重试一次，返回最后的问题清单。"""
+    if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
+        raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
+    kdir, root = knowledge_dir(path)
+    cwd = root or kdir
+    prompt, issues = organize_prompt(path), []
+    env = {**os.environ, "KNOSIS_DEPTH": "1"}
+    for attempt in range(2):
+        started = time.monotonic()
+        with (kdir / "organize.log").open("a", encoding="utf-8") as log:
+            result = subprocess.run(agent_command(agent, cwd, prompt, model, effort), cwd=cwd, env=env,
+                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+        if result.returncode:
+            raise RuntimeError(f"{agent} exited with {result.returncode}; see {kdir / 'organize.log'}")
+        issues = organize_issues(path)
+        print(json.dumps({"attempt": attempt + 1, "seconds": round(time.monotonic() - started), "issues": issues},
+                         ensure_ascii=False))
+        if not issues:
+            break
+        prompt += "\n验收未通过，请修正：\n" + "\n".join(issues)
+    return issues
+
+
 def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=None) -> None:
     """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。`note`：附加在每个阶段提示末尾的实验说明。"""
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:

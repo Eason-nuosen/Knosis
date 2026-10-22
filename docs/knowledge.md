@@ -98,6 +98,11 @@ utility 只能由 feedback / ablation 证据支持为 verified。测试题上的
 检查：`uses` 能解析；所用知识被撤回或失效后 skill 须为 stale / retracted；`derived_from` 指向存在的反馈记录。
 效果记为证据（unit 为 `skill:<名字>`）；决策时在 `used_units` 里引用 `skill:<名字>`。skill 不按 agent 分开记录。
 
+## 知识体系大纲
+
+可选的 `outline.yaml` 把 κ 与 skill 组织成层级（场景 → 数据间关系 → 数据本身），只做导航、不新增断言。
+`knosis knowledge outline` 渲染，`knosis knowledge organize` 让 agent 整理；格式与检查规则见 [interfaces.md](interfaces.md)。
+
 ## 独立知识库
 
 `knosis kb init <dir>` 建库（git 仓库，布局同上）。`knosis ws init ... --kb <dir> [--kb-scope method,skill]` 继承（可只继承某些粒度；

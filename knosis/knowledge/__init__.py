@@ -8,11 +8,12 @@
     checks/              可选；单元的可执行检查脚本
     skills/<名字>/SKILL.md  可选；如何运用知识解某类任务（解题集），见 `skills`
     feedback/            dev 题上的反馈记录，见 `feedback`
+    outline.yaml         可选；知识体系大纲（导航层，不新增断言），见 `outline`
 """
 
 from pathlib import Path
 
-from . import feedback, skills
+from . import feedback, outline, skills
 from .evidence import add_evidence, by_unit, check_evidence, load_evidence, trace, verify
 from .ontology import check_ontology, load_ontology, ontology_units, refs, write_ontology
 from .units import FORMS, INACTIVE, SCOPES, STATUSES, active, check_units, load_units, scope_of, write_units
@@ -63,4 +64,7 @@ def check_knowledge(directory, known_ids=frozenset(), root=None) -> list[str]:
     # skill 可以引用 κ、本体单元，以及只在历史版本里出现过的 κ（状态未知，不触发失效检查）。
     known = {i: {} for i in known_ids} | {u["id"]: u for u in [*onto, *units]}
     issues += skills.check_skills(found, known, records)
+    current = outline.load_outline(directory)
+    if current is not None:
+        issues += outline.check_outline(current, outline.members(directory))
     return issues

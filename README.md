@@ -61,7 +61,8 @@ knosis ontology convert relbench rel-f1 --out onto/f1    # manifest 的主外键
 knosis ontology check onto/f1
 ```
 
-格式说明见 [docs/knowledge.md](docs/knowledge.md)。
+格式说明见 [docs/knowledge.md](docs/knowledge.md)。知识多了以后用 `knosis knowledge organize` 让 agent 整理成知识体系大纲，
+`knosis mcp --ws <dir>` 把知识层与工具以 MCP 暴露给 agent；工具 / skill / MCP 的分工见 [docs/interfaces.md](docs/interfaces.md)。
 
 ### 工具层
 
@@ -71,6 +72,7 @@ knosis tool card joins
 knosis tool run profile -- --tables data/ --out stages/1_explore/profile
 knosis tool run joins   -- --tables data/ --out stages/1_explore/joins --ontology stages/1_explore/joins/ontology
 knosis tool run sql     -- --tables data/ --query 'SELECT COUNT(*) FROM train' --out stages/1_explore/sql
+knosis tool run autoschemakg -- prepare --text data/ --out stages/1_explore/kg   # 文本 → KG，抽取由 agent 自己做
 ```
 
 工具只产出注解（κ，`inferred` / `observed`），不改数据；神经模型工具（ULTRA、TabPFN）用
@@ -127,7 +129,8 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 | --- | --- |
 | 知识层 | κ（粒度 instance / relation / dataset / method / utility）+ 证据账本 + 可执行检查 + 本体 + skill（解题集）；检查必填字段、来源、I1、I2、I5、状态与证据一致、证据过期、method 脚本可脱离原工作区运行；I3、I4 未实现 |
 | 知识库 | 独立知识库：继承（可按粒度）、写回（被引用的轨迹随知识带走）、导入 ontology-bench 标注（可去 GT） |
-| 工具层 | sql / profile / joins / fit / newton / tabpfn（含 cv，本机 CPU 推断已验证）可用；ULTRA 只适配接口 |
+| 工具层 | sql / profile / joins / fit / newton / tabpfn（含 cv，本机 CPU 推断已验证）/ autoschemakg（文本 → KG，agent 自己抽取或 `--llm` 命令）可用；ULTRA 只适配接口 |
+| 知识体系与 MCP | `outline.yaml` 大纲（导航层，`knowledge organize` 由 agent 整理）；`knosis mcp` 手写 stdio 服务，14 个工具，Codex 接入已验证 |
 | agent 接入 | Codex 驱动模式在单表、方程、多表、KG 四类场景跑通演示（含 refine 自动反馈），以及从 Codex 自身轨迹与 agent-rsi AppWorld 轨迹提取知识，结果见 [docs/demos.md](docs/demos.md)；Claude Code 接口相同，未做 smoke |
 
 范围与定位见 [docs/scope.md](docs/scope.md)；路线：跨 agent 读者对照、只继承 method / skill 的迁移实验、L2 复杂查询。设计背景见 [docs/design.md](docs/design.md)。
