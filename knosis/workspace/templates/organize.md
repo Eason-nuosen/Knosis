@@ -8,6 +8,7 @@
 - `$kdir/units.jsonl`、`$kdir/skills/*/SKILL.md`、`$kdir/evidence.jsonl`；
   可用 `knosis knowledge select --ws $ws --include-inactive`、`knosis knowledge trace <id> --ws $ws` 查看。
 - 按粒度自动生成的草稿：`$draft`（`knosis knowledge outline --ws $ws --draft` 可看渲染结果）。
+- $existing
 
 ## 要求
 

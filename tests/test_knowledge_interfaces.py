@@ -98,6 +98,7 @@ def test_outline(ws, capsys):
     assert driver.organize_issues(ws)[-1].startswith("outline: 1 active units not placed: m")
     main(["knowledge", "outline", "--ws", str(ws)])
     assert "## 未归类（1）" in capsys.readouterr().out
+    assert "> a\n> b" in outline.render({"title": "t", "sections": [{"id": "s", "title": "s", "notes": ["a", "b"]}]}, {})
     (kdir / outline.FILE).unlink()
     main(["knowledge", "outline", "--ws", str(ws), "--write"])
     assert not driver.organize_issues(ws)
@@ -140,3 +141,89 @@ def test_mcp_stdio(ws):
     serve(ws, io.StringIO("\n".join(json.dumps(m) for m in lines) + "\nnot json\n"), out)
     replies = [json.loads(line) for line in out.getvalue().splitlines()]
     assert replies[0]["result"] == {} and replies[1]["error"]["code"] == -32601 and replies[2]["error"]["code"] == -32700
+
+
+# ---------------------------------------------------------------- 日常收集与安装
+
+
+def codex_session(path, cwd, calls=3):
+    rows = [{"timestamp": "t", "type": "session_meta", "payload": {"id": "x", "cwd": str(cwd)}},
+            {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "fix it"}]}}]
+    for i in range(calls):
+        rows += [{"type": "response_item", "payload": {"type": "function_call", "name": "exec", "arguments": f"ls {i}"}},
+                 {"type": "response_item", "payload": {"type": "function_call_output", "output": f"out {i}"}}]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def test_collect(tmp_path, monkeypatch):
+    from knosis.knowledge import collect, kb as kbmod
+
+    kb = kbmod.init_kb(tmp_path / "kb")
+    sessions = tmp_path / "codex/sessions/2026/10/22"
+    project, wsdir = tmp_path / "proj", tmp_path / "ws"
+    (wsdir / ".knosis").mkdir(parents=True)
+    (wsdir / ".knosis/state.json").write_text("{}")
+    project.mkdir()
+    codex_session(sessions / "rollout-a.jsonl", project)
+    codex_session(sessions / "rollout-b.jsonl", project, calls=1)    # 调用太少
+    codex_session(sessions / "rollout-c.jsonl", wsdir / "sub")        # Knosis 工作区内
+    codex_session(sessions / "rollout-d.jsonl", kb)                   # 收集自身的会话
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    assert collect.parse_since("2h") < collect.parse_since("1h")
+    found, skipped = collect.find(kb, since="1d")
+    assert [s["session"] for s in found] == ["rollout-a"]
+    assert skipped == {"collected": 0, "inside_kb": 1, "workspace": 1, "few_calls": 1, "unreadable": 0}
+    assert len(collect.find(kb, since="1d", include_workspaces=True)[0]) == 2
+
+    def fake_agent(cmd, cwd, env, stdin, stdout, stderr):  # 模拟 agent：写一条引用轨迹的知识
+        units = load_units(kb / "units.jsonl")
+        write_units(kb / "units.jsonl", units + [{"id": "collect/ls", "content": "ls works", "form": "finding",
+                                                  "status": "inferred", "provenance": "knowledge/traces/rollout-a.jsonl#step/1"}])
+        return type("R", (), {"returncode": 0})()
+
+    real = collect.subprocess.run
+    monkeypatch.setattr(collect.subprocess, "run", lambda *a, **k: fake_agent(a[0], **k) if a[0][0] == "codex" else real(*a, **k))
+    result = collect.run(kb, since="1d", organize=False)
+    assert result["added"] == ["collect/ls"] and (kb / "traces/rollout-a.md").exists()
+    assert collect.collected(kb) == {"rollout-a"} and not collect.find(kb, since="1d")[0]
+    assert "collect: 1 codex sessions" in collect.git(kb, "log", "-1", "--format=%s")
+    # 不引用本次轨迹的新单元不通过，重试后仍不通过就恢复知识库
+    codex_session(sessions / "rollout-e.jsonl", project)
+
+    def bad_agent(cmd, cwd, env, stdin, stdout, stderr):
+        units = load_units(kb / "units.jsonl")
+        if not any(u["id"] == "collect/bad" for u in units):
+            write_units(kb / "units.jsonl", units + [{"id": "collect/bad", "content": "x", "form": "finding",
+                                                      "status": "inferred", "provenance": "somewhere"}])
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(collect.subprocess, "run", lambda *a, **k: bad_agent(a[0], **k) if a[0][0] == "codex" else real(*a, **k))
+    result = collect.run(kb, since="1d", organize=False)
+    assert result["restored"] and "must cite" in result["issues"][0]
+    assert [u["id"] for u in load_units(kb / "units.jsonl")] == ["collect/ls"] and not (kb / "traces/rollout-e.md").exists()
+
+
+def test_install_mcp(tmp_path, monkeypatch):
+    from knosis.cli import install_skill
+
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    config = tmp_path / ".codex/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('model = "x"\n')
+    install_skill(codex=True, home=tmp_path, kb=tmp_path / "kb")
+    install_skill(codex=True, home=tmp_path, kb=tmp_path / "kb2")   # 再装一次替换，不重复
+    text = config.read_text()
+    assert text.startswith('model = "x"\n') and text.count("[mcp_servers.knosis]") == 1 and "kb2" in text
+    assert 'default_tools_approval_mode = "approve"' in text
+    config.write_text("[mcp_servers.knosis]\ncommand = \"other\"\n")
+    with pytest.raises(SystemExit):
+        install_skill(codex=True, home=tmp_path, kb=tmp_path / "kb")
+
+
+def test_select_keywords(ws):
+    server = Server(ws)
+    write_units(ws / "knowledge/units.jsonl", load_units(ws / "knowledge/units.jsonl") + [
+        {"id": "k", "content": "alpha beta", "form": "finding", "provenance": "data/doc.md", "status": "inferred"}])
+    assert [u["id"] for u in server.knowledge_select(text="beta alpha zzz")] == ["k"]
+    assert server.knowledge_select(text="zzz yyy") == []

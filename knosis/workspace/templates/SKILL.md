@@ -5,6 +5,11 @@ description: 在 Knosis 工作区或用户希望用 Knosis 分析数据、发现
 
 Knosis 提供可追溯的显式知识层，本会话的 agent 是执行者，不必启动另一个 agent。
 
+**有名为 knosis 的 MCP 服务时**（`knosis install --kb` 装好的个人知识库）：开始一个不简单的任务前，调用一次
+`knowledge_outline` 看知识体系，再用 `knowledge_select`（几个关键词，空格分隔）找与任务相关的知识；
+inferred / contested 的知识是提示，用之前要核实。确实验证过、以后用得上的发现可以用 `knowledge_add` 记下；
+其余不用手动记，会话结束后由 `knosis kb collect` 统一收集。
+
 在含 `BRIEF.md` 与 `.knosis/state.json` 的工作区，读 BRIEF 与 AGENTS.md，
 用 `knosis ws next .` 取得当前阶段的目标、输入、交付物和验收标准。
 完成交付后运行 `knosis ws check .`；失败时依据问题修正。

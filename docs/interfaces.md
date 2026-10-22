@@ -62,3 +62,15 @@ knosis knowledge organize --ws ws/x --prompt-only   # 只打印提示词，本�
 ```
 
 知识库与工作区的大纲各自独立：`kb merge` 不合并大纲，合并后在知识库上重新 `organize`。
+
+## 日常闭环（个人知识库）
+
+`knosis kb collect`（`knosis/knowledge/collect.py`）把最近的 Codex / Claude Code 会话交给 agent 提取知识，写回独立知识库：
+找会话（按修改时间，跳过已收集、知识库内、Knosis 工作区内、工具调用过少的）→ 轨迹写进 `<kb>/traces/` →
+agent 按 `templates/collect.md` 提取（先查已有知识，重复的记支持证据，矛盾的记反驳并改为 contested）→
+验收（知识层检查不新增问题、新单元引用本次轨迹；不通过重试一次，仍不通过恢复知识库）→ 记入 `collected.jsonl` →
+`organize` 在已有大纲上更新 → 提交一个 git 版本。
+
+`knosis install --kb <dir>` 在 Codex 的 `config.toml` 写一段带标记的 MCP 配置（可重复执行、只替换自己那段，已放行审批），
+Claude Code 打印 `claude mcp add` 命令。MCP 的 `initialize` 说明与安装的 skill 都要求 agent：开始不简单的任务前看一次大纲、
+按关键词检索，inferred / contested 的知识当提示用。`knowledge_select` 的 text 含空格时按关键词检索（命中任一词，按命中数排序）。

@@ -57,16 +57,22 @@ class Server:
         write_units(self.kdir / "units.jsonl", units)
 
     def knowledge_select(self, text=None, about=None, form=None, scope=None, include_inactive=False, limit=50):
+        """`text` 含空格时按关键词检索：命中任一词即入选，按命中词数排序。"""
         from .knowledge import scope_of
         from .knowledge.select import select
 
+        terms = text.lower().split() if text else []
+        units = select(self.kdir, about or [], form, text if len(terms) == 1 else None, include_inactive, root=self.root)
         out = []
-        for unit in select(self.kdir, about or [], form, text, include_inactive, root=self.root):
+        for unit in units:
             if scope and scope_of(unit) != scope:
                 continue
-            out.append({"scope": scope_of(unit)} | {k: unit[k] for k in (
-                "id", "form", "status", "content", "condition", "about", "evidence") if k in unit})
-        return out[:limit]
+            blob = " ".join(str(unit.get(k, "")) for k in ("id", "content", "condition")).lower()
+            hits = sum(t in blob for t in terms) if len(terms) > 1 else 1
+            if hits:
+                out.append((hits, {"scope": scope_of(unit)} | {k: unit[k] for k in (
+                    "id", "form", "status", "content", "condition", "about", "evidence") if k in unit}))
+        return [u for _, u in sorted(out, key=lambda x: -x[0])][:limit]
 
     def knowledge_skills(self, text=None):
         from .knowledge.select import select_skills
@@ -173,7 +179,7 @@ class Server:
             client = message.get("params", {}).get("protocolVersion", PROTOCOL)
             result = {"protocolVersion": client, "capabilities": {"tools": {}},
                       "serverInfo": {"name": "knosis", "version": __version__},
-                      "instructions": f"Knosis knowledge layer at {self.kdir}"}
+                      "instructions": INSTRUCTIONS.format(kdir=self.kdir)}
         elif method == "ping":
             result = {}
         elif method == "tools/list":
@@ -191,6 +197,13 @@ class Server:
         return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
+INSTRUCTIONS = ("Knosis knowledge base at {kdir}: knowledge about the user's environment (projects, data, tools, servers) "
+                "collected from earlier agent sessions, each with evidence. At the start of a non-trivial task, call "
+                "knowledge_outline once, then knowledge_select with a few keywords for the task; treat inferred or contested "
+                "units as hints to verify, not facts. Record a clear, verified finding with knowledge_add only when it will "
+                "help later tasks; otherwise sessions are collected later by `knosis kb collect`.")
+
+
 def schema(properties, required=()):
     return {"type": "object", "properties": properties, "required": list(required)}
 
@@ -199,7 +212,8 @@ S, B, I = {"type": "string"}, {"type": "boolean"}, {"type": "integer"}
 LIST = {"type": "array", "items": {"type": "string"}}
 SCOPE = {"type": "string", "enum": ["instance", "relation", "dataset", "method", "utility"]}
 TOOLS = {
-    "knowledge_select": ("按任务筛选知识（κ 与本体单元），附证据计数。text 在 id / content / condition 里找子串。",
+    "knowledge_select": ("按任务筛选知识（κ 与本体单元），附证据计数。text 为一个词时在 id / content / condition 里找子串；"
+                         "多个词（空格分隔）时命中任一词即入选，按命中词数排序。",
                          {"text": S, "about": LIST, "form": S, "scope": SCOPE, "include_inactive": B, "limit": I}, ()),
     "knowledge_skills": ("列出 skill（如何运用知识解某类任务），附效果证据计数。", {"text": S}, ()),
     "knowledge_index": ("以对象为键的视图：某个数据文件 / 列 / 节点上有哪些知识、被决策引用过几次。", {"prefix": S}, ()),

@@ -38,6 +38,8 @@ def init_kb(kb) -> Path:
     kb.mkdir(parents=True, exist_ok=False)
     write_units(kb / "units.jsonl", [])
     write_units(kb / "evidence.jsonl", [])
+    # collect / organize 的 agent 日志与大纲草稿不入版本
+    (kb / ".gitignore").write_text("*.log\noutline.draft.yaml\n", encoding="utf-8")
     git(kb, "init", "--quiet")
     commit(kb, "init")
     return kb

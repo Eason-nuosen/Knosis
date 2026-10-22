@@ -183,6 +183,17 @@ Codex 按工具写出的 AutoSchemaKG 提示词自己抽取（实体关系 26 �
 另有归档节放撤回的单元。Codex 在 10 个节的 `notes` 里标出疑似重复或矛盾的单元，例如两条 utility 统计的是同两道题，不能当作独立支持；
 已撤回的「经典引力指数」假设与两道题的反馈结构矛盾。单元本身没有改动。产物：`ws/demo-organize-newton/knowledge/outline.yaml`。
 
+## 7. 个人知识库的日常闭环（2026-10-22）
+
+`knosis kb init ~/kb` 后，对本机最近 20 小时的 Codex 会话运行 `knosis kb collect --kb ~/kb --since 20h --include-workspaces`。
+真实记录里交互式会话只有几条问候（工具调用不足 3 次，被跳过），其余是 Knosis 驱动的工作区运行；这次收集的是 §6 的三个演示会话
+（PUMA 建图、MCP 操作、整理大纲）。提取 154 秒、整理大纲 69 秒，一次通过验收：11 条新知识、26 条证据、没有新 skill，
+大纲分三个场景（文本建图、知识层维护、幂律验证）。其中一条知识指出大纲 `notes` 写成列表时渲染成方括号字符串，随后修复。
+
+复用：在无关目录开新的 Codex 会话，MCP 指向 `~/kb`，问「怎么用 knosis 把英文年报建成知识图谱、要注意什么」。
+agent 依次调用 `knowledge_outline`、`knowledge_select`、`tool_card`，回答给出完整步骤，并带上收集来的注意事项
+（`--node` 是子串匹配会同时命中公司与事件名、`grounded` 不能证明关系正确）。38 秒，约 2.3 万 token。
+
 ## 知识层的使用情况
 
 | 演示 | κ 数 | 粒度分布 | skill | 被反驳的证据 |

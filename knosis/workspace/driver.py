@@ -53,6 +53,9 @@ def organize_prompt(path) -> str:
     note = ("（以下是整理前就有的问题，与本任务无关，可以保留：" + "；".join(before[:10]) + "）") if before else ""
     return Template((TEMPLATES / "organize.md").read_text(encoding="utf-8")).substitute(
         kdir=kdir, ws=path, draft=draft, check_note=note,
+        existing=("已有大纲 `outline.yaml`：在它的基础上更新，保留合理的结构，把「未归类」的新知识放进去，"
+                  "必要时拆分或合并节（`knosis knowledge outline --ws " + str(path) + "` 看当前大纲与未归类单元）。"
+                  if outline.load_outline(kdir) is not None else "还没有大纲，从草稿出发。"),
         n_units=sum(1 for i in items.values() if i.get("form") != "skill" and not i["id"].startswith("ontology/")),
         n_skills=sum(1 for i in items.values() if i.get("form") == "skill"),
         n_inactive=sum(1 for i in items.values() if i.get("status") in INACTIVE))

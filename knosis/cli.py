@@ -6,9 +6,10 @@
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
     knosis knowledge check|verify|select|skills|index|trace|outline|organize|evidence add|evidence import ... [--ws <ws>]
     knosis kb init <dir> | merge <ws> --kb <dir> | import-ontology <src> --kb <dir> [--strip-gt]
+    knosis kb collect --kb <dir> [--since 1d] [--source codex|claude] [--dry-run]
     knosis feedback submit <dev 预测文件> [--ws <ws>] | list [--ws <ws>]
     knosis eval <ws>
-    knosis install [--codex] [--claude]
+    knosis install [--codex] [--claude] [--kb <dir>]
     knosis mcp [--ws <工作区或知识库>]
 """
 
@@ -161,6 +162,18 @@ def knowledge_parser(sub):
     onto.add_argument("source", nargs="+")
     onto.add_argument("--kb", required=True)
     onto.add_argument("--strip-gt", action="store_true")
+    collect = kb.add_parser("collect", help="把最近的 Codex / Claude Code 会话交给 agent 提取知识，写回知识库并整理大纲")
+    collect.add_argument("--kb", required=True)
+    collect.add_argument("--since", default="1d", help="30m / 12h / 1d / 2w，或 ISO 日期")
+    collect.add_argument("--source", choices=["codex", "claude"], default="codex")
+    collect.add_argument("--limit", type=int, default=10, help="一次最多收集几个会话（旧的优先）")
+    collect.add_argument("--min-calls", type=int, default=3, help="工具调用少于此数的会话跳过")
+    collect.add_argument("--include-workspaces", action="store_true", help="也收集在 Knosis 工作区里运行的会话")
+    collect.add_argument("--agent", choices=["codex", "claude"], default="codex")
+    collect.add_argument("--model")
+    collect.add_argument("--effort")
+    collect.add_argument("--no-organize", action="store_true")
+    collect.add_argument("--dry-run", action="store_true", help="只列出会被收集的会话")
 
 
 def knowledge_command(args):
@@ -174,47 +187,56 @@ def knowledge_command(args):
             print(kb.init_kb(args.dir))
         elif args.kb_cmd == "merge":
             print(kb.merge(args.ws, args.kb))
+        elif args.kb_cmd == "collect":
+            from .knowledge import collect
+
+            print(json.dumps(collect.run(args.kb, args.source, args.since, args.limit, args.agent, args.model, args.effort,
+                                         args.include_workspaces, args.min_calls, not args.no_organize, args.dry_run),
+                             ensure_ascii=False, indent=1))
         else:
             for source in args.source:
                 print(source, json.dumps(kb.import_ontology(source, args.kb, args.strip_gt), ensure_ascii=False))
         return
+    from .workspace.driver import knowledge_dir
+
+    # 工作区的知识层在 knowledge/；知识库本身就是知识层目录（没有 data/，root 为 None）。
     ws = Path(args.ws).resolve()
+    kdir, root = knowledge_dir(ws)
+    history = [u for d in snapshots(ws) for u in knowledge.load_units(d / "units.jsonl")] if root else []
     if args.kn_cmd in {"outline", "organize"}:
         outline_command(args)
-    elif args.kn_cmd == "check" and not (ws / "knowledge").is_dir():  # 知识库
-        report(knowledge.check_knowledge(ws))
     elif args.kn_cmd == "check":
-        history = {u["id"] for d in snapshots(ws) for u in knowledge.load_units(d / "units.jsonl")}
-        report(knowledge.check_knowledge(ws / "knowledge", history, root=ws))
+        report(knowledge.check_knowledge(kdir, {u["id"] for u in history}, root=root))
     elif args.kn_cmd == "verify":
+        if root is None:
+            raise SystemExit("verify needs a workspace (checks run against data/)")
         for entry in knowledge.verify(ws, args.unit):
             print(entry["id"], entry["unit"], entry["verdict"], entry["note"][:200])
     elif args.kn_cmd == "select":
         from .knowledge import scope_of
 
-        for unit in select.select(ws / "knowledge", args.about, args.form, args.text, args.include_inactive, root=ws):
+        for unit in select.select(kdir, args.about, args.form, args.text, args.include_inactive, root=root):
             if args.scope and scope_of(unit) != args.scope:
                 continue
             print(json.dumps({"scope": scope_of(unit)} | {k: unit[k] for k in (
                 "id", "form", "status", "content", "condition", "about", "evidence") if k in unit}, ensure_ascii=False))
     elif args.kn_cmd == "skills":
-        for skill in select.select_skills(ws / "knowledge", args.text, args.include_inactive):
+        for skill in select.select_skills(kdir, args.text, args.include_inactive):
             print(json.dumps(skill, ensure_ascii=False))
     elif args.kn_cmd == "index":
-        for anchor, entry in select.index(ws / "knowledge", ws, args.prefix).items():
+        for anchor, entry in select.index(kdir, root, args.prefix).items():
             print(json.dumps({"anchor": anchor, **entry}, ensure_ascii=False))
     elif args.kn_cmd == "trace":
-        history = [u for d in snapshots(ws) for u in knowledge.load_units(d / "units.jsonl")]
-        print(knowledge.trace(ws / "knowledge", args.unit, history), end="")
+        print(knowledge.trace(kdir, args.unit, history), end="")
     elif args.ev_cmd == "add":
         entry = {"unit": args.unit, "verdict": args.verdict, "method": args.method, "source": args.source,
-                 "note": args.note, "inputs": data_inputs(ws, args.inputs) if args.inputs else {}}
-        print(knowledge.add_evidence(ws / "knowledge", [entry])[0]["id"])
+                 "note": args.note, "inputs": data_inputs(ws, args.inputs) if args.inputs and root else {}}
+        print(knowledge.add_evidence(kdir, [entry])[0]["id"])
     elif args.ev_cmd == "import":
-        for entry in knowledge.add_evidence(ws / "knowledge", knowledge.load_units(args.file)):
+        for entry in knowledge.add_evidence(kdir, knowledge.load_units(args.file)):
             print(entry["id"], entry["unit"], entry["verdict"])
     else:
-        for entry in knowledge.load_evidence(ws / "knowledge"):
+        for entry in knowledge.load_evidence(kdir):
             print(entry["id"], entry["unit"], entry["verdict"], entry["method"], entry["source"], entry.get("note", "")[:120])
 
 
@@ -244,7 +266,33 @@ def report(issues):
         raise SystemExit(1)
 
 
-def install_skill(codex=False, claude=False, home=None):
+BEGIN, END = "# >>> knosis (managed by `knosis install --kb`)", "# <<< knosis"
+
+
+def mcp_command(kb) -> list[str]:
+    import sys
+
+    return [sys.executable, "-m", "knosis.cli", "mcp", "--ws", str(Path(kb).expanduser().resolve())]
+
+
+def install_codex_mcp(config: Path, kb) -> Path:
+    """在 Codex 的 config.toml 里写（或替换）一段 knosis MCP 配置；放行审批，否则 `codex exec` 下调用会被拒。"""
+    command, *args = mcp_command(kb)
+    block = "\n".join([BEGIN, "[mcp_servers.knosis]", f"command = {json.dumps(command)}", f"args = {json.dumps(args)}",
+                       'default_tools_approval_mode = "approve"', END]) + "\n"
+    text = config.read_text(encoding="utf-8") if config.exists() else ""
+    if BEGIN in text:
+        text = text[:text.index(BEGIN)] + block + text[text.index(END) + len(END):].lstrip("\n")
+    elif "[mcp_servers.knosis]" in text:
+        raise SystemExit(f"{config} already has [mcp_servers.knosis] not managed by knosis; remove it first")
+    else:
+        text = text + ("\n" if text and not text.endswith("\n") else "") + ("\n" if text else "") + block
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(text, encoding="utf-8")
+    return config
+
+
+def install_skill(codex=False, claude=False, home=None, kb=None):
     from .workspace import TEMPLATES
 
     home = Path(home or Path.home())
@@ -259,6 +307,12 @@ def install_skill(codex=False, claude=False, home=None):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(TEMPLATES / "SKILL.md", target)
         print(target)
+    if kb and (codex or both):
+        print(install_codex_mcp(Path(os.environ.get("CODEX_HOME", home / ".codex")) / "config.toml", kb))
+    if kb and (claude or both):
+        import shlex
+
+        print("Claude Code：运行 claude mcp add -s user knosis -- " + " ".join(map(shlex.quote, mcp_command(kb))))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -293,6 +347,7 @@ def main(argv: list[str] | None = None) -> None:
     install = sub.add_parser("install", help="安装 Codex / Claude Code skill")
     install.add_argument("--codex", action="store_true")
     install.add_argument("--claude", action="store_true")
+    install.add_argument("--kb", help="同时把指向该知识库的 MCP 服务装进 Codex（写 config.toml），并给出 Claude Code 的命令")
     sub.add_parser("mcp", help="以 MCP（stdio）暴露知识层与工具层").add_argument("--ws", default=".", help="工作区或知识库")
     args = p.parse_args(argv)
 
@@ -328,7 +383,7 @@ def main(argv: list[str] | None = None) -> None:
 
         print(json.dumps(evaluate(args.dir), ensure_ascii=False, indent=2))
     elif args.cmd == "install":
-        install_skill(args.codex, args.claude)
+        install_skill(args.codex, args.claude, kb=args.kb)
     elif args.cmd == "mcp":
         from .mcp import serve
 

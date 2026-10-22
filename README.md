@@ -2,6 +2,9 @@
 
 > Knosis = know + gnosis。**面向 agent 的知识底座与实验平台。**
 
+日常用法：给自己的 agent 一个**个人知识库**。会话结束后收集其中的知识，整理成知识体系，
+下一次会话通过 MCP 取用（见下面「五分钟上手」）。
+
 Knosis 把多源数据接进来，让 agent（Codex / Claude Code 等）从中构造**可审计、可撤回的显式知识**，
 再用这些知识做决策，并评测知识到底有没有用。Knosis 本身不是 agent：它提供数据、知识格式、工具与评测，
 agent 负责思考。所有后续工作（新数据、新工具、新的知识构造或使用方法）都可以接到这里来测。
@@ -31,7 +34,38 @@ pytest -q
 或任意 Python 3.10+：`pip install -e '.[all]'`。核心包不依赖 torch；神经模型工具在各自环境里运行。
 数据默认在仓库下的 `data/<name>/`，可用 `KNOSIS_DATA_DIR` 指到别处；`knosis download <name>` 取数。
 
-## 快速开始
+## 五分钟上手：个人知识库
+
+不需要任何 benchmark 数据，只要装好 Knosis 和 Codex（或 Claude Code）。
+
+```bash
+# 1. 建库：一个 git 仓库，每次写回一个提交
+knosis kb init ~/kb
+
+# 2. 再利用：把 skill 与指向 ~/kb 的 MCP 服务装进 Codex（写 ~/.codex/config.toml 里一段带标记的配置，可重复执行）
+#    Claude Code 会打印一条 `claude mcp add ...` 命令，自己运行
+knosis install --kb ~/kb
+
+# 3. 照常用 Codex 干活。新会话里 agent 先看知识体系（knowledge_outline），再按任务检索（knowledge_select）
+
+# 4. 收集：把最近一天的会话交给 Codex 提取知识，写回 ~/kb，并更新知识体系大纲
+knosis kb collect --kb ~/kb --since 1d --dry-run     # 先看会收集哪些会话
+knosis kb collect --kb ~/kb --since 1d
+
+# 5. 管理：看知识体系、查某条知识的证据
+knosis knowledge outline --ws ~/kb
+knosis knowledge select --ws ~/kb --text <关键词>
+knosis knowledge trace <id> --ws ~/kb
+cd ~/kb && git log --oneline                        # 每次收集一个版本，可回退
+```
+
+收集时跳过：已收集过的会话、在知识库里运行的会话（收集与整理自身）、在 Knosis 工作区里运行的会话
+（那里的知识已由工作区记录，`--include-workspaces` 可放开）、工具调用少于 3 次的会话。
+只收集能被环境反驳的知识（项目约定、数据的坑、工具与命令的实际行为、报错与解决办法、可复用的方法），
+不收集用户偏好与对话记忆。会话原文会复制进 `~/kb/traces/` 供追溯，知识库是本地仓库，别推到公开远端。
+提取结果验收不通过时，知识库恢复到运行前的版本。
+
+## 快速开始（benchmark 工作区）
 
 ### 数据层
 

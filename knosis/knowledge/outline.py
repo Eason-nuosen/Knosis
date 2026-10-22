@@ -10,7 +10,7 @@
         title: 场景：从实验数据发现幂律
         summary: 一两句，说这一节的知识讲什么、对哪类任务有用
         units: [extract/single-axis-scaling, skill:discover-positive-power]   # κ、本体单元或 skill:<名字>
-        notes: 可选，疑似重复 / 互相矛盾的单元等，留给人看
+        notes: 可选，疑似重复 / 互相矛盾的单元等，留给人看（字符串或字符串列表）
         sections: [...]           # 子节
       - id: archive
         title: 已撤回或失效
@@ -164,8 +164,9 @@ def render(outline, items: dict, evidence=None) -> str:
             text = text if len(text) <= 120 else text[:120] + " …"
             ev = "，".join(f"{k} {v}" for k, v in counts.items())
             lines.append(f"- `{uid}` [{item.get('scope') or scope_of(item)}/{item.get('status')}] {text}" + (f"（{ev}）" if ev else ""))
-        if section.get("notes"):
-            lines += ["", f"> {section['notes']}"]
+        notes = section.get("notes")
+        if notes:
+            lines += ["", *[f"> {note}" for note in (notes if isinstance(notes, list) else str(notes).splitlines())]]
         lines.append("")
     left = unplaced(outline, items)
     if left:
