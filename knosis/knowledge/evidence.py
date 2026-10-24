@@ -1,4 +1,4 @@
-"""证据账本：`knowledge/evidence.jsonl`，每行一次验证结果。
+"""证据账本：`evidence/ledger.jsonl`，每行一次验证结果。
 
     {"id": "e-007", "unit": "<κ id>", "verdict": "support", "method": "check",
      "source": "tool:tabpfn@0.2(cv,...)", "note": "...", "inputs": {"data/train.parquet": "<指纹>"}, "created": "..."}
@@ -18,24 +18,26 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .layout import layout
 from .units import load_units, source_issues, write_units
 
 VERDICTS = {"support", "refute", "undetermined", "not_applicable"}
 METHODS = {"check", "tool", "data", "feedback", "ablation", "derivation", "human"}
 
 
-def load_evidence(directory) -> list[dict]:
-    path = Path(directory) / "evidence.jsonl"
+def load_evidence(root) -> list[dict]:
+    """`root`：工作区、知识库或知识版本快照。"""
+    path = layout(root).ledger
     return load_units(path) if path.exists() else []
 
 
-def add_evidence(directory, entries) -> list[dict]:
+def add_evidence(root, entries) -> list[dict]:
     """追加证据，补上 id 与 created。"""
-    old = load_evidence(directory)
+    old = load_evidence(root)
     now = datetime.now(timezone.utc).isoformat()
     new = [{"id": f"e-{len(old) + i + 1:04d}", **entry, "created": entry.get("created", now)}
            for i, entry in enumerate(entries)]
-    write_units(Path(directory) / "evidence.jsonl", old + new)
+    write_units(layout(root).ledger, old + new)
     return new
 
 
@@ -94,7 +96,7 @@ def run_check(unit, root, tables=None) -> tuple[str, str]:
 
     sql：`{"kind": "sql", "query": ..., "expect": [[...]]}`，在 `data/` 的表上（或给定 `tables`）执行；
     有 expect 时结果行相等即支持，否则第一行全部为真即支持。
-    python：`{"kind": "python", "path": "knowledge/checks/<id>.py"}`，在工作区根目录运行；
+    python：`{"kind": "python", "path": "evidence/checks/<id>.py"}`，在工作区根目录运行；
     退出码 0 支持，1 反驳，其他无法判定；stdout 末尾几行作为 note。
     """
     check, root = unit["check"], Path(root)
@@ -125,8 +127,8 @@ def same(a, b) -> bool:
 def verify(ws, ids=None) -> list[dict]:
     """重跑带 `check` 的活跃单元（或指定的 `ids`），把结果追加为 method=check 的证据。"""
     ws = Path(ws)
-    units = [u for u in load_units(ws / "knowledge/units.jsonl")
-             if "check" in u and (u["id"] in ids if ids else u["status"] not in {"retracted", "stale"})]
+    units = [u for u in load_units(layout(ws).units)
+             if "check" in u and (u["id"] in ids if ids else u["status"] not in {"retracted", "stale", "merged"})]
     entries = []
     for unit in units:
         verdict, note = run_check(unit, ws)
@@ -136,14 +138,13 @@ def verify(ws, ids=None) -> list[dict]:
             inputs[check["path"]] = fingerprint(ws / check["path"])
         entries.append({"unit": unit["id"], "verdict": verdict, "method": "check",
                         "source": f"check:{unit['id']}", "note": note, "inputs": inputs})
-    return add_evidence(ws / "knowledge", entries)
+    return add_evidence(ws, entries)
 
 
-def trace(directory, unit_id, history=()) -> str:
+def trace(root, unit_id, history=()) -> str:
     """一条知识的发现途径：派生链 + 每条证据，按时间排列，markdown。`history` 是历史快照里的单元。"""
-    directory = Path(directory)
-    units = {u["id"]: u for u in [*history, *load_units(directory / "units.jsonl")]}
-    evidence = by_unit(load_evidence(directory))
+    units = {u["id"]: u for u in [*history, *load_units(layout(root).units)]}
+    evidence = by_unit(load_evidence(root))
     lines, seen = [], set()
 
     def walk(uid, depth):
@@ -156,6 +157,9 @@ def trace(directory, unit_id, history=()) -> str:
         if unit.get("condition"):
             lines.append(f"{pad}  - 条件：{unit['condition']}")
         lines.append(f"{pad}  - 来源：{unit.get('provenance', '')}")
+        for key, label in (("merged_into", "已并入"), ("superseded_by", "被替换为"), ("conflicts_with", "与之矛盾")):
+            if unit.get(key):
+                lines.append(f"{pad}  - {label}：{unit[key]}")
         for entry in evidence.get(uid, []):
             note = entry.get("note", "")
             note = note if len(note) <= 300 else note[:300] + " …"

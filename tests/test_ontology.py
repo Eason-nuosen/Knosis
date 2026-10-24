@@ -40,13 +40,13 @@ def test_units_view():
 
 
 def test_about_refs(tmp_path):
-    knowledge = tmp_path / "knowledge"
-    ontology.write_ontology(knowledge / "ontology", ontology.load_ontology(SALES))
+    knowledge = tmp_path
+    ontology.write_ontology(knowledge / "kb/knowledge/ontology", ontology.load_ontology(SALES))
     unit = {"id": "u", "content": "金额是美元", "form": "fact", "provenance": "data/x.csv#col/Amount",
             "status": "observed", "about": ["sales.Amount", "MoneyUSD"]}
-    write_units(knowledge / "units.jsonl", [unit])
+    write_units(knowledge / "kb/knowledge/units.jsonl", [unit])
     assert not check_knowledge(knowledge)
-    write_units(knowledge / "units.jsonl", [{**unit, "about": ["sales.Nope"]}])
+    write_units(knowledge / "kb/knowledge/units.jsonl", [{**unit, "about": ["sales.Nope"]}])
     assert any("sales.Nope" in i for i in check_knowledge(knowledge))
 
 
@@ -116,18 +116,18 @@ def test_workspace_snapshots_and_forks_ontology(tmp_path):
     ws = w.init("tabarena", "toy", tmp_path / "ws", root=root.parent)
     w.goto(ws, "extract")
     model = ontology.from_tables("toy", {"train": pd.read_parquet(ws / "data/train.parquet")}, {"train": ["row_id"]})
-    ontology.write_ontology(ws / "knowledge/ontology", {"semantic_model": model})
-    write_units(ws / "knowledge/units.jsonl", [{"id": "u", "content": "x 是整数", "form": "fact", "status": "observed",
+    ontology.write_ontology(ws / "kb/knowledge/ontology", {"semantic_model": model})
+    write_units(ws / "kb/knowledge/units.jsonl", [{"id": "u", "content": "x 是整数", "form": "fact", "status": "observed",
                                                  "provenance": "data/train.parquet#col/x", "about": ["train.x"]}])
     assert not w.check(ws)
-    assert (ws / "stages/2_extract/knowledge/ontology/toy.semantic_model.yaml").exists()
-    write_units(ws / "knowledge/units.jsonl", [{"id": "u", "content": "x", "form": "fact", "status": "observed",
+    assert (ws / "stages/2_extract/kb/knowledge/ontology/toy.semantic_model.yaml").exists()
+    write_units(ws / "kb/knowledge/units.jsonl", [{"id": "u", "content": "x", "form": "fact", "status": "observed",
                                                  "provenance": "data/train.parquet#col/x", "about": ["train.zzz"]}])
     w.next_prompt(ws)
     (ws / "stages/3_refine/round_1/changelog.md").write_text("bad ref")
     assert any("train.zzz" in i for i in w.check(ws))
-    assert (w.fork(ws, tmp_path / "k0", "K_0") / "knowledge/ontology/toy.semantic_model.yaml").exists()
-    assert not (w.fork(ws, tmp_path / "none", "none") / "knowledge/ontology").exists()
+    assert (w.fork(ws, tmp_path / "k0", "K_0") / "kb/knowledge/ontology/toy.semantic_model.yaml").exists()
+    assert not (w.fork(ws, tmp_path / "none", "none") / "kb/knowledge/ontology").exists()
 
 
 @pytest.mark.parametrize("name, scenario, convert", [

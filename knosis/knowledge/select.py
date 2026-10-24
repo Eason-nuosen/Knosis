@@ -5,23 +5,27 @@ from __future__ import annotations
 from pathlib import Path
 
 from .evidence import by_unit, load_evidence
+from .layout import layout
 from .units import INACTIVE, load_units
 
 
-def select(directory, about=(), form=None, text=None, include_inactive=False, ontology=True, root=None) -> list[dict]:
+def select(base, about=(), form=None, text=None, include_inactive=False, ontology=True, root=None,
+           include_contested=False) -> list[dict]:
     """返回候选单元（κ 与本体视图单元），每条附 `evidence: {support, refute, undetermined, not_applicable}`。
 
     `about`：本体元素名，命中 κ 的 `about` 或本体单元自身；`text`：在 id / content / condition 里找子串（不分大小写）。
+    矛盾未决（contested）的单元默认不给，`include_contested` 或 `include_inactive` 时才给。
     """
     from . import all_ontology_units, ontology_docs
 
-    directory = Path(directory)
-    units = load_units(directory / "units.jsonl")
-    units += all_ontology_units(ontology_docs(directory)) if ontology else []
-    evidence = by_unit(load_evidence(directory), root)
+    units = load_units(layout(base).units)
+    units += all_ontology_units(ontology_docs(base)) if ontology else []
+    evidence = by_unit(load_evidence(base), root)
     chosen = []
     for unit in units:
         if not include_inactive and unit["status"] in INACTIVE:
+            continue
+        if not (include_contested or include_inactive) and unit["status"] == "contested":
             continue
         if form and unit["form"] != form:
             continue
@@ -38,22 +42,21 @@ def select(directory, about=(), form=None, text=None, include_inactive=False, on
     return chosen
 
 
-def select_skills(directory, text=None, include_inactive=False) -> list[dict]:
-    """列出 skill（解题集），附其效果证据计数；`text` 在 name / description / when 里找子串。"""
+def select_skills(base, text=None, include_inactive=False) -> list[dict]:
+    """列出 skill（解题集），附评价它的 usage 单元（`meta.of` 指向它）及其状态；`text` 在 name / description / when 里找子串。"""
     from .skills import load_skills, skill_id
 
-    evidence = by_unit(load_evidence(directory))
+    usage = [u for u in load_units(layout(base).units) if u.get("scope") == "usage" and u["status"] not in INACTIVE]
     out = []
-    for skill in load_skills(directory):
+    for skill in load_skills(base):
         if not include_inactive and skill.get("status", "active") != "active":
             continue
         blob = " ".join(str(skill.get(k, "")) for k in ("name", "description", "when")).lower()
         if text and text.lower() not in blob:
             continue
-        counts = {}
-        for entry in evidence.get(skill_id(skill), []):
-            counts[entry["verdict"]] = counts.get(entry["verdict"], 0) + 1
-        out.append({k: skill.get(k) for k in ("name", "description", "when", "uses", "status", "path")} | {"evidence": counts})
+        rated = [{"id": u["id"], "status": u["status"], "content": u["content"]} for u in usage
+                 if u.get("meta", {}).get("of") == skill_id(skill)]
+        out.append({k: skill.get(k) for k in ("name", "description", "when", "uses", "status", "path")} | {"usage": rated})
     return out
 
 
@@ -63,7 +66,7 @@ def anchors(unit) -> list[str]:
     return sorted({s for s in sources if s.startswith("data/")} | set(unit.get("about", [])))
 
 
-def index(directory, ws=None, prefix=None) -> dict[str, dict]:
+def index(base, ws=None, prefix=None) -> dict[str, dict]:
     """以对象为键的视图：{对象: {"units": [κ id], "used_in": {κ id: 被决策引用的次数}}}。
 
     `prefix`：只看以它开头的对象（如 `data/train.parquet#col/`）；`ws`：给定时统计各 decide / dev 交付旁的
@@ -71,8 +74,7 @@ def index(directory, ws=None, prefix=None) -> dict[str, dict]:
     """
     from . import all_ontology_units, ontology_docs
 
-    directory = Path(directory)
-    units = load_units(directory / "units.jsonl") + all_ontology_units(ontology_docs(directory))
+    units = load_units(layout(base).units) + all_ontology_units(ontology_docs(base))
     used = {}
     if ws is not None:
         for path in Path(ws).glob("stages/**/*used_units.jsonl"):

@@ -26,7 +26,7 @@ $layout。每道题对应一个数据库（题目的 `files` 列出它的文件�
 **mapping-based** 看映射到的数据是否一致（URI 模式中的列、条件、join、列 / 表达式），
 **name-based** 看类名、关系名、属性名（及所属类名）是否一致。
 
-也可以先把结构写成 `knowledge/ontology/` 下的本体（Ossie 三文件），再转成上面的交付格式；不强制。
+也可以先把结构写成 `kb/knowledge/ontology/` 下的本体（OSI 三层），再转成上面的交付格式；不强制。
 
 ## 知识应该服务什么
 

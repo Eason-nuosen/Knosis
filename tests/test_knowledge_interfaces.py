@@ -6,7 +6,7 @@ import json
 import pytest
 
 from knosis.cli import main
-from knosis.knowledge import check_knowledge, check_units, load_units, outline, write_units
+from knosis.knowledge import check_knowledge, check_units, consolidate, load_units, outline, write_units
 from knosis.mcp import Server, serve
 from knosis.tools.autoschemakg import run as askg
 from knosis.workspace import driver
@@ -28,11 +28,12 @@ def extraction(pid):
 def ws(tmp_path, monkeypatch):
     root = tmp_path / "ws"
     (root / "data").mkdir(parents=True)
-    (root / "knowledge").mkdir()
+    (root / ".knosis").mkdir()
+    (root / ".knosis/state.json").write_text("{}")
     (root / "data/doc.md").write_text(TEXT, encoding="utf-8")
-    write_units(root / "knowledge/units.jsonl", [
+    write_units(root / "kb/knowledge/units.jsonl", [
         {"id": "a", "content": "a", "form": "finding", "provenance": "data/doc.md#0-10", "status": "inferred", "scope": "instance"},
-        {"id": "m", "content": "m", "form": "method", "provenance": "derived", "derived_from": ["a"], "status": "inferred"},
+        {"id": "m", "content": "m", "form": "procedure", "provenance": "derived", "derived_from": ["a"], "status": "inferred"},
         {"id": "old", "content": "old", "form": "finding", "provenance": "data/doc.md", "status": "retracted"},
     ])
     monkeypatch.chdir(root)
@@ -81,7 +82,7 @@ def test_parse_array():
 
 
 def test_outline(ws, capsys):
-    kdir = ws / "knowledge"
+    kdir = ws
     draft = outline.draft(kdir)
     assert draft["title"] == "ws"
     assert [s["id"] for s in draft["sections"]] == ["method", "instance", "archive"]
@@ -95,15 +96,16 @@ def test_outline(ws, capsys):
     # 有大纲时知识层检查会带上它
     outline.write_outline(kdir, bad)
     assert any(i.startswith("outline") for i in check_knowledge(kdir, root=ws))
-    assert driver.organize_issues(ws)[-1].startswith("outline: 1 active units not placed: m")
+    before = {u["id"] for u in load_units(ws / "kb/knowledge/units.jsonl")}
+    assert consolidate.step_issues(ws, "organize", before, [])[-1].startswith("outline: 1 active units not placed: m")
     main(["knowledge", "outline", "--ws", str(ws)])
     assert "## 未归类（1）" in capsys.readouterr().out
     assert "> a\n> b" in outline.render({"title": "t", "sections": [{"id": "s", "title": "s", "notes": ["a", "b"]}]}, {})
-    (kdir / outline.FILE).unlink()
+    (ws / "kb/outline.yaml").unlink()
     main(["knowledge", "outline", "--ws", str(ws), "--write"])
-    assert not driver.organize_issues(ws)
-    prompt = driver.organize_prompt(ws)
-    assert "outline.yaml" in prompt and (kdir / "outline.draft.yaml").exists()
+    assert not consolidate.step_issues(ws, "organize", before, [])
+    prompt = consolidate.prompt(ws, "organize")
+    assert "outline.yaml" in prompt and (ws / "kb/outline.draft.yaml").exists()
 
 
 def test_mcp_server(ws):
@@ -127,7 +129,7 @@ def test_mcp_server(ws):
     # 撤回父单元时，派生单元未跟着失效（I5）→ 拒绝
     assert call("knowledge_update", id="a", fields={"status": "retracted"})["isError"]
     assert not call("knowledge_update", id="n", fields={"status": "retracted"})["isError"]
-    assert {u["id"]: u["status"] for u in load_units(ws / "knowledge/units.jsonl")}["n"] == "retracted"
+    assert {u["id"]: u["status"] for u in load_units(ws / "kb/knowledge/units.jsonl")}["n"] == "retracted"
     result = json.loads(call("evidence_add", unit="m", verdict="refute", method="derivation", source="a")["content"][0]["text"])
     assert result["unit_issues"]  # 被反驳后要求改状态
     assert call("nope")["isError"]
@@ -177,31 +179,31 @@ def test_collect(tmp_path, monkeypatch):
     assert len(collect.find(kb, since="1d", include_workspaces=True)[0]) == 2
 
     def fake_agent(cmd, cwd, env, stdin, stdout, stderr):  # 模拟 agent：写一条引用轨迹的知识
-        units = load_units(kb / "units.jsonl")
-        write_units(kb / "units.jsonl", units + [{"id": "collect/ls", "content": "ls works", "form": "finding",
-                                                  "status": "inferred", "provenance": "knowledge/traces/rollout-a.jsonl#step/1"}])
+        units = load_units(kb / "kb/knowledge/units.jsonl")
+        write_units(kb / "kb/knowledge/units.jsonl", units + [{"id": "collect/ls", "content": "ls works", "form": "finding",
+                                                  "status": "inferred", "provenance": "evidence/traces/rollout-a.jsonl#step/1"}])
         return type("R", (), {"returncode": 0})()
 
     real = collect.subprocess.run
     monkeypatch.setattr(collect.subprocess, "run", lambda *a, **k: fake_agent(a[0], **k) if a[0][0] == "codex" else real(*a, **k))
-    result = collect.run(kb, since="1d", organize=False)
-    assert result["added"] == ["collect/ls"] and (kb / "traces/rollout-a.md").exists()
+    result = collect.run(kb, since="1d", consolidate=False)
+    assert result["added"] == ["collect/ls"] and (kb / "evidence/traces/rollout-a.md").exists()
     assert collect.collected(kb) == {"rollout-a"} and not collect.find(kb, since="1d")[0]
     assert "collect: 1 codex sessions" in collect.git(kb, "log", "-1", "--format=%s")
     # 不引用本次轨迹的新单元不通过，重试后仍不通过就恢复知识库
     codex_session(sessions / "rollout-e.jsonl", project)
 
     def bad_agent(cmd, cwd, env, stdin, stdout, stderr):
-        units = load_units(kb / "units.jsonl")
+        units = load_units(kb / "kb/knowledge/units.jsonl")
         if not any(u["id"] == "collect/bad" for u in units):
-            write_units(kb / "units.jsonl", units + [{"id": "collect/bad", "content": "x", "form": "finding",
+            write_units(kb / "kb/knowledge/units.jsonl", units + [{"id": "collect/bad", "content": "x", "form": "finding",
                                                       "status": "inferred", "provenance": "somewhere"}])
         return type("R", (), {"returncode": 0})()
 
     monkeypatch.setattr(collect.subprocess, "run", lambda *a, **k: bad_agent(a[0], **k) if a[0][0] == "codex" else real(*a, **k))
-    result = collect.run(kb, since="1d", organize=False)
+    result = collect.run(kb, since="1d", consolidate=False)
     assert result["restored"] and "must cite" in result["issues"][0]
-    assert [u["id"] for u in load_units(kb / "units.jsonl")] == ["collect/ls"] and not (kb / "traces/rollout-e.md").exists()
+    assert [u["id"] for u in load_units(kb / "kb/knowledge/units.jsonl")] == ["collect/ls"] and not (kb / "evidence/traces/rollout-e.md").exists()
 
 
 def test_install_mcp(tmp_path, monkeypatch):
@@ -223,7 +225,7 @@ def test_install_mcp(tmp_path, monkeypatch):
 
 def test_select_keywords(ws):
     server = Server(ws)
-    write_units(ws / "knowledge/units.jsonl", load_units(ws / "knowledge/units.jsonl") + [
+    write_units(ws / "kb/knowledge/units.jsonl", load_units(ws / "kb/knowledge/units.jsonl") + [
         {"id": "k", "content": "alpha beta", "form": "finding", "provenance": "data/doc.md", "status": "inferred"}])
     assert [u["id"] for u in server.knowledge_select(text="beta alpha zzz")] == ["k"]
     assert server.knowledge_select(text="zzz yyy") == []

@@ -3,7 +3,7 @@
 每个数据集一个打分器 `score(ws, state, ds, path, ids) -> dict`，用 `@register("<数据集>")` 注册：
 `path` 是交付文件（格式见导出器的 `output`），`ids` 是要打分的题目 id，`ds` 从原始数据目录重新加载（含 GT）。
 返回 `{"metrics": {...}, "items": [{"id", "ok", "gold", ...}], "reference": {...}}`：
-`evaluate` 在测试题上调用它；知识层的反馈（`knowledge.feedback.submit`）在 dev 题上调用同一个函数。
+`evaluate` 在测试题上调用它；dev 反馈（`knowledge.feedback.submit`）在 dev 题上调用同一个函数。
 
 知识本身对不对（与任务有没有用分开）由可选的 `score_knowledge(ws, state, ds) -> dict` 评，
 用 `@register_knowledge("<数据集>")` 注册，结果写进评测报告的 `knowledge` 段；它可以读 GT，但结果不回给 agent。
@@ -17,7 +17,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from ..knowledge import INACTIVE, all_ontology_units, load_units, ontology_docs, skills
+from ..knowledge import INACTIVE, all_ontology_units, layout, load_units, ontology_docs, skills
 
 SCORERS: dict[str, Callable] = {}
 KNOWLEDGE_SCORERS: dict[str, Callable] = {}
@@ -57,7 +57,7 @@ def evaluate(ws, write: bool = True) -> dict:
     report["knowledge_summary"] = summary(ws)
     if state["benchmark"] in KNOWLEDGE_SCORERS:
         report["knowledge"] = KNOWLEDGE_SCORERS[state["benchmark"]](ws, state, ds)
-    report["utility"] = test_utility(ws, result["items"])
+    report["usage_effect"] = test_usage(ws, result["items"])
     if write:
         (ws / ".knosis/eval.json").write_text(
             json.dumps({**report, "items": result["items"]}, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
@@ -67,14 +67,14 @@ def evaluate(ws, write: bool = True) -> dict:
 def usage(ws) -> dict:
     """`stages/4_decide/used_units.jsonl`（每行 {id, used_units}）里知识被引用的情况。"""
     path = Path(ws) / "stages/4_decide/used_units.jsonl"
-    units = {u["id"]: u for u in load_units(Path(ws) / "knowledge/units.jsonl")}
+    units = {u["id"]: u for u in load_units(layout(ws).units)}
     if not path.exists():
         return {"reported": False, "units": len(units)}
     rows = load_units(path)
     cited = [uid for row in rows for uid in row.get("used_units", [])]
     # 本体单元与 skill 也可以被引用。
-    known = set(units) | {u["id"] for u in all_ontology_units(ontology_docs(Path(ws) / "knowledge"))}
-    known |= {skills.skill_id(s) for s in skills.load_skills(Path(ws) / "knowledge")}
+    known = set(units) | {u["id"] for u in all_ontology_units(ontology_docs(ws))}
+    known |= {skills.skill_id(s) for s in skills.load_skills(ws)}
     return {
         "reported": True, "units": len(units), "predictions": len(rows),
         "with_knowledge": sum(bool(row.get("used_units")) for row in rows) / max(1, len(rows)),
@@ -84,8 +84,8 @@ def usage(ws) -> dict:
     }
 
 
-def test_utility(ws, items) -> dict:
-    """测试题上每条被引用知识的效用：用到时 / 没用到时的正确率。只写进评测报告，不写回知识层（否则测试结果会经知识库泄漏）。"""
+def test_usage(ws, items) -> dict:
+    """测试题上每条被引用知识的使用效果：用到时 / 没用到时的正确率。只写进评测报告，不写回知识层（否则测试结果会经知识库泄漏）。"""
     path = Path(ws) / "stages/4_decide/used_units.jsonl"
     if not path.exists() or not items or "ok" not in items[0]:
         return {"reported": False}
@@ -108,14 +108,16 @@ def summary(ws) -> dict:
     """知识层概况：各形式 / 状态的单元数，各结论的证据数，带可执行检查的单元数。"""
     from ..knowledge import load_evidence
 
-    units = load_units(Path(ws) / "knowledge/units.jsonl")
+    units = load_units(layout(ws).units)
     count = lambda values: dict(sorted(Counter(values).items()))  # noqa: E731
     from ..knowledge import scope_of
 
     return {"units": len(units), "scopes": count(scope_of(u) for u in units),
+            "levels": count("meta" if scope_of(u) in ("method", "usage") else "object" for u in units),
             "forms": count(u["form"] for u in units), "statuses": count(u["status"] for u in units),
             "with_check": sum("check" in u for u in units),
-            "evidence": count(e["verdict"] for e in load_evidence(Path(ws) / "knowledge"))}
+            "evidence": count(e["verdict"] for e in load_evidence(ws)),
+            "consolidate": count(a["op"] for a in load_units(layout(ws).actions)) if layout(ws).actions.exists() else {}}
 
 
 def answers(path) -> dict:

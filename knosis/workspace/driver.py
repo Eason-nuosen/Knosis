@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from ..knowledge import feedback, load_units
+from ..knowledge import feedback, layout, load_units
 from . import check, goto, next_prompt, prediction_ids, save_state, stage_dir, stage_issues, status
 
 
@@ -34,72 +34,17 @@ def submit_round(ws, state, directory) -> None:
             feedback.submit(ws, path)
 
 
-def knowledge_dir(path) -> tuple[Path, Path | None]:
-    """（知识层目录, 工作区根）：工作区的知识层在 knowledge/；知识库本身就是知识层目录，没有工作区根。"""
-    path = Path(path).resolve()
-    return (path / "knowledge", path) if (path / "knowledge").is_dir() else (path, None)
-
-
-def organize_prompt(path) -> str:
-    from string import Template
-
-    from ..knowledge import INACTIVE, check_knowledge, outline
-    from . import TEMPLATES
-
-    kdir, root = knowledge_dir(path)
-    draft = outline.write_outline(kdir, outline.draft(kdir), "outline.draft.yaml")
-    items = outline.members(kdir)
-    before = [i for i in check_knowledge(kdir, root=root) if not i.startswith("outline")]
-    note = ("（以下是整理前就有的问题，与本任务无关，可以保留：" + "；".join(before[:10]) + "）") if before else ""
-    return Template((TEMPLATES / "organize.md").read_text(encoding="utf-8")).substitute(
-        kdir=kdir, ws=path, draft=draft, check_note=note,
-        existing=("已有大纲 `outline.yaml`：在它的基础上更新，保留合理的结构，把「未归类」的新知识放进去，"
-                  "必要时拆分或合并节（`knosis knowledge outline --ws " + str(path) + "` 看当前大纲与未归类单元）。"
-                  if outline.load_outline(kdir) is not None else "还没有大纲，从草稿出发。"),
-        n_units=sum(1 for i in items.values() if i.get("form") != "skill" and not i["id"].startswith("ontology/")),
-        n_skills=sum(1 for i in items.values() if i.get("form") == "skill"),
-        n_inactive=sum(1 for i in items.values() if i.get("status") in INACTIVE))
-
-
-def organize_issues(path) -> list[str]:
-    from ..knowledge import check_knowledge, outline
-
-    kdir, root = knowledge_dir(path)
-    current = outline.load_outline(kdir)
-    if current is None:
-        return [f"missing {kdir / outline.FILE}"]
-    items = outline.members(kdir)
-    left = outline.unplaced(current, items)
-    issues = [i for i in check_knowledge(kdir, root=root) if i.startswith("outline")]
-    return issues + ([f"outline: {len(left)} active units not placed: {', '.join(left[:20])}"] if left else [])
-
-
 def organize(path, agent="codex", model=None, effort=None) -> list[str]:
-    """让 agent 结合已有知识整理出知识体系（outline.yaml）；不通过时带着问题重试一次，返回最后的问题清单。"""
-    if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
-        raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
-    kdir, root = knowledge_dir(path)
-    cwd = root or kdir
-    prompt, issues = organize_prompt(path), []
-    env = {**os.environ, "KNOSIS_DEPTH": "1"}
-    for attempt in range(2):
-        started = time.monotonic()
-        with (kdir / "organize.log").open("a", encoding="utf-8") as log:
-            result = subprocess.run(agent_command(agent, cwd, prompt, model, effort), cwd=cwd, env=env,
-                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
-        if result.returncode:
-            raise RuntimeError(f"{agent} exited with {result.returncode}; see {kdir / 'organize.log'}")
-        issues = organize_issues(path)
-        print(json.dumps({"attempt": attempt + 1, "seconds": round(time.monotonic() - started), "issues": issues},
-                         ensure_ascii=False))
-        if not issues:
-            break
-        prompt += "\n验收未通过，请修正：\n" + "\n".join(issues)
-    return issues
+    """只做内化的「构建知识体系」一步（见 `knowledge.consolidate`），返回最后的问题清单。"""
+    from ..knowledge import consolidate
+
+    return consolidate.run(path, ["organize"], agent, model, effort)[0]["issues"]
 
 
-def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=None) -> None:
-    """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。`note`：附加在每个阶段提示末尾的实验说明。"""
+def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=None, consolidate=False) -> None:
+    """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。`note`：附加在每个阶段提示末尾的实验说明。
+    `consolidate`：refine 全部轮次结束、进入 decide 之前做一次内化（去重 → 矛盾处理 → 构建知识体系），
+    通过后把知识层再快照为最后一轮之后的版本。"""
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
     ws = Path(ws).resolve()
@@ -131,7 +76,7 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=
                         save_state(ws, before)
                 record = {"stage": stage, "round": before["round"], "attempt": attempt + 1,
                           "agent": agent, "model": model, "effort": effort, "note": note, "seconds": time.monotonic() - started,
-                          "units": len(load_units(ws / "knowledge/units.jsonl")), "issues": issues}
+                          "units": len(load_units(layout(ws).units)), "issues": issues}
                 with (ws / ".knosis/runs.jsonl").open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")
                 if not issues:
@@ -140,4 +85,32 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=
             if issues:
                 raise RuntimeError("\n".join(issues))
         if stage == "refine":
+            if consolidate:
+                consolidate_ws(ws, agent, model, effort)
             goto(ws, "decide")
+
+
+def consolidate_ws(ws, agent, model, effort) -> None:
+    """refine 之后的内化；结果与耗时记进 runs.jsonl，通过的步骤会改变知识层，再提交一次 refine 版本作为 K_final。"""
+    from ..knowledge import consolidate
+
+    results = consolidate.run(ws, agent=agent, model=model, effort=effort)
+    with (ws / ".knosis/runs.jsonl").open("a", encoding="utf-8") as fh:
+        for r in results:
+            fh.write(json.dumps({"stage": "consolidate", **r, "agent": agent, "model": model, "effort": effort,
+                                 "units": len(load_units(layout(ws).units))}, ensure_ascii=False) + "\n")
+    if any(not r["issues"] for r in results):
+        # 内化发生在最后一轮 refine 之后：快照为下一个 refine 版本（K_final），每步已各自验收过。
+        from . import commit, copy_knowledge
+
+        state = status(ws)
+        state["stage"] = "refine"
+        directory = stage_dir(ws, state)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "changelog.md").write_text("# 内化\n\n" + "\n".join(
+            f"- {r['step']}：{'通过' if not r['issues'] else '未通过，已恢复'}，操作 {json.dumps(r.get('actions', {}), ensure_ascii=False)}"
+            for r in results) + "\n", encoding="utf-8")
+        copy_knowledge(ws, directory)
+        state["round"] += 1
+        save_state(ws, state)
+        commit(ws, f"consolidate: {len(load_units(layout(ws).units))} units")

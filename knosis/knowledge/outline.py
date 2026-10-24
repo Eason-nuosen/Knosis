@@ -1,4 +1,4 @@
-"""知识体系（大纲）：把零散的 κ / skill 组织成层级，`knowledge/outline.yaml`。
+"""知识体系（大纲）：把零散的单跳知识（κ / skill）串成层级脉络，`kb/outline.yaml`。
 
 大纲只是导航层，不新增断言：每节的 summary 只概括成员单元已经说了的内容，对错仍以单元及其证据为准；
 因此改大纲不需要证据，也不改 `units.jsonl`。
@@ -16,7 +16,7 @@
         title: 已撤回或失效
         archive: true             # 只有 archive 节可以放 retracted / stale 的单元
 
-默认层级（`draft` 生成，由 agent 改写成有语义的分组）：场景（utility 与 skill）→ 方法（method）
+默认层级（`draft` 生成，由 agent 改写成有语义的分组）：场景（usage 与 skill）→ 方法（method）
 → 数据间关系（relation）→ 数据整体规律（dataset）→ 具体对象（instance），后三层按锚定的数据文件分组。
 """
 
@@ -26,11 +26,12 @@ from pathlib import Path
 
 import yaml
 
+from .layout import layout
 from .units import INACTIVE, SCOPES, load_units, scope_of
 
 FILE = "outline.yaml"
 LAYERS = {
-    "utility": ("scene", "场景：哪些知识对哪类任务有用"),
+    "usage": ("scene", "场景：哪些知识对哪类任务有用"),
     "method": ("method", "方法：如何发现与验证知识"),
     "relation": ("relation", "数据间关系"),
     "dataset": ("dataset", "数据整体规律"),
@@ -38,13 +39,13 @@ LAYERS = {
 }
 
 
-def load_outline(directory) -> dict | None:
-    path = Path(directory) / FILE
+def load_outline(base) -> dict | None:
+    path = layout(base).outline
     return yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
-def write_outline(directory, outline, name=FILE) -> Path:
-    path = Path(directory) / name
+def write_outline(base, outline, name=FILE) -> Path:
+    path = layout(base).kb / name
     path.write_text(yaml.safe_dump(outline, allow_unicode=True, sort_keys=False, width=1000), encoding="utf-8")
     return path
 
@@ -55,18 +56,17 @@ def walk(sections, depth=0):
         yield from walk(section.get("sections"), depth + 1)
 
 
-def members(directory) -> dict[str, dict]:
+def members(base) -> dict[str, dict]:
     """可以放进大纲的条目：κ、本体单元、skill（记为 `skill:<名字>`），{id: 条目}。"""
     from . import all_ontology_units, ontology_docs
     from .skills import load_skills, skill_id
 
-    directory = Path(directory)
-    path = directory / "units.jsonl"
+    path = layout(base).units
     items = {u["id"]: u for u in (load_units(path) if path.exists() else [])}
-    items |= {u["id"]: u for u in all_ontology_units(ontology_docs(directory))}
-    for skill in load_skills(directory):
+    items |= {u["id"]: u for u in all_ontology_units(ontology_docs(base))}
+    for skill in load_skills(base):
         items[skill_id(skill)] = {"id": skill_id(skill), "content": skill.get("description", ""), "form": "skill",
-                                  "status": skill.get("status", "active"), "scope": "utility", "uses": skill.get("uses", [])}
+                                  "status": skill.get("status", "active"), "scope": "usage", "uses": skill.get("uses", [])}
     return items
 
 
@@ -81,9 +81,9 @@ def anchor_file(item) -> str:
     return files[0] if files else ""
 
 
-def draft(directory, title=None) -> dict:
+def draft(base, title=None) -> dict:
     """按粒度与锚定文件生成的大纲草稿；本体单元很多时不逐个列，只在「数据间关系」下记一节。"""
-    items = members(directory)
+    items = members(base)
     groups: dict[str, dict[str, list]] = {scope: {} for scope in SCOPES}
     archived = []
     for uid, item in items.items():
@@ -94,7 +94,7 @@ def draft(directory, title=None) -> dict:
             groups["relation"].setdefault("本体", []).append(uid)
             continue
         scope = item.get("scope") or scope_of(item)
-        key = "" if scope in ("utility", "method") else anchor_file(item)
+        key = "" if scope in ("usage", "method") else anchor_file(item)
         groups[scope].setdefault(key, []).append(uid)
     sections = []
     for scope, (sid, name) in LAYERS.items():
@@ -109,9 +109,7 @@ def draft(directory, title=None) -> dict:
         sections.append(section)
     if archived:
         sections.append({"id": "archive", "title": "已撤回或失效", "archive": True, "units": sorted(archived)})
-    directory = Path(directory).resolve()
-    name = directory.parent.name if directory.name == "knowledge" else directory.name
-    return {"title": title or name, "summary": "", "sections": sections}
+    return {"title": title or Path(base).resolve().name, "summary": "", "sections": sections}
 
 
 def check_outline(outline, items: dict) -> list[str]:

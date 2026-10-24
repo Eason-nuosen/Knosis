@@ -5,11 +5,12 @@
 1. 找会话：Codex 在 `$CODEX_HOME/sessions/**/rollout-*.jsonl`，Claude Code 在 `~/.claude/projects/*/*.jsonl`；
    按修改时间筛选，跳过已收集过的（`collected.jsonl`）、工作目录在知识库内的（收集 / 整理自身的会话）、
    工作目录是 Knosis 工作区的（那里的知识已由工作区流程记录，`--include-workspaces` 可放开）、工具调用少于 `--min-calls` 的。
-2. 统一成步骤序列写进 `<kb>/traces/<会话 id>.{jsonl,md}`；知识引用写 `knowledge/traces/<id>.jsonl#step/<n>`
+2. 统一成步骤序列写进 `<kb>/evidence/traces/<会话 id>.{jsonl,md}`；知识引用写 `evidence/traces/<id>.jsonl#step/<n>`
    （与 `kb merge` 一致，继承进工作区后仍能定位）。
 3. 在知识库目录启动 agent 提取（模板 `templates/collect.md`），验收：知识层检查不新增问题、新单元引用了本次的轨迹；
    不通过带着问题重试一次，仍不通过就把知识库恢复到运行前（要求运行前知识库没有未提交的改动）。
-4. 通过后记入 `collected.jsonl`，再整理大纲（`organize`，可 `--no-organize`），最后提交一个 git 版本。
+4. 通过后记入 `collected.jsonl`，再做内化（`consolidate`：去重 → 矛盾处理 → 构建知识体系，可 `--no-consolidate`），
+   最后提交一个 git 版本。
 
 轨迹原文会复制进知识库（本地 git 仓库），其中可能有路径、内部信息；提示要求 agent 不把密钥、口令写进知识。
 """
@@ -25,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..data.traces import normalize, read, render
+from .layout import TRACES, layout
 from .units import load_units, write_units
 
 LOG = "collected.jsonl"
@@ -98,13 +100,13 @@ def find(kb, source="codex", since="1d", include_workspaces=False, min_calls=3, 
 def write_traces(kb, sessions) -> list[str]:
     lines = []
     for s in sessions:
-        out = Path(kb) / "traces" / f"{s['session']}.jsonl"
+        out = layout(kb).traces / f"{s['session']}.jsonl"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in s["steps"]), encoding="utf-8")
         out.with_suffix(".md").write_text(render(s["steps"], f"{s['session']}（{s['source']}，工作目录 {s['cwd']}）"),
                                           encoding="utf-8")
         calls = sum(x["kind"] == "call" for x in s["steps"])
-        lines.append(f"- `traces/{s['session']}.md`：{s['source']}，{s['modified'][:16]}，工作目录 `{s['cwd']}`，"
+        lines.append(f"- `{TRACES}/{s['session']}.md`：{s['source']}，{s['modified'][:16]}，工作目录 `{s['cwd']}`，"
                      f"{len(s['steps'])} 步（工具调用 {calls} 次）")
     return lines
 
@@ -114,10 +116,10 @@ def prompt(kb, sessions) -> str:
 
     from ..workspace import TEMPLATES
 
-    units = load_units(Path(kb) / "units.jsonl")
+    units = load_units(layout(kb).units)
     return Template((TEMPLATES / "collect.md").read_text(encoding="utf-8")).substitute(
         kb=Path(kb).resolve(), n=len(sessions), listing="\n".join(write_traces(kb, sessions)), n_units=len(units),
-        outline="有，先读 `outline.yaml`" if (Path(kb) / "outline.yaml").exists() else "还没有")
+        outline="有，先读 `kb/outline.yaml`" if layout(kb).outline.exists() else "还没有")
 
 
 def git(kb, *args) -> str:
@@ -129,20 +131,20 @@ def acceptance(kb, before_issues, before_ids, sessions) -> list[str]:
 
     issues = sorted(set(check_knowledge(kb)) - set(before_issues))
     ids = {s["session"] for s in sessions}
-    for unit in load_units(Path(kb) / "units.jsonl"):
+    for unit in load_units(layout(kb).units):
         if unit["id"] in before_ids:
             continue
-        cited = re.findall(r"knowledge/traces/([^#; ]+)\.jsonl", unit.get("provenance", ""))
+        cited = re.findall(rf"{TRACES}/([^#; ]+)\.jsonl", unit.get("provenance", ""))
         if unit.get("provenance", "").strip() != "derived" and not set(cited) & ids:
-            issues.append(f"{unit['id']}: new unit must cite this run's traces as knowledge/traces/<id>.jsonl#step/<n>")
+            issues.append(f"{unit['id']}: new unit must cite this run's traces as {TRACES}/<id>.jsonl#step/<n>")
     return issues
 
 
 def run(kb, source="codex", since="1d", limit=10, agent="codex", model=None, effort=None, include_workspaces=False,
-        min_calls=3, organize=True, dry_run=False) -> dict:
+        min_calls=3, consolidate=True, dry_run=False) -> dict:
     from ..workspace.driver import agent_command
-    from ..workspace.driver import organize as organize_kb
     from . import check_knowledge
+    from . import consolidate as consolidate_kb
 
     kb = Path(kb).resolve()
     sessions, skipped = find(kb, source, since, include_workspaces, min_calls)
@@ -152,10 +154,10 @@ def run(kb, source="codex", since="1d", limit=10, agent="codex", model=None, eff
         return summary | {"cwd": [s["cwd"] for s in sessions]}
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
-    if git(kb, "status", "--porcelain", "--", ".", ":!*.log", ":!outline.draft.yaml"):
+    if git(kb, "status", "--porcelain", "--", ".", ":!*.log", ":!kb/outline.draft.yaml"):
         raise RuntimeError(f"{kb} has uncommitted changes; commit or discard them first")
     before_issues = check_knowledge(kb)
-    before_ids = {u["id"] for u in load_units(kb / "units.jsonl")}
+    before_ids = {u["id"] for u in load_units(layout(kb).units)}
     text, issues = prompt(kb, sessions), []
     env = {**os.environ, "KNOSIS_DEPTH": "1"}
     for attempt in range(2):
@@ -172,16 +174,16 @@ def run(kb, source="codex", since="1d", limit=10, agent="codex", model=None, eff
         text += "\n验收未通过，请修正：\n" + "\n".join(issues)
     if issues:
         git(kb, "reset", "--hard", "HEAD")
-        git(kb, "clean", "-fd", "-e", "*.log", "-e", "outline.draft.yaml")
+        git(kb, "clean", "-fd", "-e", "*.log", "-e", "kb/outline.draft.yaml")
         return summary | {"issues": issues, "restored": True}
-    added = sorted({u["id"] for u in load_units(kb / "units.jsonl")} - before_ids)
+    added = sorted({u["id"] for u in load_units(layout(kb).units)} - before_ids)
     now = datetime.now(timezone.utc).isoformat()
     log = load_units(kb / LOG) if (kb / LOG).exists() else []
     write_units(kb / LOG, log + [{"session": s["session"], "source": s["source"], "path": s["path"], "cwd": s["cwd"],
                                   "collected": now} for s in sessions])
     summary |= {"added": added}
-    if organize:
-        summary["organize_issues"] = organize_kb(kb, agent, model, effort)
+    if consolidate:
+        summary["consolidate"] = consolidate_kb.run(kb, agent=agent, model=model, effort=effort)
     git(kb, "add", "-A")
     git(kb, "-c", "user.name=Knosis", "-c", "user.email=knosis@localhost", "commit", "--quiet", "-m",
         f"collect: {len(sessions)} {source} sessions, {len(added)} new units")

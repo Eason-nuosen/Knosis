@@ -87,8 +87,8 @@ def db_report(knowledge, ds) -> dict:
 @register_knowledge("relbench")
 def score_knowledge(ws, state, ds) -> dict:
     ws = Path(ws)
-    result = {"ontology": db_report(ws / "knowledge", ds)}
-    inherited = ws / "stages/0_inherit/knowledge"
-    if inherited.is_dir():
+    result = {"ontology": db_report(ws, ds)}
+    inherited = ws / "stages/0_inherit"
+    if (inherited / "kb").is_dir():
         result["K_inherit"] = db_report(inherited, ds)
     return result

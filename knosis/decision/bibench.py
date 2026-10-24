@@ -186,8 +186,8 @@ def join_report(knowledge, ds) -> dict:
 @register_knowledge("bibench")
 def score_knowledge(ws, state, ds) -> dict:
     ws = Path(ws)
-    result = {"ontology": join_report(ws / "knowledge", ds)}
-    inherited = ws / "stages/0_inherit/knowledge"
-    if inherited.is_dir():
+    result = {"ontology": join_report(ws, ds)}
+    inherited = ws / "stages/0_inherit"
+    if (inherited / "kb").is_dir():
         result["K_inherit"] = join_report(inherited, ds)
     return result

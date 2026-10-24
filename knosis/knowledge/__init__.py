@@ -1,34 +1,33 @@
-"""知识层：κ 单元（`units.jsonl`）+ 证据账本（`evidence.jsonl`）+ 本体（Ossie 三文件，本体元素也是 κ）+ 反馈记录。
+"""知识层（v0.5）：两大块，见 `layout`。
 
-工作区或知识库里的知识层目录：
+    kb/        知识主体：knowledge/{units.jsonl, ontology/}、skills/、outline.yaml
+    evidence/  来源与验证：ledger.jsonl、consolidate.jsonl、checks/、feedback/、traces/
 
-    units.jsonl          每行一个 κ
-    evidence.jsonl       每行一条证据（支持 / 反驳 / 无法判定 / 不适用），见 `evidence`
-    ontology/            可选；<name>.{semantic_model,ontology,mapping}.yaml，或每个本体一个子目录
-    checks/              可选；单元的可执行检查脚本
-    skills/<名字>/SKILL.md  可选；如何运用知识解某类任务（解题集），见 `skills`
-    feedback/            dev 题上的反馈记录，见 `feedback`
-    outline.yaml         可选；知识体系大纲（导航层，不新增断言），见 `outline`
+κ 单元见 `units`；证据见 `evidence`；本体（OSI 三层，元素也是 κ）见 `ontology`；skill 见 `skills`；
+大纲见 `outline`；内化（去重、矛盾处理、构建知识体系）见 `consolidate`；v0.4 旧布局用 `migrate` 转换。
+本模块的函数都以 `root`（工作区、知识库或知识版本快照的根目录）为参数。
 """
 
 from pathlib import Path
 
 from . import feedback, outline, skills
+from .layout import Layout, data_root, ensure, is_workspace, layout
 from .evidence import add_evidence, by_unit, check_evidence, load_evidence, trace, verify
 from .ontology import check_ontology, load_ontology, ontology_units, refs, write_ontology
-from .units import FORMS, INACTIVE, SCOPES, STATUSES, active, check_units, load_units, scope_of, write_units
+from .units import FORMS, INACTIVE, META, SCOPES, STATUSES, active, check_units, level, load_units, scope_of, write_units
 
 __all__ = [
-    "FORMS", "STATUSES", "INACTIVE", "SCOPES", "scope_of", "load_units", "write_units", "check_units", "active",
+    "FORMS", "STATUSES", "INACTIVE", "SCOPES", "META", "scope_of", "level", "layout", "Layout", "ensure", "data_root",
+    "is_workspace", "load_units", "write_units", "check_units", "active",
     "load_ontology", "write_ontology", "check_ontology", "ontology_units", "refs", "check_knowledge",
     "ontology_docs", "all_ontology_units", "load_evidence", "add_evidence", "check_evidence", "by_unit",
     "verify", "trace",
 ]
 
 
-def ontology_docs(directory) -> dict[str, dict]:
-    """知识层里的全部本体：`ontology/` 下直接放的三文件记为 ""，每个含三文件的子目录记为子目录名。"""
-    root = Path(directory) / "ontology"
+def ontology_docs(base) -> dict[str, dict]:
+    """知识库里的全部本体：`kb/knowledge/ontology/` 下直接放的三文件记为 ""，每个含三文件的子目录记为子目录名。"""
+    root = layout(base).ontology
     if not root.is_dir():
         return {}
     docs = {"": load_ontology(root)} if any(root.glob("*.yaml")) else {}
@@ -39,32 +38,35 @@ def ontology_docs(directory) -> dict[str, dict]:
 def all_ontology_units(docs: dict[str, dict]) -> list[dict]:
     units = []
     for name, d in docs.items():
-        for unit in ontology_units(d, prefix=str(Path("knowledge/ontology") / name)):
+        for unit in ontology_units(d, prefix=str(Path("kb/knowledge/ontology") / name)):
             units.append({**unit, "id": unit["id"].replace("ontology/", f"ontology/{name}/", 1) if name else unit["id"]})
     return units
 
 
-def check_knowledge(directory, known_ids=frozenset(), root=None) -> list[str]:
-    """检查一个知识层目录：κ 结构、状态与证据一致、证据账本、本体跨文件引用、κ 的 `about` 能否解析。
+def check_knowledge(base, known_ids=frozenset(), root=None) -> list[str]:
+    """检查一份知识层：κ 结构、状态与证据一致、证据账本、本体跨文件引用、κ 的 `about`、skill、大纲。
 
-    `root`：工作区目录，给定时检查 `data/` 来源与证据的数据指纹；知识库没有数据，不给。
+    `base`：工作区、知识库或快照的根目录；`root`：工作区目录，给定时检查 `data/` 来源与证据的数据指纹。
     """
-    directory = Path(directory)
-    docs = ontology_docs(directory)
+    lay = layout(base)
+    docs = ontology_docs(base)
     issues = [issue for d in docs.values() for issue in check_ontology(d)]
     names = set().union(*(refs(d) for d in docs.values())) if docs else None
-    units = load_units(directory / "units.jsonl")
-    entries = load_evidence(directory)
+    units = load_units(lay.units) if lay.units.exists() else []
+    entries = load_evidence(base)
     issues += check_units(units, known_ids, root, names, evidence=by_unit(entries, root))
     onto = all_ontology_units(docs)
-    found = skills.load_skills(directory)
-    ids = {u["id"] for u in units} | set(known_ids) | {u["id"] for u in onto} | {skills.skill_id(s) for s in found}
-    issues += check_evidence(entries, ids, root)
-    records = {p.stem for p in (directory / "feedback").glob("*.json")}
+    found = skills.load_skills(base)
+    ids = {u["id"] for u in units} | set(known_ids) | {u["id"] for u in onto}
+    issues += check_evidence(entries, ids | {skills.skill_id(s) for s in found}, root)
+    # skill 讲怎么做、不讲对错：效果写成 usage 单元（meta.of = skill:<名字>），再由证据支持。
+    issues += [f"evidence {e['id']}: skill effects are usage units (scope=usage, meta.of={e['unit']}), not evidence on the skill"
+               for e in entries if str(e.get("unit", "")).startswith("skill:")]
+    records = {p.stem for p in lay.feedback.glob("*.json")}
     # skill 可以引用 κ、本体单元，以及只在历史版本里出现过的 κ（状态未知，不触发失效检查）。
     known = {i: {} for i in known_ids} | {u["id"]: u for u in [*onto, *units]}
     issues += skills.check_skills(found, known, records)
-    current = outline.load_outline(directory)
+    current = outline.load_outline(base)
     if current is not None:
-        issues += outline.check_outline(current, outline.members(directory))
+        issues += outline.check_outline(current, outline.members(base))
     return issues

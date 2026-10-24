@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from ..knowledge import load_units
+from ..knowledge import load_units, layout
 from . import register
 
 SPAN = re.compile(r"^(data/.+)#(\d+)-(\d+)$")
@@ -32,7 +32,7 @@ def check_unit(ws, unit) -> dict:
 
 @register("text")
 def score(ws, state, ds, path, ids) -> dict:
-    units = load_units(ws / "knowledge/units.jsonl")
+    units = load_units(layout(ws).units)
     items = [check_unit(ws, u) for u in units]
     spans = sum(i["spans"] for i in items)
     quoted = [i for i in items if i["quote_supported"] is not None]

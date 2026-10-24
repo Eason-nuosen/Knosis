@@ -1,4 +1,4 @@
-# 演示结果（v0.4，2026-10-21）
+# 演示结果（v0.4 2026-10-21；v0.5 2026-10-24 见 §8）
 
 四类场景（单表、方程、多表、KG）上各跑通了一个小规模演示，另有从 agent 轨迹提取知识的演示（§5）：agent 在任务中提出、验证、修订知识，Knosis 记录证据、评测知识与任务。
 全部用 Codex（`gpt-6.1-sol`，reasoning effort medium）驱动模式：explore → extract → refine（2 轮，带 dev 反馈）→ decide。
@@ -205,10 +205,43 @@ agent 依次调用 `knowledge_outline`、`knowledge_select`、`tool_card`，回�
 
 utility 由 dev 提交附带的 `used_units` 自动生成；KramaBench 上它暴露出「时间对齐」「表格布局」两条知识被用到的 3 道测试题全错，需要消融区分是题难还是知识有误。
 
+## 8. v0.5：每个 benchmark 一次完整运行（2026-10-24）
+
+知识层改为 `kb/` + `evidence/` 两大块、粒度分对象知识与元知识（method / usage）、新增内化（去重 → 矛盾处理 → 构建知识体系）后，
+10 个数据入口各跑一次：`knosis ws run <ws> --stage explore extract refine decide --rounds 2 --consolidate`，
+Codex（gpt-6.1-sol，reasoning effort medium），10 个工作区并行，每个 21 到 37 分钟。工作区 `ws/v05-*`（不入仓）。
+**单次运行、题量很小，只说明流程跑通与现象。**
+
+| benchmark | 设置 | 测试结果 | 知识（活跃 / 全部，usage 单元，skill） | 内化操作 |
+| --- | --- | --- | --- | --- |
+| NGDBench ngd-fin | 演示题集 dev 10 / 测试 20 | EM 0.60，F1 0.72（含噪图参照 EM 0.10） | 50 / 51（3 contested），17，1 | 收窄 9 |
+| TabArena healthcare | dev 100 | RMSE 4000，MAE 2296，R² 0.880（均值参照 RMSE 11558） | 21 / 35，13，1 | 收窄 18、改写 12、状态 12 |
+| RelBench rel-f1 driver-top3 | val 作 dev | AUROC 0.837（平凡基线 0.5） | 52 / 60，29，1 | 收窄 8 |
+| BI-Bench 149612320 | dev 1 / 测试 2 | 2/2 | 50 / 53，8，1 | 收窄 6、矛盾标记 4 |
+| KramaBench archeology | dev 3 / 测试 9 | 4/9 | 64 / 68（14 contested），20，3 | 合并 1、收窄 11 |
+| Burr micro/basic | dev 3 / 测试 9 | 9/9，类 / 关系 / 属性 F1 均 1.0 | 72 / 79，20，4 | 收窄 11 |
+| LLM-SRBench matsci | dev 2 / 测试 3 | Acc₀.₁ 1/3，OOD 3/3 | 41 / 52，16，1 | 收窄 4、改写 1 |
+| NewtonBench m0_gravity | dev 2 / 测试 4 | 4/4 | 45 / 48，19，1 | 无（agent 判断没有重复与矛盾） |
+| AlphaBench evaluate | dev 10 / 测试 30 | 信号准确率 0.33（全判 Noise 参照 0.23），RankIC Spearman 0.53 | 56 / 58，16，1 | 收窄 13、改写 1 |
+| text（Knosis docs/） | 无题目 | 71 条知识，来源可定位率与引文核对均 1.0 | 70 / 71，0，2 | 收窄 8、改写 1 |
+
+观察：
+
+- **矛盾处理最常走「收窄条件」**：10 个演示里 9 个在这一步改写了条件（共约 90 处），裁决撤回与版本替换很少；
+  只有 BI-Bench 留下了互记 `conflicts_with` 的矛盾对（对应的候选已撤回）。
+- **去重很少触发**：refine 阶段 agent 已按新词汇自己合并（BI 1 条、Burr 4 条），内化时只在 KramaBench 又合并了 1 条。
+  候选列表起初把 Knosis 自动生成的同模板 usage 单元误报为重复（NewtonBench 上 30 对），已改为评价对象不同的 usage 不算重复。
+- **contested 生效**：NGD 3 条、KramaBench 14 条 usage 元知识因 dev 统计显示「用了反而答错」被标为 contested，默认不再被选取。
+- **构建知识体系**：10 个演示都通过验收（大纲 13 到 25 节，3 到 4 层），这一步没有新增归纳单元（归纳单元是 refine 中写的）。
+- **text 演示找出了文档本身的不一致**：`knowledge-v0.5.md` 标题与正文的实现状态矛盾、`knowledge.md` 两处对 I2 的说法不一致，已据此修正。
+- 与 v0.4 同设置的结果持平：NGD EM 0.60、BI 2/2、KramaBench 4/9、LLM-SRBench 1/3 与 3/3、NewtonBench 4/4；RelBench AUROC 0.837（v0.4 0.829）。
+- 问题：NewtonBench 先跑到内化时，agent 自行运行了 `ws check` 并写 changelog（沙箱下 git 提交失败），已在内化提示里禁止；
+  BI-Bench 这次 agent 没有写本体（v0.4 是附加要求强制写的）。
+
 ## 已知局限
 
 - 每个设置一次运行、题量小；对照组之间的差异多数在噪声范围内。
 - GT 隔离是软隔离（原始数据与 agent 在同一台机器）。
 - KramaBench 的字符串近似题、方程的符号等价未用 LLM 裁判。
 - 轨迹提取的 `env_verified` 对检查类证据按「依赖输入里有环境文件」判断；`data_inputs` 记的是工作区全部数据文件，会偏宽。
-- 尚未做：Claude Code 驱动（Claude Code 轨迹已能读入，未单独演示）、跨 agent 读者对照、只继承 method / skill 到新工作区的迁移实验、Burr / AlphaBench / text 的端到端演示。
+- 尚未做：Claude Code 驱动（Claude Code 轨迹已能读入，未单独演示）、跨 agent 读者对照、只继承 method / skill 到新工作区的迁移实验。

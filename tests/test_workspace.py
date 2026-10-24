@@ -102,9 +102,9 @@ def test_workspace_flow(tab_data, tmp_path):
     (ws / "stages/1_explore/notes.md").write_text("Training data has one feature.")
     assert not w.check(ws) and w.status(ws)["stage"] == "extract"
     assert w.check(ws)
-    write_units(ws / "knowledge/units.jsonl", [valid_unit()])
+    write_units(ws / "kb/knowledge/units.jsonl", [valid_unit()])
     assert not w.check(ws) and w.status(ws)["stage"] == "refine"
-    assert load_units(ws / "stages/2_extract/knowledge/units.jsonl") == [valid_unit()]
+    assert load_units(ws / "stages/2_extract/kb/knowledge/units.jsonl") == [valid_unit()]
     assert "round_1" in w.next_prompt(ws)
     assert w.check(ws)
     (ws / "stages/3_refine/round_1/changelog.md").write_text("Validated schema.")
@@ -119,22 +119,22 @@ def test_workspace_flow(tab_data, tmp_path):
     count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=ws, text=True).strip()
     assert count == "6"
     empty = w.fork(ws, tmp_path / "none", "none")
-    assert not load_units(empty / "knowledge/units.jsonl")
+    assert not load_units(empty / "kb/knowledge/units.jsonl")
     assert not list((empty / "stages").rglob("*.*"))
     assert not (empty / "tasks/tasks.jsonl").exists()
     assert w.status(empty)["stage"] == "decide"
     assert subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=empty, text=True).strip() == "1"
     baseline = w.fork(ws, tmp_path / "baseline", "K_0")
-    assert load_units(baseline / "knowledge/units.jsonl") == [valid_unit()]
+    assert load_units(baseline / "kb/knowledge/units.jsonl") == [valid_unit()]
     assert not list((baseline / "stages/3_refine").rglob("knowledge"))
     final = w.fork(ws, tmp_path / "final")
-    assert (final / "stages/3_refine/round_1/knowledge/units.jsonl").exists()
+    assert (final / "stages/3_refine/round_1/kb/knowledge/units.jsonl").exists()
 
 
 def test_history_retracted_parent(tab_data, tmp_path):
     ws = w.init("tabarena", "toy", tmp_path / "ws", root=tab_data)
-    write_units(ws / "stages/2_extract/knowledge/units.jsonl", [valid_unit(status="retracted")])
-    write_units(ws / "knowledge/units.jsonl", [
+    write_units(ws / "stages/2_extract/kb/knowledge/units.jsonl", [valid_unit(status="retracted")])
+    write_units(ws / "kb/knowledge/units.jsonl", [
         valid_unit(id="child", provenance="derived", derived_from=["u1"], status="verified"),
     ])
     w.goto(ws, "refine")

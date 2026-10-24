@@ -49,7 +49,7 @@ def tab_ws(tmp_path):
 def test_evaluate_tabular(tab_ws, capsys):
     # 测试行 5,6,7 的真值为 b,a,b
     pd.DataFrame({"row_id": [5, 6, 7], "prediction": ["b", "a", "a"]}).to_csv(tab_ws / "stages/4_decide/predictions.csv", index=False)
-    write_units(tab_ws / "knowledge/units.jsonl", [{"id": "k", "content": "c", "form": "fact", "provenance": "tool:x@1()", "status": "stale"}])
+    write_units(tab_ws / "kb/knowledge/units.jsonl", [{"id": "k", "content": "c", "form": "fact", "provenance": "tool:x@1()", "status": "stale"}])
     write_units(tab_ws / "stages/4_decide/used_units.jsonl", [{"id": 5, "used_units": ["k"]}, {"id": 6, "used_units": ["ghost"]}])
     report = evaluate(tab_ws)
     assert report["accuracy"] == pytest.approx(2 / 3) and report["n"] == 3

@@ -5,8 +5,9 @@
     ├── data/                 agent 可见的数据（只读）
     ├── tasks/dev.jsonl       开发题（无答案），可提交拿反馈
     ├── tasks/tasks.jsonl     decide 阶段才生成的测试题（无答案）
-    ├── stages/{0_inherit, 1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   每个版本的知识快照在 <阶段目录>/knowledge/
-    ├── knowledge/            当前知识层：units.jsonl、evidence.jsonl、ontology/、checks/、feedback/
+    ├── stages/{0_inherit, 1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   每个版本的知识快照在 <阶段目录>/{kb,evidence}/
+    ├── kb/                   当前知识：knowledge/{units.jsonl, ontology/}、skills/、outline.yaml
+    ├── evidence/             来源与验证：ledger.jsonl、checks/、feedback/、consolidate.jsonl
     └── .knosis/state.json
 """
 
@@ -22,7 +23,8 @@ from pathlib import Path
 from string import Template
 
 from ..data import LOADERS, load_dataset
-from ..knowledge import check_knowledge, check_units, feedback, load_units, ontology_docs, scope_of, write_units
+from ..knowledge import check_knowledge, check_units, ensure, feedback, layout, load_units, ontology_docs, scope_of, write_units
+from ..knowledge.layout import CHECKS, PARTS
 from ..knowledge.kb import inherit, seen_items
 from .exporters import EXPORTERS
 
@@ -69,19 +71,19 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
     ws = Path(out or f"ws/{benchmark}-{scenario}").resolve()
     ws.mkdir(parents=True, exist_ok=False)
     exported = EXPORTERS[benchmark](open_dataset(benchmark, scenario, options), ws, **options)
-    for directory in ("tasks", "knowledge", ".knosis", *(f"stages/{s}" for s in STAGES.values())):
+    for directory in ("tasks", ".knosis", *(f"stages/{s}" for s in STAGES.values())):
         (ws / directory).mkdir(parents=True, exist_ok=True)
+    ensure(ws)
     (ws / "BRIEF.md").write_text(exported["brief"], encoding="utf-8")
     agents = Template((TEMPLATES / "AGENTS.md").read_text(encoding="utf-8")).substitute(python=sys.executable)
     (ws / "AGENTS.md").write_text(agents, encoding="utf-8")
     (ws / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
     (ws / "TOOLS.md").write_text(tools_markdown(exported["modalities"]), encoding="utf-8")
     (ws / ".gitignore").write_text("__pycache__/\n*.pyc\n.knosis/runs.jsonl\n.knosis/eval.json\n", encoding="utf-8")
-    write_units(ws / "knowledge/units.jsonl", [])
     inherited, exclude = None, []
     if kb:
-        inherited = inherit(kb, ws / "knowledge", kb_scope)
-        copy_knowledge(ws / "knowledge", ws / "stages/0_inherit/knowledge")
+        inherited = inherit(kb, ws, kb_scope)
+        copy_knowledge(ws, ws / "stages/0_inherit")
         # 继承来的反馈可能带着答案：同一数据集上，它们出现过的题目不再进测试集。
         seen = seen_items(kb, benchmark, scenario)
         exclude = [t["id"] for t in exported["tasks"] if t["id"] in seen]
@@ -89,10 +91,10 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
     if inherited:
         from ..knowledge import ontology_docs
 
-        names = ", ".join(f"`{n or 'ontology'}`" for n in ontology_docs(ws / "knowledge")) or "无"
+        names = ", ".join(f"`{n or 'ontology'}`" for n in ontology_docs(ws)) or "无"
         with (ws / "BRIEF.md").open("a", encoding="utf-8") as fh:
             fh.write(f"\n## 继承的知识\n\n本工作区从独立知识库继承了 {inherited['units']} 条 κ 与本体 {names}"
-                     f"（已在 `knowledge/`，原样快照在 `stages/0_inherit/knowledge/`）。它们来自别的任务或别人的标注，"
+                     f"（已在 `kb/`，证据在 `evidence/`，原样快照在 `stages/0_inherit/`）。它们来自别的任务或别人的标注，"
                      "未必正确、未必适用于这里的任务：用 `knosis knowledge select` 挑选，按证据采用、修正、收窄或撤回。\n")
     if options.get("root") is not None:
         options["root"] = str(Path(options["root"]).resolve())
@@ -119,10 +121,10 @@ def feedback_note(ws, state) -> str:
             f"{'和正确答案' if state['feedback']['mode'] == 'answer' else '（只给对错与分数）'}，"
             f"{'每次必须回答全部开发题' if state['feedback'].get('full') else '可以自己选择回答哪些开发题'}；"
             f"回看每道题的结果，答对和答错的都可以总结出知识（依据写成证据，method=feedback），"
-            f"记录写入 `knowledge/feedback/`；本工作区还剩 {feedback.left(ws, state)} 次。")
+            f"记录写入 `evidence/feedback/`；本工作区还剩 {feedback.left(ws, state)} 次。")
     last = feedback.own(ws)[-1:]
     if last:
-        note += f"\n最近一次反馈：`knowledge/feedback/{last[0]['id']}.json`，指标 {json.dumps(last[0]['metrics'], ensure_ascii=False)[:300]}。"
+        note += f"\n最近一次反馈：`evidence/feedback/{last[0]['id']}.json`，指标 {json.dumps(last[0]['metrics'], ensure_ascii=False)[:300]}。"
     return note
 
 
@@ -187,21 +189,21 @@ def prediction_issues(ws, state):
 
 
 def snapshots(ws) -> list[Path]:
-    """已保存的知识版本目录（`<阶段目录>/knowledge/`），按 K_inherit, K_0, K_1, … 排序。"""
+    """已保存的知识版本（含 `kb/` 的阶段目录，与工作区同布局），按 K_inherit, K_0, K_1, … 排序。"""
     ws = Path(ws)
-    rounds = sorted((ws / "stages/3_refine").glob("round_*/knowledge"), key=lambda p: int(p.parent.name.split("_")[1]))
-    return [p for p in [ws / "stages/0_inherit/knowledge", ws / "stages/2_extract/knowledge", *rounds] if p.exists()]
+    rounds = sorted((ws / "stages/3_refine").glob("round_*"), key=lambda p: int(p.name.split("_")[1]))
+    return [p for p in [ws / "stages/0_inherit", ws / "stages/2_extract", *rounds] if (p / "kb").is_dir()]
 
 
 def stage_issues(ws, state):
-    units = load_units(ws / "knowledge/units.jsonl")
+    units = load_units(layout(ws).units)
     history = {}
     for directory in snapshots(ws):
-        history.update((u["id"], u) for u in load_units(directory / "units.jsonl"))
-    docs = ontology_docs(ws / "knowledge")
+        history.update((u["id"], u) for u in load_units(layout(directory).units))
+    docs = ontology_docs(ws)
     # 保留历史单元的最后状态，使删除单元不能绕过撤回传播。
     effective = {**history, **{u["id"]: u for u in units if u.get("id")}}
-    issues = check_knowledge(ws / "knowledge", known_ids=set(history), root=ws)
+    issues = check_knowledge(ws, known_ids=set(history), root=ws)
     issues += check_units(list(effective.values()), root=ws)
     directory = stage_dir(ws, state)
     required = {"explore": "notes.md", "refine": "changelog.md"}
@@ -210,17 +212,17 @@ def stage_issues(ws, state):
         if not path.is_file() or not path.read_text(encoding="utf-8").strip():
             issues.append(f"missing or empty {path.relative_to(ws)}")
     if state["stage"] == "extract" and not units and not docs:
-        issues.append("extract requires nonempty knowledge/units.jsonl or knowledge/ontology/")
+        issues.append("extract requires nonempty kb/knowledge/units.jsonl or kb/knowledge/ontology/")
     if state["stage"] in {"extract", "refine"}:
         from ..knowledge.kb import portable
 
-        # 元知识要能被别人照做：它的检查脚本只能依赖 data/ 与 knowledge/。
+        # 方法知识要能被别人照做：它的检查脚本只能依赖 data/、kb/ 与 evidence/。
         for unit in units:
-            if scope_of(unit) == "method" and unit.get("check", {}).get("kind") == "python" and unit["status"] not in {"retracted", "stale"}:
-                if not unit["check"]["path"].startswith("knowledge/"):
-                    issues.append(f"{unit['id']}: method check must live under knowledge/checks/")
+            if scope_of(unit) == "method" and unit.get("check", {}).get("kind") == "python" and unit["status"] not in {"retracted", "stale", "merged"}:
+                if not unit["check"]["path"].startswith(f"{CHECKS}/"):
+                    issues.append(f"{unit['id']}: method check must live under {CHECKS}/")
                 elif not portable(ws, unit)[0]:
-                    issues.append(f"{unit['id']}: method check is not self-contained (fails with only data/ and knowledge/)")
+                    issues.append(f"{unit['id']}: method check is not self-contained (fails with only data/, kb/ and evidence/)")
     if state["stage"] == "refine" and state["feedback"].get("full") and state["feedback"]["mode"] != "none":
         path = directory / f"dev_{state['output']}"
         dev = {t["id"] for t in load_units(ws / "tasks/dev.jsonl")}
@@ -232,8 +234,11 @@ def stage_issues(ws, state):
 
 
 def copy_knowledge(source, target):
-    """复制一整份知识层（units.jsonl、ontology/、feedback/）。"""
-    shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
+    """复制一整份知识层（`kb/` 与 `evidence/`）到另一个根目录（快照或对照副本）。"""
+    for part in PARTS:
+        if (Path(source) / part).is_dir():
+            shutil.copytree(Path(source) / part, Path(target) / part, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.log", "outline.draft.yaml"))
 
 
 def check(ws) -> list[str]:
@@ -244,7 +249,7 @@ def check(ws) -> list[str]:
         return issues
     stage = state["stage"]
     if stage in {"extract", "refine"}:
-        copy_knowledge(ws / "knowledge", stage_dir(ws, state) / "knowledge")
+        copy_knowledge(ws, stage_dir(ws, state))
     message = f"{stage}" + (f" round {state['round']}" if stage == "refine" else "")
     if stage == "refine":
         state["round"] += 1
@@ -253,7 +258,7 @@ def check(ws) -> list[str]:
     else:
         state["stage"] = {"explore": "extract", "extract": "refine"}[stage]
     save_state(ws, state)
-    commit(ws, f"{message}: {len(load_units(ws / 'knowledge/units.jsonl'))} units")
+    commit(ws, f"{message}: {len(load_units(layout(ws).units))} units")
     return []
 
 
@@ -276,25 +281,24 @@ def fork(ws, out, knowledge="K_final", drop=()) -> Path:
         raise ValueError("fork output must be outside the source workspace")
     versions = snapshots(ws)
     if knowledge in {"none", "K_final", "K_0", "K_inherit"}:
-        chosen = {"none": None, "K_final": ws / "knowledge", "K_0": ws / "stages/2_extract/knowledge",
-                  "K_inherit": ws / "stages/0_inherit/knowledge"}[knowledge]
+        chosen = {"none": None, "K_final": ws, "K_0": ws / "stages/2_extract",
+                  "K_inherit": ws / "stages/0_inherit"}[knowledge]
     else:
-        chosen = ws / f"stages/3_refine/round_{int(knowledge.removeprefix('K_'))}/knowledge"
+        chosen = ws / f"stages/3_refine/round_{int(knowledge.removeprefix('K_'))}"
     # 对照副本不带未来的分析、预测或 git 历史；历史快照只保留所选版本及其之前的。
-    shutil.copytree(ws, out, ignore=shutil.ignore_patterns(".git", "stages", "tasks", "knowledge", "runs.jsonl", "eval.json", "__pycache__"))
+    shutil.copytree(ws, out, ignore=shutil.ignore_patterns(".git", "stages", "tasks", *PARTS, "runs.jsonl", "eval.json", "__pycache__"))
     for directory in STAGES.values():
         (out / "stages" / directory).mkdir(parents=True)
     (out / "tasks").mkdir()
     write_units(out / "tasks/dev.jsonl", load_units(ws / "tasks/dev.jsonl"))
-    if chosen is None:
-        write_units(out / "knowledge/units.jsonl", [])
-    else:
-        copy_knowledge(chosen, out / "knowledge")
+    ensure(out)
+    if chosen is not None:
+        copy_knowledge(chosen, out)
         keep = versions if knowledge == "K_final" else versions[:versions.index(chosen) + 1]
         for directory in keep:
             copy_knowledge(directory, out / directory.relative_to(ws))
-        units = load_units(out / "knowledge/units.jsonl")
-        write_units(out / "knowledge/units.jsonl", [u for u in units if u["id"] not in set(drop)])
+        units = load_units(layout(out).units)
+        write_units(layout(out).units, [u for u in units if u["id"] not in set(drop)])
     state = status(out)
     # 对照组只比较给定的知识，decide 时不再拿新的反馈。
     state.update(stage="decide", knowledge=knowledge, dropped=list(drop), feedback={**state["feedback"], "mode": "none"})

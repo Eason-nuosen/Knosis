@@ -1,4 +1,4 @@
-"""反馈子层：agent 在 dev 题上的提交结果，记录在 `knowledge/feedback/<id>.json`。
+"""dev 反馈：agent 在 dev 题上的提交结果，记录在 `evidence/feedback/<id>.json`。
 
 反馈是 agent 提取知识的依据：例如 NGD-Fin 上 dev 题答错、而按观测图执行无误，说明相关的边或属性有噪声，
 agent 把它写成 finding / fact，provenance 写 `feedback:<id>#item/<题目 id>`。
@@ -12,11 +12,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .layout import layout
 from .units import load_units
 
 
 def records(ws) -> list[dict]:
-    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted((Path(ws) / "knowledge/feedback").glob("*.json"))]
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(layout(ws).feedback.glob("*.json"))]
 
 
 def own(ws) -> list[dict]:
@@ -48,7 +49,7 @@ def submit(ws, path) -> dict:
     result = SCORERS[state["benchmark"]](ws, state, ds, path, ids)
     items = result["items"] if state["feedback"]["mode"] == "answer" else [
         {k: v for k, v in item.items() if k != "gold"} for item in result["items"]]
-    directory = ws / "knowledge/feedback"
+    directory = layout(ws).feedback
     directory.mkdir(parents=True, exist_ok=True)
     name = state["stage"] + (f"-r{state['round']}" if state["stage"] == "refine" else "")
     record = {"id": f"{len(own(ws)) + 1:03d}-{name}", "stage": state["stage"], "round": state["round"],
@@ -59,12 +60,12 @@ def submit(ws, path) -> dict:
         json.dumps(record, ensure_ascii=False, indent=1, default=str) + "\n", encoding="utf-8")
     used = path.with_name(f"{path.stem}_used_units.jsonl")
     if used.exists():
-        utility(ws, record, load_units(used), {t["id"]: t.get("kind", "all") for t in load_units(ws / "tasks/dev.jsonl")})
+        usage(ws, record, load_units(used), {t["id"]: t.get("kind", "all") for t in load_units(ws / "tasks/dev.jsonl")})
     return record
 
 
-def utility(ws, record, used, kinds) -> None:
-    """效用知识（scope=utility）：按题型统计每条知识「用到时 / 没用到时」的 dev 正确率，写成候选 κ 与 feedback 证据。
+def usage(ws, record, used, kinds) -> None:
+    """使用知识（scope=usage）：按题型统计每条知识 / skill「用到时 / 没用到时」的 dev 正确率，写成候选 κ 与 feedback 证据。
 
     `used`：与提交文件同名的 `<文件名>_used_units.jsonl`，每行 `{id, used_units}`。只用 dev 反馈，不碰测试题。
     """
@@ -75,8 +76,8 @@ def utility(ws, record, used, kinds) -> None:
     cited = {row["id"]: set(row.get("used_units", [])) for row in used if row["id"] in ok}
     from .skills import load_skills, skill_id
 
-    units = load_units(ws / "knowledge/units.jsonl")
-    known = {u["id"] for u in units} | {skill_id(s) for s in load_skills(ws / "knowledge")}
+    units = load_units(layout(ws).units)
+    known = {u["id"] for u in units} | {skill_id(s) for s in load_skills(ws)}
     stats = {}
     for tid, refs in cited.items():
         for uid in refs & known:
@@ -88,8 +89,8 @@ def utility(ws, record, used, kinds) -> None:
         base = sum(others) / len(others) if others else None
         content = (f"在 {kind} 类 dev 题上，用到 {uid} 的 {len(hits)} 题答对 {sum(hits)} 题（{rate:.0%}）；"
                    + (f"没用到的 {len(others)} 题答对率 {base:.0%}。" if others else "同类题都用到了它。"))
-        unit_id = f"utility/{uid}/{kind}"
-        fresh[unit_id] = {"id": unit_id, "content": content, "form": "fact", "scope": "utility",
+        unit_id = f"usage/{uid}/{kind}"
+        fresh[unit_id] = {"id": unit_id, "content": content, "form": "fact", "scope": "usage",
                           "condition": f"统计自反馈记录 {record['id']}，样本小，相关不等于因果；可用 ws fork --drop 做消融",
                           "provenance": f"feedback:{record['id']}", "status": "inferred",
                           "derived_from": [] if uid.startswith("skill:") else [uid],
@@ -98,5 +99,5 @@ def utility(ws, record, used, kinds) -> None:
             evidence.append({"unit": unit_id, "verdict": "support" if rate > base else "refute", "method": "feedback",
                              "source": f"feedback:{record['id']}", "note": content})
     if fresh:
-        write_units(ws / "knowledge/units.jsonl", [u for u in units if u["id"] not in fresh] + list(fresh.values()))
-        add_evidence(ws / "knowledge", evidence)
+        write_units(layout(ws).units, [u for u in units if u["id"] not in fresh] + list(fresh.values()))
+        add_evidence(ws, evidence)

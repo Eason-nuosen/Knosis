@@ -5,15 +5,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-# method：元知识，即「如何提炼 / 验证某类知识」的步骤，可附可执行检查。
-FORMS = {"finding", "fact", "rule", "formula", "schema", "tool", "method"}
-# contested：有反驳证据、尚未定论；仍可使用，但使用者应知道它有争议。
-STATUSES = {"observed", "inferred", "verified", "contested", "retracted", "stale"}
-INACTIVE = {"retracted", "stale"}
-# 粒度（知识说的是什么）：instance 某个具体对象；relation 对象之间的结构（join、本体关系）；
-# dataset 这份数据整体的规律 / 分布 / 公式；method 如何发现或验证知识（元知识）；
-# utility 哪些知识或对象对哪类任务有用（由反馈或消融支持）。与 form（表达形式）正交；不写时由 `scope_of` 推断。
-SCOPES = ("instance", "relation", "dataset", "method", "utility")
+from .layout import FEEDBACK
+
+# procedure：步骤型表达（如「如何验证某类知识」的步骤），可附可执行检查。
+FORMS = {"finding", "fact", "rule", "formula", "schema", "tool", "procedure"}
+# contested：有反驳证据、尚未定论；默认不被选取，使用者应知道它有争议。
+# merged：去重时并入另一条（`merged_into`），只作为别名保留；stale：环境变化后失效，可由 `superseded_by` 指向新版本。
+STATUSES = {"observed", "inferred", "verified", "contested", "retracted", "stale", "merged"}
+INACTIVE = {"retracted", "stale", "merged"}
+# 粒度。对象知识（关于环境）：instance 某个具体对象；relation 对象之间的结构（join、本体关系）；
+# dataset 这份数据整体的规律 / 分布 / 公式。元知识（关于知识）：method 怎么得到知识（发现与验证的方法）；
+# usage 怎么用好知识（哪些知识 / skill 在什么任务、什么读者下有效，由反馈或消融支持）。
+# 与 form（表达形式）正交；不写时由 `scope_of` 推断。
+SCOPES = ("instance", "relation", "dataset", "method", "usage")
+META = {"method", "usage"}
 POINT = ("#node/", "#edge/", "#row/")
 REQUIRED = ("id", "content", "form", "provenance", "status")
 
@@ -30,7 +35,7 @@ def write_units(path, units: list[dict]) -> None:
 
 
 def source_issues(source: str, root=None, inherited=False) -> list[str]:
-    """一个来源能否定位：`data/` 文件存在且在工作区数据目录内，`knowledge/` 文件（如继承来的轨迹）存在，`feedback:` 记录存在。
+    """一个来源能否定位：`data/` 文件存在且在工作区数据目录内，`kb/` / `evidence/` 文件（如继承来的轨迹）存在，`feedback:` 记录存在。
 
     `inherited`：从知识库继承来的单元 / 证据，`data/` 指的是产生它时的环境，新工作区的数据布局可能不同，不检查。
     """
@@ -41,21 +46,21 @@ def source_issues(source: str, root=None, inherited=False) -> list[str]:
         path = (root / source.split("#", 1)[0]).resolve()
         if not path.is_relative_to(root.resolve() / "data") or not path.exists():
             return [f"missing data source: {source}"]
-    if source.startswith("knowledge/") and not (root / source.split("#", 1)[0]).exists():
-        return [f"missing knowledge source: {source}"]
+    if source.startswith(("kb/", "evidence/")) and not (root / source.split("#", 1)[0]).exists():
+        return [f"missing source: {source}"]
     if source.startswith("feedback:"):
         record = source.split("#", 1)[0].removeprefix("feedback:")
-        if not (root / "knowledge/feedback" / f"{record}.json").exists():
+        if not (root / FEEDBACK / f"{record}.json").exists():
             return [f"missing feedback record: {source}"]
     return []
 
 
 def scope_of(unit) -> str:
-    """显式的 `scope`；否则 method 形式 → method，join / 关系类 schema → relation，
+    """显式的 `scope`；否则 procedure 形式 → method，join / 关系类 schema → relation，
     来源全部定位到单个节点 / 边 / 行 → instance，其余 → dataset。"""
     if unit.get("scope"):
         return unit["scope"]
-    if unit.get("form") == "method":
+    if unit.get("form") == "procedure":
         return "method"
     text = f"{unit.get('id', '')} {unit.get('provenance', '')}"
     if unit.get("form") == "schema" and any(k in text for k in ("join/", "relation/", "relationship/")):
@@ -64,6 +69,21 @@ def scope_of(unit) -> str:
     if sources and all(any(p in s for p in POINT) for s in sources):
         return "instance"
     return "dataset"
+
+
+def level(unit) -> str:
+    """object（关于环境）或 meta（关于知识）。"""
+    return "meta" if scope_of(unit) in META else "object"
+
+
+def resolve(uid, by_id, limit=20):
+    """沿 `merged_into` 找到别名最终指向的单元 id。"""
+    for _ in range(limit):
+        target = by_id.get(uid, {}).get("merged_into")
+        if not target:
+            return uid
+        uid = target
+    return uid
 
 
 def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology_refs=None,
@@ -104,9 +124,11 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
         for parent in parents:
             if parent not in available:
                 issues.append(f"{name}: unknown derived_from: {parent}")
-            # I5：父单元失效，后代必须跟着失效。
-            if by_id.get(parent, {}).get("status") in INACTIVE and unit.get("status") not in INACTIVE:
+            # I5：父单元失效，后代必须跟着失效；并入别的单元（merged）的父单元按合并后的那条算。
+            target = by_id.get(resolve(parent, by_id), {})
+            if target.get("status") in INACTIVE and unit.get("status") not in INACTIVE:
                 issues.append(f"{name}: inactive parent {parent} requires stale or retracted status")
+        issues += [f"{name}: {issue}" for issue in consolidation_issues(unit, by_id, available)]
         if evidence is not None:
             issues += [f"{name}: {issue}" for issue in evidence_issues(unit, evidence.get(name, []))]
         if ontology_refs is not None:
@@ -120,6 +142,34 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
     return issues
 
 
+def consolidation_issues(unit, by_id, available) -> list[str]:
+    """内化留下的字段：merged_into（去重别名）、superseded_by（版本替换）、conflicts_with（已识别的矛盾）。"""
+    issues, status = [], unit.get("status")
+    if status == "merged" and not unit.get("merged_into"):
+        issues.append("merged requires merged_into")
+    if unit.get("merged_into"):
+        target = unit["merged_into"]
+        if status != "merged":
+            issues.append("merged_into requires status merged")
+        if target not in by_id:
+            issues.append(f"unknown merged_into: {target}")
+        elif by_id[resolve(target, by_id)].get("status") in INACTIVE:
+            issues.append(f"merged_into {target} must resolve to an active unit")
+    if unit.get("superseded_by"):
+        if unit["superseded_by"] not in available:
+            issues.append(f"unknown superseded_by: {unit['superseded_by']}")
+        if status not in {"stale", "retracted"}:
+            issues.append("superseded_by requires status stale or retracted")
+    for other in unit.get("conflicts_with", []):
+        if other not in by_id:
+            issues.append(f"unknown conflicts_with: {other}")
+        elif status not in INACTIVE and by_id[other].get("status") not in INACTIVE and \
+                "contested" not in {status, by_id[other].get("status")}:
+            issues.append(f"unresolved conflict with {other}: narrow the conditions and drop conflicts_with, "
+                          "retract or supersede one side, or mark it contested")
+    return issues
+
+
 def evidence_issues(unit, entries) -> list[str]:
     supports = [e for e in entries if e["verdict"] == "support"]
     issues = []
@@ -128,9 +178,9 @@ def evidence_issues(unit, entries) -> list[str]:
     decisive = [e for e in entries if e["verdict"] in {"support", "refute"}]
     if decisive and decisive[-1]["verdict"] == "refute" and unit.get("status") not in {"contested", *INACTIVE}:
         issues.append(f"latest evidence {decisive[-1]['id']} refutes it; status must be contested, retracted or stale")
-    if scope_of(unit) == "utility" and unit.get("status") == "verified" and not any(
+    if scope_of(unit) == "usage" and unit.get("status") == "verified" and not any(
             e["method"] in {"feedback", "ablation"} for e in supports):
-        issues.append("utility knowledge can only be verified by feedback or ablation evidence")
+        issues.append("usage knowledge can only be verified by feedback or ablation evidence")
     roots = {e["source"].split("#", 1)[0] for e in supports}
     if isinstance(unit.get("support"), int) and unit["support"] > len(roots):
         issues.append(f"I2: support={unit['support']} exceeds {len(roots)} independent supporting sources")
@@ -138,5 +188,5 @@ def evidence_issues(unit, entries) -> list[str]:
 
 
 def active(units) -> list[dict]:
-    """decide 阶段可用的单元。"""
+    """decide 阶段可用的单元（含 contested；选取时默认不给它，见 `select`）。"""
     return [unit for unit in units if unit.get("status") not in INACTIVE]

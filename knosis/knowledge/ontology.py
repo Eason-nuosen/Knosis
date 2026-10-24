@@ -139,7 +139,7 @@ def walk(node):
             yield from walk(value)
 
 
-def ontology_units(docs: dict[str, dict], prefix: str = "knowledge/ontology") -> list[dict]:
+def ontology_units(docs: dict[str, dict], prefix: str = "kb/knowledge/ontology") -> list[dict]:
     """把本体元素展开成 κ（form=schema）。status 优先取元素上的 `origin`，其次 EOB provenance.method，默认 observed。"""
     units = []
     # ontology 层不允许 custom_extensions，整份本体的 provenance 记在 core / mapping 的根上。

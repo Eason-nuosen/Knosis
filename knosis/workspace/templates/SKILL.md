@@ -20,18 +20,21 @@ inferred / contested 的知识是提示，用之前要核实。确实验证过�
 `knosis ws init <dataset> <scenario> --out <目录> [--kb <知识库>]`（`knosis list` 看支持的数据集）。
 `knosis tool list` 与工作区的 `TOOLS.md` 提供可用工具（SQL、表画像、join 发现、方程拟合、ULTRA、TabPFN 等）。
 
-知识写入 `knowledge/units.jsonl`。每条必有唯一 id、content、form、provenance、status。
-form 为 finding/fact/rule/formula/schema/tool/method（method 是「如何发现或验证知识」的元知识）；
-status 为 observed/inferred/verified/contested/retracted/stale。
+知识层分两块：`kb/` 放知识（`kb/knowledge/units.jsonl`、`kb/knowledge/ontology/`、`kb/skills/`、`kb/outline.yaml`），
+`evidence/` 放来源与验证（`evidence/ledger.jsonl`、`evidence/checks/`、`evidence/feedback/`）。
+每条 κ 必有唯一 id、content、form、provenance、status。
+form 为 finding/fact/rule/formula/schema/tool/procedure；status 为 observed/inferred/verified/contested/retracted/stale/merged。
+粒度分两层：对象知识 instance / relation / dataset；元知识 method（怎么得到知识）/ usage（怎么用好知识，由反馈或消融支持）。
 每次验证记一条证据（support/refute/undetermined/not_applicable）：可执行检查写进 `check` 后运行
 `knosis knowledge verify`，其他用 `knosis knowledge evidence add`；verified 需要支持证据，被反驳要改状态。
-用 `knosis knowledge select` 按任务挑知识，`knosis knowledge trace <id>` 看证据链；
-有 `knowledge/outline.yaml` 时先用 `knosis knowledge outline` 看知识体系，新增的知识要补进大纲。
-知识按粒度分 instance / relation / dataset / method / utility；「如何运用知识解某类题」写成
-`knowledge/skills/<名字>/SKILL.md`（解题集，讲有没有效，不讲对错）。
+用 `knosis knowledge select` 按任务挑知识（contested 默认不给），`knosis knowledge trace <id>` 看证据链；
+有 `kb/outline.yaml` 时先用 `knosis knowledge outline` 看知识体系。
+「如何运用知识解某类题」写成 `kb/skills/<名字>/SKILL.md`（讲怎么做）；它有没有效写成 usage 单元。
+内化：重复的改为 merged + merged_into，矛盾的收窄条件 / 撤回 / superseded_by / conflicts_with + contested，
+`knosis knowledge consolidate` 依次做去重、矛盾处理、构建知识体系。
 记录 condition、derived_from 和验证支持数与反例数；来源定位到 data 文件的行、列、节点或边，
 工具来源为 `tool:<name>@<version>(...)`，多来源用 ` ; ` 连接。
-结构性知识可写成 `knowledge/ontology/` 下的 Ossie 三文件本体，κ 用 `about` 引用本体元素。
+结构性知识可写成 `kb/knowledge/ontology/` 下的本体（OSI 标准三层），κ 用 `about` 引用本体元素。
 工具输出 inferred 不是事实；撤回单元后将派生知识置为 stale 或 retracted。
 
 不修改 `data/`；代码与笔记写入当前阶段目录。测试题只在 decide 出现，

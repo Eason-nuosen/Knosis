@@ -38,7 +38,7 @@ def test_driver_retry_and_rounds(ws, monkeypatch):
         if stage == "explore" and attempts.count(stage) > 1:
             (ws / "stages/1_explore/notes.md").write_text("Inspected data.")
         elif stage == "extract":
-            write_units(ws / "knowledge/units.jsonl", [{
+            write_units(ws / "kb/knowledge/units.jsonl", [{
                 "id": "schema", "content": "One feature", "form": "schema",
                 "provenance": "data/train.parquet#col/x", "status": "observed",
             }])
@@ -54,7 +54,7 @@ def test_driver_retry_and_rounds(ws, monkeypatch):
     assert (ws / "stages/1_explore/agent.log").exists()
     w.run(ws, agent="claude", stages=["refine"], rounds=2)
     assert w.status(ws)["stage"] == "decide" and w.status(ws)["round"] == 3
-    assert (ws / "stages/3_refine/round_2/knowledge/units.jsonl").exists()
+    assert (ws / "stages/3_refine/round_2/kb/knowledge/units.jsonl").exists()
     records = [json.loads(line) for line in (ws / ".knosis/runs.jsonl").read_text().splitlines()]
     assert records[0]["issues"] and not records[1]["issues"]
     assert records[-1]["agent"] == "claude"
@@ -116,6 +116,6 @@ def test_offline_trial(ws, tmp_path):
 
     out = trial("toy", tmp_path / "trial", w.status(ws)["options"]["root"])
     assert w.status(out)["completed"]
-    assert (out / "stages/2_extract/knowledge/units.jsonl").exists()
-    assert (out / "stages/3_refine/round_1/knowledge/units.jsonl").exists()
+    assert (out / "stages/2_extract/kb/knowledge/units.jsonl").exists()
+    assert (out / "stages/3_refine/round_1/kb/knowledge/units.jsonl").exists()
     assert pd.read_csv(out / "stages/4_decide/predictions.csv").row_id.tolist() == [3]

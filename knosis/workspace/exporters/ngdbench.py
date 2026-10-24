@@ -76,7 +76,7 @@ def nl_complete(question: str, cypher: str) -> bool:
 NOISE_SECTION = {
     False: "## 可选交付：噪声断言\n\ndecide 阶段除答案外，还可以交 `stages/4_decide/noise.jsonl`：",
     True: "## 必交：噪声断言与识别方法\n\n识别噪声的方法本身也是知识：把它写成 `form=method` 的单元（步骤、适用条件、已知局限），"
-          "附一个可执行检查 `knowledge/checks/<id>.py`（读 `data/graph.gpickle`，输出噪声断言），"
+          "附一个可执行检查 `evidence/checks/<id>.py`（读 `data/graph.gpickle`，输出噪声断言），"
           "使换一张同类图的人也能照做。\n\ndecide 阶段除答案外，必须交 `stages/4_decide/noise.jsonl`：",
 }
 

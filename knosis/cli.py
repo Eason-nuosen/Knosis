@@ -4,13 +4,14 @@
     knosis ws init|next|check|status|goto|fork|run ...
     knosis tool list|card|run ...
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
-    knosis knowledge check|verify|select|skills|index|trace|outline|organize|evidence add|evidence import ... [--ws <ws>]
+    knosis knowledge check|verify|select|skills|index|trace|outline|candidates|consolidate|organize|evidence add|evidence import ... [--ws <ws>]
     knosis kb init <dir> | merge <ws> --kb <dir> | import-ontology <src> --kb <dir> [--strip-gt]
     knosis kb collect --kb <dir> [--since 1d] [--source codex|claude] [--dry-run]
     knosis feedback submit <dev 预测文件> [--ws <ws>] | list [--ws <ws>]
     knosis eval <ws>
     knosis install [--codex] [--claude] [--kb <dir>]
     knosis mcp [--ws <工作区或知识库>]
+    knosis migrate <v0.4 工作区或知识库> ...
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ def workspace_parser(sub):
     init.add_argument("--budget", type=int, default=20, help="反馈提交次数上限")
     init.add_argument("--feedback-full", action="store_true", help="每次反馈必须回答全部 dev 题")
     init.add_argument("--kb", help="从独立知识库继承初始知识（K_inherit）")
-    init.add_argument("--kb-scope", help="只继承这些粒度的知识，逗号分隔，如 method 或 method,relation")
+    init.add_argument("--kb-scope", help="只继承这些粒度的知识，逗号分隔，如 method 或 method,usage,skill")
     for name in ("next", "check", "status"):
         ws.add_parser(name).add_argument("dir", nargs="?", default=".")
     goto = ws.add_parser("goto")
@@ -61,6 +62,7 @@ def workspace_parser(sub):
     run.add_argument("--note", help="附加在每个阶段提示末尾的实验说明（如强制使用某工具）")
     run.add_argument("--stage", nargs="+", choices=STAGE_NAMES)
     run.add_argument("--rounds", type=int, default=1)
+    run.add_argument("--consolidate", action="store_true", help="refine 结束后做一次内化（去重 → 矛盾处理 → 构建知识体系）")
 
 
 def workspace_command(args):
@@ -85,7 +87,7 @@ def workspace_command(args):
     elif args.ws_cmd == "fork":
         print(workspace.fork(args.dir, args.out, args.knowledge, args.drop))
     elif args.ws_cmd == "run":
-        workspace.run(args.dir, args.agent, args.stage, args.rounds, args.model, args.effort, args.note)
+        workspace.run(args.dir, args.agent, args.stage, args.rounds, args.model, args.effort, args.note, args.consolidate)
 
 
 def ontology_command(args):
@@ -94,8 +96,8 @@ def ontology_command(args):
 
     from .knowledge import all_ontology_units, ontology_docs
 
-    # 目录本身是一份本体，或者是含 ontology/ 的知识层目录（可有多个本体子目录）。
-    docs = ontology_docs(args.dir) if (Path(args.dir) / "ontology").is_dir() else {"": ontology.load_ontology(args.dir)}
+    # 目录本身是一份本体，或者是工作区 / 知识库（本体在 kb/knowledge/ontology/，可有多个子目录）。
+    docs = ontology_docs(args.dir) if (Path(args.dir) / "kb").is_dir() else {"": ontology.load_ontology(args.dir)}
     if args.onto_cmd == "check":
         report([issue for d in docs.values() for issue in ontology.check_ontology(d)])
     elif args.onto_cmd == "units":
@@ -117,9 +119,11 @@ def knowledge_parser(sub):
     select.add_argument("--ws", default=".")
     select.add_argument("--about", nargs="+", default=[])
     select.add_argument("--form")
-    select.add_argument("--scope", choices=["instance", "relation", "dataset", "method", "utility"])
+    select.add_argument("--scope", choices=["instance", "relation", "dataset", "method", "usage"],
+                        help="对象知识 instance / relation / dataset；元知识 method（怎么得到知识）/ usage（怎么用好知识）")
     select.add_argument("--text")
     select.add_argument("--include-inactive", action="store_true")
+    select.add_argument("--include-contested", action="store_true", help="也给矛盾未决（contested）的单元")
     skills = kn.add_parser("skills", help="列出 skill（如何运用知识解某类任务），附效果证据计数")
     skills.add_argument("--ws", default=".")
     skills.add_argument("--text")
@@ -130,22 +134,27 @@ def knowledge_parser(sub):
     trace = kn.add_parser("trace", help="一条知识的发现途径：派生链与证据")
     trace.add_argument("unit")
     trace.add_argument("--ws", default=".")
-    outline = kn.add_parser("outline", help="知识体系大纲（knowledge/outline.yaml），渲染成 markdown")
+    outline = kn.add_parser("outline", help="知识体系大纲（kb/outline.yaml），渲染成 markdown")
     outline.add_argument("--ws", default=".", help="工作区或知识库")
     outline.add_argument("--draft", action="store_true", help="看按粒度生成的草稿")
     outline.add_argument("--write", action="store_true", help="把草稿写成 outline.yaml（已有时拒绝）")
-    organize = kn.add_parser("organize", help="让 agent 结合已有知识整理出知识体系（写 outline.yaml）")
-    organize.add_argument("--ws", default=".", help="工作区或知识库")
-    organize.add_argument("--agent", choices=["codex", "claude"], default="codex")
-    organize.add_argument("--model")
-    organize.add_argument("--effort")
-    organize.add_argument("--prompt-only", action="store_true", help="只打印提示词（本会话的 agent 自己整理时用）")
+    kn.add_parser("candidates", help="内化候选：疑似重复、可能矛盾、有争议的单元").add_argument("--ws", default=".")
+    for name, text in (("consolidate", "内化：去重 → 矛盾处理 → 构建知识体系，每步由 agent 做、Knosis 验收并留痕"),
+                       ("organize", "只做内化的「构建知识体系」一步（写 kb/outline.yaml）")):
+        cmd = kn.add_parser(name, help=text)
+        cmd.add_argument("--ws", default=".", help="工作区或知识库")
+        if name == "consolidate":
+            cmd.add_argument("--steps", default="dedup,conflict,organize", help="逗号分隔，取自 dedup / conflict / organize")
+        cmd.add_argument("--agent", choices=["codex", "claude"], default="codex")
+        cmd.add_argument("--model")
+        cmd.add_argument("--effort")
+        cmd.add_argument("--prompt-only", action="store_true", help="只打印（第一步的）提示词，由本会话的 agent 自己做")
     ev = kn.add_parser("evidence", help="证据账本").add_subparsers(dest="ev_cmd", required=True)
     add = ev.add_parser("add")
     add.add_argument("--ws", default=".")
     add.add_argument("--unit", required=True)
     add.add_argument("--verdict", required=True, choices=["support", "refute", "undetermined", "not_applicable"])
-    add.add_argument("--method", required=True, choices=["tool", "data", "feedback", "derivation", "human"])
+    add.add_argument("--method", required=True, choices=["check", "tool", "data", "feedback", "ablation", "derivation", "human"])
     add.add_argument("--source", required=True)
     add.add_argument("--note", default="")
     add.add_argument("--inputs", nargs="*", default=[], help="这条证据依赖的数据文件（相对工作区），记指纹")
@@ -162,7 +171,7 @@ def knowledge_parser(sub):
     onto.add_argument("source", nargs="+")
     onto.add_argument("--kb", required=True)
     onto.add_argument("--strip-gt", action="store_true")
-    collect = kb.add_parser("collect", help="把最近的 Codex / Claude Code 会话交给 agent 提取知识，写回知识库并整理大纲")
+    collect = kb.add_parser("collect", help="把最近的 Codex / Claude Code 会话交给 agent 提取知识，写回知识库并做内化")
     collect.add_argument("--kb", required=True)
     collect.add_argument("--since", default="1d", help="30m / 12h / 1d / 2w，或 ISO 日期")
     collect.add_argument("--source", choices=["codex", "claude"], default="codex")
@@ -172,7 +181,7 @@ def knowledge_parser(sub):
     collect.add_argument("--agent", choices=["codex", "claude"], default="codex")
     collect.add_argument("--model")
     collect.add_argument("--effort")
-    collect.add_argument("--no-organize", action="store_true")
+    collect.add_argument("--no-consolidate", action="store_true", help="收集后不做内化（去重、矛盾处理、构建知识体系）")
     collect.add_argument("--dry-run", action="store_true", help="只列出会被收集的会话")
 
 
@@ -191,20 +200,22 @@ def knowledge_command(args):
             from .knowledge import collect
 
             print(json.dumps(collect.run(args.kb, args.source, args.since, args.limit, args.agent, args.model, args.effort,
-                                         args.include_workspaces, args.min_calls, not args.no_organize, args.dry_run),
+                                         args.include_workspaces, args.min_calls, not args.no_consolidate, args.dry_run),
                              ensure_ascii=False, indent=1))
         else:
             for source in args.source:
                 print(source, json.dumps(kb.import_ontology(source, args.kb, args.strip_gt), ensure_ascii=False))
         return
-    from .workspace.driver import knowledge_dir
-
-    # 工作区的知识层在 knowledge/；知识库本身就是知识层目录（没有 data/，root 为 None）。
+    # 工作区与知识库同布局（kb/ + evidence/）；知识库没有 data/，root 为 None。
     ws = Path(args.ws).resolve()
-    kdir, root = knowledge_dir(ws)
-    history = [u for d in snapshots(ws) for u in knowledge.load_units(d / "units.jsonl")] if root else []
-    if args.kn_cmd in {"outline", "organize"}:
+    kdir, root = ws, knowledge.data_root(ws)
+    history = [u for d in snapshots(ws) for u in knowledge.load_units(knowledge.layout(d).units)] if root else []
+    if args.kn_cmd in {"outline", "organize", "consolidate"}:
         outline_command(args)
+    elif args.kn_cmd == "candidates":
+        from .knowledge.consolidate import candidates
+
+        print(json.dumps(candidates(ws), ensure_ascii=False, indent=1))
     elif args.kn_cmd == "check":
         report(knowledge.check_knowledge(kdir, {u["id"] for u in history}, root=root))
     elif args.kn_cmd == "verify":
@@ -215,7 +226,8 @@ def knowledge_command(args):
     elif args.kn_cmd == "select":
         from .knowledge import scope_of
 
-        for unit in select.select(kdir, args.about, args.form, args.text, args.include_inactive, root=root):
+        for unit in select.select(kdir, args.about, args.form, args.text, args.include_inactive, root=root,
+                                  include_contested=args.include_contested):
             if args.scope and scope_of(unit) != args.scope:
                 continue
             print(json.dumps({"scope": scope_of(unit)} | {k: unit[k] for k in (
@@ -241,23 +253,30 @@ def knowledge_command(args):
 
 
 def outline_command(args):
-    from .knowledge import by_unit, load_evidence, outline
-    from .workspace import driver
+    from .knowledge import by_unit, consolidate, load_evidence, outline
 
-    kdir, root = driver.knowledge_dir(args.ws)
-    if args.kn_cmd == "organize":
+    kdir, root = consolidate.resolve_base(args.ws)
+    if args.kn_cmd in {"organize", "consolidate"}:
+        steps = args.steps.split(",") if args.kn_cmd == "consolidate" else ["organize"]
         if args.prompt_only:
-            print(driver.organize_prompt(args.ws))
+            print(consolidate.prompt(args.ws, steps[0]))
             return
-        report(driver.organize(args.ws, args.agent, args.model, args.effort))
+        results = consolidate.run(args.ws, steps, args.agent, args.model, args.effort)
+        report([f"{r['step']}: {i}" for r in results for i in r["issues"]])
         return
     current = None if args.draft or args.write else outline.load_outline(kdir)
     if args.write:
         if outline.load_outline(kdir) is not None:
-            raise SystemExit(f"{kdir / outline.FILE} exists")
+            raise SystemExit(f"{knowledge_layout(kdir).outline} exists")
         print(outline.write_outline(kdir, outline.draft(kdir)))
         return
     print(outline.render(current or outline.draft(kdir), outline.members(kdir), by_unit(load_evidence(kdir), root)))
+
+
+def knowledge_layout(path):
+    from .knowledge import layout
+
+    return layout(path)
 
 
 def report(issues):
@@ -349,6 +368,7 @@ def main(argv: list[str] | None = None) -> None:
     install.add_argument("--claude", action="store_true")
     install.add_argument("--kb", help="同时把指向该知识库的 MCP 服务装进 Codex（写 config.toml），并给出 Claude Code 的命令")
     sub.add_parser("mcp", help="以 MCP（stdio）暴露知识层与工具层").add_argument("--ws", default=".", help="工作区或知识库")
+    sub.add_parser("migrate", help="把 v0.4 布局的工作区或知识库转换为 v0.5（kb/ + evidence/）").add_argument("dirs", nargs="+")
     args = p.parse_args(argv)
 
     if args.cmd == "list":
@@ -374,7 +394,7 @@ def main(argv: list[str] | None = None) -> None:
             record = feedback.submit(args.ws, args.file)
             print(json.dumps({"id": record["id"], "metrics": record["metrics"], "items": record["items"][:50]},
                              ensure_ascii=False, indent=1, default=str))
-            print(f"完整记录：knowledge/feedback/{record['id']}.json")
+            print(f"完整记录：evidence/feedback/{record['id']}.json")
         else:
             for record in feedback.records(args.ws):
                 print(record["id"], record["submitted"], json.dumps(record["metrics"], ensure_ascii=False)[:200])
@@ -384,6 +404,11 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(evaluate(args.dir), ensure_ascii=False, indent=2))
     elif args.cmd == "install":
         install_skill(args.codex, args.claude, kb=args.kb)
+    elif args.cmd == "migrate":
+        from .knowledge.migrate import migrate
+
+        for directory in args.dirs:
+            print(json.dumps(migrate(directory), ensure_ascii=False))
     elif args.cmd == "mcp":
         from .mcp import serve
 

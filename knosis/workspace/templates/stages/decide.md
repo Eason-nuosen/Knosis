@@ -6,7 +6,7 @@
 
 ## 输入
 
-`tasks/tasks.jsonl`、`knowledge/units.jsonl`、`knowledge/ontology/`、`data/`。
+`tasks/tasks.jsonl`、`kb/knowledge/units.jsonl`、`kb/knowledge/ontology/`、`kb/skills/`、`data/`。
 Python：`$python`。
 
 ## 交付物

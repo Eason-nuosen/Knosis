@@ -9,7 +9,7 @@ from __future__ import annotations
 import h5py
 import numpy as np
 
-from ..knowledge import load_units
+from ..knowledge import load_units, layout
 from . import answers, register, register_knowledge
 
 TAU = 0.1
@@ -71,7 +71,7 @@ def score_knowledge(ws, state, ds) -> dict:
     tasks = {t.id: t for t in ds.tasks}
     items = []
     with h5py.File(ds.files["hdf5"], "r") as h5:
-        for unit in load_units(ws / "knowledge/units.jsonl"):
+        for unit in load_units(layout(ws).units):
             meta = unit.get("meta", {})
             if unit["form"] != "formula" or meta.get("task") not in tasks or not meta.get("expression"):
                 continue

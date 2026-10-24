@@ -58,7 +58,7 @@ def test_export_all_without_hints(root, tmp_path):
     assert [p.name for p in (ws / "data/1").iterdir()] == ["Sales.csv"]
     text = json.dumps(load_units(ws / "tasks/dev.jsonl")) + (ws / "BRIEF.md").read_text()
     assert "query_metadata" not in text and "unpivot" not in text.replace("unpivot 等变换", "")
-    assert not list(ws.rglob("gt")) and not (ws / "knowledge/ontology").exists()
+    assert not list(ws.rglob("gt")) and not (ws / "kb/knowledge/ontology").exists()
     assert not list(ws.rglob("join")) and not list(ws.rglob("transformation"))
     assert len(load_units(ws / "tasks/dev.jsonl")) == 1
 
@@ -83,9 +83,9 @@ def test_score_and_feedback(root, tmp_path):
 def test_single_case_metadata(root, tmp_path):
     ws = w.init("bibench", "1", tmp_path / "ws", root=root, metadata=True)
     assert w.status(ws)["feedback"]["mode"] == "none"  # 单用例没有 dev 题
-    docs = load_ontology(ws / "knowledge/ontology")
+    docs = load_ontology(ws / "kb/knowledge/ontology")
     assert [d["name"] for d in docs["semantic_model"]["datasets"]] == ["sales"]
-    assert "knowledge/ontology/" in (ws / "BRIEF.md").read_text()
+    assert "kb/knowledge/ontology/" in (ws / "BRIEF.md").read_text()
     w.goto(ws, "decide")
     w.next_prompt(ws)
     assert [t["id"] for t in load_units(ws / "tasks/tasks.jsonl")] == ["1"]

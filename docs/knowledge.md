@@ -1,24 +1,32 @@
 # 知识层格式
 
-知识层 = **κ 单元** + **证据账本** + 可选的**本体**（本体元素也是 κ）+ **反馈记录**。工作区里（独立知识库同布局）：
+知识层（v0.5）分两大块：**kb/** 放知识本身（结论，永久保存、可继承、可被选取），**evidence/** 放来源与验证的全过程。
+工作区与独立知识库同布局：
 
 ```
-knowledge/
-├── units.jsonl                       每行一个 κ
-├── evidence.jsonl                    每行一条证据
-├── checks/<id>.py                    可选，单元的可执行检查
-├── skills/<名字>/SKILL.md            可选，如何运用知识解某类任务（解题集）
-├── ontology/                         可选，Apache Ossie 0.2 三文件 + EOB 扩展；多份本体各占一个子目录
-│   ├── <name>.semantic_model.yaml    core：表、列、主键、join、度量
-│   ├── <name>.ontology.yaml          概念、概念间关系、单位与约束（不提表和列）
-│   └── <name>.mapping.yaml           列 → 概念 / 关系
-└── feedback/<id>.json                dev 题上的反馈记录
+kb/
+├── knowledge/
+│   ├── units.jsonl               每行一个 κ：对象知识 + 元知识
+│   └── ontology/                 可选，结构化知识：OSI 标准（Apache Ossie 0.2）三层 + EOB 扩展；多份本体各占一个子目录
+│       ├── <name>.semantic_model.yaml    语义模型：表、列、主键、join、度量
+│       ├── <name>.ontology.yaml          概念、概念间关系、单位与约束（不提表和列）
+│       └── <name>.mapping.yaml           列 → 概念 / 关系
+├── skills/<名字>/SKILL.md        可选，使用流程：如何运用知识解某类任务
+└── outline.yaml                  可选，知识体系大纲
+evidence/
+├── ledger.jsonl                  证据账本，每行一条证据
+├── consolidate.jsonl             内化操作记录（去重、矛盾处理、构建知识体系）
+├── checks/<id>.py                可选，单元的可执行检查
+├── feedback/<id>.json            dev 题上的反馈记录
+└── traces/                       来源轨迹（知识库收集来的会话、写回时带上的轨迹）
 ```
+
+v0.4 的布局（工作区的 `knowledge/`、知识库根目录下的 `units.jsonl`）用 `knosis migrate <目录>` 转换。
 
 范围与定位见 [scope.md](scope.md)。
 
-每次 `ws check` 通过，extract / refine 会把整个知识层快照到 `stages/2_extract/knowledge/`、
-`stages/3_refine/round_<n>/knowledge/`，这就是 K_0、K_1 …；从知识库继承的初始知识在 `stages/0_inherit/knowledge/`（K_inherit）；`ws fork --knowledge K_n` 拿到的也是这一整份
+每次 `ws check` 通过，extract / refine 会把整个知识层（`kb/` 与 `evidence/`）快照到 `stages/2_extract/`、
+`stages/3_refine/round_<n>/`，这就是 K_0、K_1 …；从知识库继承的初始知识在 `stages/0_inherit/`（K_inherit）；`ws fork --knowledge K_n` 拿到的也是这一整份
 （fork 出来的对照组关闭反馈，只比较给定的知识）。
 
 ## κ 单元
@@ -34,15 +42,18 @@ knowledge/
 | --- | --- | --- |
 | `id` | 是 | 工作区内唯一 |
 | `content` | 是 | 知识内容（自然语言 / 公式 / 三元组文本） |
-| `form` | 是 | 表达形式：`finding` / `fact` / `rule` / `formula` / `schema` / `tool` / `method` |
-| `scope` | 否 | 粒度：`instance` / `relation` / `dataset` / `method` / `utility`；不写时由 `scope_of` 按 form 与来源推断 |
+| `form` | 是 | 表达形式：`finding` / `fact` / `rule` / `formula` / `schema` / `tool` / `procedure`（步骤型表达） |
+| `scope` | 否 | 粒度。对象知识：`instance` / `relation` / `dataset`；元知识：`method`（怎么得到知识）/ `usage`（怎么用好知识）；不写时由 `scope_of` 按 form 与来源推断 |
 | `provenance` | 是 | 来源，见下 |
-| `status` | 是 | `observed` / `inferred` / `verified` / `contested`（有反驳、未定论）/ `retracted` / `stale` |
+| `status` | 是 | `observed` / `inferred` / `verified` / `contested`（有反驳、未定论，默认不被选取）/ `retracted` / `stale` / `merged`（去重时并入别的单元） |
 | `condition` | 否 | 适用条件与已知例外 |
 | `derived_from` | 否 | 父单元 id |
 | `support` | 否 | 独立支持数 |
 | `about` | 否 | 锚定的对象：本体元素名（有本体时必须能解析）或数据位置 `data/...#...`；`knosis knowledge index` 按对象反查 |
 | `check` | 否 | 可执行检查，见「证据」 |
+| `merged_into` | 否 | 去重：本单元并入的主单元（status 须为 merged）；引用本单元的派生、skill、大纲按别名解析 |
+| `superseded_by` | 否 | 版本替换：环境变化后由哪条新单元取代（status 须为 stale / retracted） |
+| `conflicts_with` | 否 | 已识别、尚未化解的矛盾；双方都活跃时至少一方须为 contested |
 | `meta` | 否 | 任意附加信息 |
 
 来源写法：数据 `data/<文件>#node/<id>`、`#edge/<src>|<label>|<dst>`、`#row/<row_id>`、`#col/<列名>`；
@@ -50,11 +61,11 @@ knowledge/
 
 结构检查（`check_units`）：必填字段与取值、重复 id、`data/` 来源文件存在、
 `feedback:` 来源指向存在的记录、**I1** 派生引用可解析（含历史版本）、**I5** 父单元撤回 / 失效后后代必须是 `retracted` 或 `stale`。
-不判断内容对错；I2（独立来源计数）、I3（类型兼容）、I4（条件不丢）尚未实现。
+不判断内容对错；I2（独立来源计数）在给出证据时检查（见下文「状态与证据一致」），I3（类型兼容）、I4（条件不丢）尚未实现。
 
 ## 证据
 
-`evidence.jsonl` 每行一次验证：
+`evidence/ledger.jsonl` 每行一次验证：
 
 ```json
 {"id": "e-0007", "unit": "smoker-rule", "verdict": "support", "method": "check", "source": "check:smoker-rule",
@@ -68,7 +79,7 @@ knowledge/
 | `inputs` | 依赖的数据文件指纹；文件变了证据即过期，不再计入 |
 
 可执行检查写在 κ 的 `check`：`{"kind": "sql", "query": ..., "expect": [[...]]}` 在 `data/` 的表上执行
-（不给 expect 时第一行全为真即支持），或 `{"kind": "python", "path": "knowledge/checks/<id>.py"}`（退出码 0 支持、1 反驳、其他无法判定）。
+（不给 expect 时第一行全为真即支持），或 `{"kind": "python", "path": "evidence/checks/<id>.py"}`（退出码 0 支持、1 反驳、其他无法判定）。
 `knosis knowledge verify` 重跑并记证据；其他验证用 `knosis knowledge evidence add` / `import`（工具写出的 `evidence.jsonl`）。
 
 **状态与证据一致**（`check_units(..., evidence=...)`）：`verified` 至少一条未过期的支持；最近一条决定性证据是反驳时须为
@@ -78,11 +89,13 @@ knowledge/
 **证据链**：`knosis knowledge trace <id>` 按派生关系列出每个单元与它的证据，即这条知识的发现途径。
 **选取**：`knosis knowledge select [--about ...] [--form ...] [--text ...]` 按任务筛选（含本体元素）并附证据计数。
 
-**效用**：dev 提交旁附 `<文件名>_used_units.jsonl`（每行 `{id, used_units}`）时，`feedback submit` 按题型统计每条知识 / skill
-「用到时 / 没用到时」的 dev 正确率，写成 `scope=utility` 的候选 κ（id `utility/<知识>/<题型>`）与 feedback 证据。
-utility 只能由 feedback / ablation 证据支持为 verified。测试题上的同类统计只写进评测报告（`eval.json` 的 `utility`），不写回知识层。
+**使用知识（usage）**：dev 提交旁附 `<文件名>_used_units.jsonl`（每行 `{id, used_units}`）时，`feedback submit` 按题型统计每条知识 / skill
+「用到时 / 没用到时」的 dev 正确率，写成 `scope=usage` 的候选 κ（id `usage/<知识>/<题型>`，`meta.of` 指向被评价的对象）与 feedback 证据。
+usage 只能由 feedback / ablation 证据支持为 verified。测试题上的同类统计只写进评测报告（`eval.json` 的 `usage_effect`），不写回知识层。
 
-## skill（解题集）
+## skill（使用流程）
+
+**usage 管有没有用，skill 管怎么做。** skill 本身不讲对错；它的效果写成 usage 单元（`meta.of: skill:<名字>`），不直接记证据。
 
 `skills/<名字>/SKILL.md`，Codex / Claude Code 的 skill 格式，头部 YAML：
 
@@ -96,24 +109,36 @@ utility 只能由 feedback / ablation 证据支持为 verified。测试题上的
 | `status` | `active` / `stale` / `retracted` |
 
 检查：`uses` 能解析；所用知识被撤回或失效后 skill 须为 stale / retracted；`derived_from` 指向存在的反馈记录。
-效果记为证据（unit 为 `skill:<名字>`）；决策时在 `used_units` 里引用 `skill:<名字>`。skill 不按 agent 分开记录。
+效果见评价它的 usage 单元（`knosis knowledge skills` 一并列出）；决策时在 `used_units` 里引用 `skill:<名字>`。skill 不按 agent 分开记录。
 
-## 知识体系大纲
+## 内化：去重、矛盾处理、构建知识体系
 
-可选的 `outline.yaml` 把 κ 与 skill 组织成层级（场景 → 数据间关系 → 数据本身），只做导航、不新增断言。
-`knosis knowledge outline` 渲染，`knosis knowledge organize` 让 agent 整理；格式与检查规则见 [interfaces.md](interfaces.md)。
+`knosis knowledge consolidate [--steps dedup,conflict,organize]` 依次启动 agent 做三步；`knosis knowledge candidates`
+列出疑似重复（内容相似、锚定同一对象）、可能矛盾（锚定同一对象的相关单元）与有争议的单元，只作提示。
+
+| 步骤 | agent 做什么 | Knosis 检查 |
+| --- | --- | --- |
+| dedup 去重 | 同一件事保留一条（合并来源与条件），另一条改为 `merged` + `merged_into` | 别名指向活跃单元；不删除单元；不新增问题 |
+| conflict 矛盾处理 | ① 收窄条件；② 用新证据裁决，一方撤回；③ 环境变了，旧的 stale + `superseded_by`；裁决不了的双方互记 `conflicts_with` 并标 contested | `conflicts_with` 双方都活跃时至少一方 contested；不删除单元 |
+| organize 构建知识体系 | 把单跳知识串成「场景 → 数据间关系 → 具体对象」的大纲 `kb/outline.yaml`；可新增归纳单元 | 大纲引用存在、活跃单元都已归类；归纳单元 `provenance: derived` 且 `derived_from` 至少两条 |
+
+每步验收不过带着问题重试一次，仍不过就把 `kb/` 与 `evidence/` 恢复到这一步之前；通过后对比前后单元，把操作
+（merge / supersede / status / conflict / narrow / rewrite / induce）追加到 `evidence/consolidate.jsonl`。
+`knosis kb collect` 收集后自动运行；`knosis ws run --consolidate` 在 refine 结束后运行一次，结果快照为新的 refine 版本（K_final）。
+大纲格式见 [interfaces.md](interfaces.md)；`knosis knowledge organize` 只做第三步。
 
 ## 独立知识库
 
-`knosis kb init <dir>` 建库（git 仓库，布局同上）。`knosis ws init ... --kb <dir> [--kb-scope method,skill]` 继承（可只继承某些粒度；
-本体随 relation / dataset、skill 随 `skill` 一并继承）；
+`knosis kb init <dir>` 建库（git 仓库，布局同上）。`knosis ws init ... --kb <dir> [--kb-scope method,usage,skill]` 继承（可只继承某些粒度；
+本体随 relation / dataset、skill 随 `skill` 或 `usage` 一并继承）；
 同一数据集上，知识库反馈记录里出现过的题目不进新工作区的测试集。`knosis kb merge <ws> --kb <dir>` 写回：
 κ 按 id 合并、证据追加、反馈记录改名为 `<工作区>.<id>` 并改写引用，写回后整体检查，不通过就拒绝。
-`knosis kb import-ontology <标注目录> --kb <dir> [--strip-gt]` 导入已有本体（如 ontology-bench 的标注），
+`knosis kb import-ontology <标注目录> --kb <dir> [--strip-gt]` 导入已有本体（到 `kb/knowledge/ontology/<单元名>/`）（如 ontology-bench 的标注），
 `--strip-gt` 去掉来自 benchmark GT 的部分。
 
-## 本体子层
+## 本体（结构化知识）
 
+支持 OSI（Open Semantic Interchange，现 Apache Ossie）标准，用于企业数据的知识总结、收集与本体层对齐。
 与 ontology-bench 的 EOB v0.2 格式一致：底座是 Apache Ossie `0.2.0.dev0`，
 benchmark 自定义信息一律写在 `custom_extensions`（`vendor_name: EOB`，`data` 是 JSON 字符串），不改官方 schema。
 字段写法见 ontology-bench 的 `docs/ontology-format-ossie.md`；`tests/fixtures/sales_bi/` 是一份完整样例。
@@ -140,12 +165,12 @@ EOB `annotations` 的 target 存在。官方 JSON Schema 校验请用 Ossie 仓�
 
 注意：BI-Bench 的 `_relationships` 与 RelBench 的外键在「join 发现 / 本体构造」类评测里是 GT，不应给被测 agent。
 
-## 反馈子层
+## dev 反馈
 
 agent 自己就是 Codex / Claude Code：Knosis 不记录它的轨迹，只给它**结果**，由它把结果变成知识。
 
 - 每个工作区有一个 dev 划分（`tasks/dev.jsonl`，无答案，与测试题不重叠）。agent 按 decide 的交付格式回答一部分或全部 dev 题，
-  `knosis feedback submit <文件>` 返回逐题结果，同时写一条 `knowledge/feedback/<id>.json`。
+  `knosis feedback submit <文件>` 返回逐题结果，同时写一条 `evidence/feedback/<id>.json`。
 - 模式（`ws init --feedback`）：`answer` 给对错、分数和正确答案；`score` 只给对错与分数；`none` 关闭。`--budget` 限制提交次数。
 - 反馈只接受 dev id；GT 从原始数据目录读，打分器与 `knosis eval` 是同一个函数（`decision` 层的 `score(..., ids)`）。
 - **自动 RSI**：驱动模式下 `knosis ws run <ws> --stage refine --rounds N`，每轮结束时运行器把本轮的

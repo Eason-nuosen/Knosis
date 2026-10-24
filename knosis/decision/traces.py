@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from ..knowledge import active, by_unit, load_evidence, load_units
+from ..knowledge import active, by_unit, load_evidence, load_units, layout
 from . import mean, register
 
 STEP = re.compile(r"^data/traces/(.+)\.jsonl#step/(\d+)$")
@@ -28,9 +28,9 @@ def score(ws, state, ds, path, ids) -> dict:
     steps = {}
     for f in (ws / "data/traces").glob("*.jsonl"):
         steps[f.stem] = len(f.read_text(encoding="utf-8").splitlines())
-    evidence = by_unit(load_evidence(ws / "knowledge"), ws)
+    evidence = by_unit(load_evidence(ws), ws)
     items = []
-    for unit in active(load_units(ws / "knowledge/units.jsonl")):
+    for unit in active(load_units(layout(ws).units)):
         refs = [STEP.match(s.strip()) for s in unit["provenance"].split(";")]
         refs = [m for m in refs if m]
         valid = [m for m in refs if m.group(1) in steps and int(m.group(2)) < steps[m.group(1)]]

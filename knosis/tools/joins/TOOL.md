@@ -10,7 +10,7 @@ license: "Apache-2.0（Knosis 自带；对应 BI-Agent 的 discover_join_relatio
 多表 join 发现：找出「外键列的取值几乎都出现在另一张表的唯一列里」的列对（包含依赖），
 按包含率与列名相似度排序，输出 `joins.csv`，每个候选一条 `finding`（inferred）。
 `--ontology DIR` 另写一份本体 core 层草稿（`<name>.semantic_model.yaml`：表、列、候选主键、候选 join），
-provenance 记为 `method: tool`，可直接放进 `knowledge/ontology/` 再由 agent 修订。
+provenance 记为 `method: tool`，可直接放进 `kb/knowledge/ontology/` 再由 agent 修订。
 
 ```bash
 knosis tool run joins -- --tables data/ --out stages/1_explore/joins

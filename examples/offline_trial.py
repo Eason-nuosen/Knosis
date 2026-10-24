@@ -43,16 +43,16 @@ def trial(scenario="houses", out=None, root=None):
          "condition": "只描述训练集，不保证测试分布一致", "status": "observed",
          "meta": {"baseline": baseline, "support_count": int(train[target].notna().sum())}},
     ]
-    write_units(ws / "knowledge/units.jsonl", units)
+    write_units(ws / "kb/knowledge/units.jsonl", units)
     accept(ws)
     w.next_prompt(ws)
     # 验证：给 prior 附一条可执行检查，由 Knosis 重跑并记一条支持证据，再标为 verified。
     units[1]["check"] = {"kind": "sql", "query": f'SELECT COUNT(*) > 0 FROM train WHERE "{target}" IS NOT NULL'}
-    write_units(ws / "knowledge/units.jsonl", units)
+    write_units(ws / "kb/knowledge/units.jsonl", units)
     verify(ws, ["prior"])
     units[1]["status"] = "verified"
     units[1]["meta"]["counterexamples"] = 0
-    write_units(ws / "knowledge/units.jsonl", units)
+    write_units(ws / "kb/knowledge/units.jsonl", units)
     (ws / "stages/3_refine/round_1/changelog.md").write_text(
         "重新从训练目标计算统计量，确认 prior 一致。未使用测试标签；仅验证统计事实，不宣称预测规律成立。\n",
         encoding="utf-8",
@@ -60,7 +60,7 @@ def trial(scenario="houses", out=None, root=None):
     accept(ws)
     w.goto(ws, "decide")
     w.next_prompt(ws)
-    prior = next(unit for unit in load_units(ws / "knowledge/units.jsonl") if unit["id"] == "prior")
+    prior = next(unit for unit in load_units(ws / "kb/knowledge/units.jsonl") if unit["id"] == "prior")
     pd.DataFrame({"row_id": features["row_id"], "prediction": prior["meta"]["baseline"]}).to_csv(
         ws / "stages/4_decide/predictions.csv", index=False,
     )

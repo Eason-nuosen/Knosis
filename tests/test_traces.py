@@ -54,11 +54,11 @@ def test_trace_workspace_and_score(tmp_path):
     ws = w.init("traces", "demo", tmp_path / "ws", paths=str(tmp_path / "run1.jsonl"), env=str(env))
     assert (ws / "data/traces/run1.jsonl").exists() and (ws / "data/traces/run1.md").exists() and (ws / "data/env/data.csv").exists()
     assert "4 步" in (ws / "BRIEF.md").read_text()
-    write_units(ws / "knowledge/units.jsonl", [
+    write_units(ws / "kb/knowledge/units.jsonl", [
         {"id": "rows", "content": "data.csv 有 2 行数据", "form": "fact", "status": "verified",
          "provenance": "data/traces/run1.jsonl#step/2 ; data/env/data.csv"},
         {"id": "bad", "content": "x", "form": "finding", "status": "inferred", "provenance": "data/traces/run1.jsonl#step/99"}])
-    add_evidence(ws / "knowledge", [{"unit": "rows", "verdict": "support", "method": "data", "source": "data/env/data.csv"}])
+    add_evidence(ws, [{"unit": "rows", "verdict": "support", "method": "data", "source": "data/env/data.csv"}])
     w.goto(ws, "decide")
     w.next_prompt(ws)
     report = evaluate(ws)
@@ -71,15 +71,15 @@ def test_trace_sources_travel_with_kb(tmp_path):
 
     write(tmp_path / "run1.jsonl", codex_rows())
     ws = w.init("traces", "demo", tmp_path / "ws", paths=str(tmp_path / "run1.jsonl"))
-    write_units(ws / "knowledge/units.jsonl", [
+    write_units(ws / "kb/knowledge/units.jsonl", [
         {"id": "rows", "content": "data.csv 有 2 行数据", "form": "fact", "status": "inferred",
          "provenance": "data/traces/run1.jsonl#step/2"}])
     kb = init_kb(tmp_path / "kb")
     merge(ws, kb)
-    assert (kb / "traces/run1.jsonl").exists() and "knowledge/traces/run1.jsonl#step/2" in (kb / "units.jsonl").read_text()
+    assert (kb / "evidence/traces/run1.jsonl").exists() and "evidence/traces/run1.jsonl#step/2" in (kb / "kb/knowledge/units.jsonl").read_text()
     ws2 = w.init("traces", "demo", tmp_path / "ws2", paths=str(tmp_path / "run1.jsonl"), kb=str(kb))
     w.fork(ws2, tmp_path / "ws3", "K_inherit")
-    assert (tmp_path / "ws3/knowledge/traces/run1.jsonl").exists()
-    assert check_knowledge(tmp_path / "ws3/knowledge", root=tmp_path / "ws3") == []
-    (tmp_path / "ws3/knowledge/traces/run1.jsonl").unlink()
-    assert any("missing knowledge source" in i for i in check_knowledge(tmp_path / "ws3/knowledge", root=tmp_path / "ws3"))
+    assert (tmp_path / "ws3/evidence/traces/run1.jsonl").exists()
+    assert check_knowledge(tmp_path / "ws3", root=tmp_path / "ws3") == []
+    (tmp_path / "ws3/evidence/traces/run1.jsonl").unlink()
+    assert any("missing source" in i for i in check_knowledge(tmp_path / "ws3", root=tmp_path / "ws3"))

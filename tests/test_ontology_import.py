@@ -105,16 +105,16 @@ def annotation(root, name):
 
 def test_import_annotation_into_subdirectories(tmp_path):
     src = annotation(tmp_path / "ann", "101248502")
-    report = ontology.import_annotation(src, tmp_path / "knowledge/ontology")
-    out = tmp_path / "knowledge/ontology/101248502"
+    report = ontology.import_annotation(src, tmp_path / "kb/knowledge/ontology")
+    out = tmp_path / "kb/knowledge/ontology/101248502"
     assert sorted(p.name for p in out.iterdir()) == ["101248502.mapping.yaml", "101248502.ontology.yaml",
                                                      "101248502.semantic_model.yaml"]
     assert report == {"unit": "101248502", "dir": str(out), "stripped": False}
     docs = ontology.load_ontology(out)
     assert len(docs["semantic_model"]["relationships"]) == 2 and not ontology.check_ontology(docs)
     # 多个单元可共存
-    ontology.import_annotation(annotation(tmp_path / "ann", "202"), tmp_path / "knowledge/ontology")
-    assert sorted(p.name for p in (tmp_path / "knowledge/ontology").iterdir()) == ["101248502", "202"]
+    ontology.import_annotation(annotation(tmp_path / "ann", "202"), tmp_path / "kb/knowledge/ontology")
+    assert sorted(p.name for p in (tmp_path / "kb/knowledge/ontology").iterdir()) == ["101248502", "202"]
 
 
 def test_import_annotation_with_strip(tmp_path):
@@ -155,9 +155,9 @@ def test_bibench_join_scorer(tmp_path):
         # 写成反方向、且列数 / 表名大小写不同，仍然命中
         [{**ontology.relationship("sales", ["CountryId"], "country_list", ["Id"]), "name": "ok"},
          {**ontology.relationship("unrelated", ["Id"], "sales", ["Amount"]), "name": "wrong"}])
-    ontology.write_ontology(tmp_path / "knowledge/ontology/7", {"semantic_model": model})
+    ontology.write_ontology(tmp_path / "kb/knowledge/ontology/7", {"semantic_model": model})
     dsx = load_dataset("bibench", "7", root=root)
-    report = bibench.join_report(tmp_path / "knowledge", dsx)
+    report = bibench.join_report(tmp_path, dsx)
     assert report["reported"] and report["units"] == 1
     assert report["scores"]["7"]["7"] == {"n_pred": 2, "n_gold": 1, "n_hit": 1,
                                           "precision": 0.5, "recall": 1.0, "f1": pytest.approx(2 / 3)}
@@ -170,9 +170,9 @@ def test_score_knowledge_reports_inherited_snapshot(tmp_path):
     (meta / "_tables.csv").write_text("ID,Name\n1,Sales\n")
     (meta / "_columns.csv").write_text("ID,TableID,ExplicitName,InferredName\n11,1,CountryId,\n")
     (meta / "_relationships.csv").write_text("ID,FromTableID,FromColumnID,FromCardinality,ToTableID,ToColumnID,ToCardinality\n")
-    ontology.write_ontology(tmp_path / "ws/knowledge/ontology", {"semantic_model": ontology.semantic_model(
+    ontology.write_ontology(tmp_path / "ws/kb/knowledge/ontology", {"semantic_model": ontology.semantic_model(
         "w", [{"name": "sales", "source": "Sales", "fields": [ontology.field("CountryId", "Integer")]}] , [])})
-    ontology.write_ontology(tmp_path / "ws/stages/0_inherit/knowledge/ontology", {"semantic_model": ontology.semantic_model(
+    ontology.write_ontology(tmp_path / "ws/stages/0_inherit/kb/knowledge/ontology", {"semantic_model": ontology.semantic_model(
         "k", [{"name": "sales", "source": "Sales", "fields": [ontology.field("CountryId", "Integer")]}], [])})
     dsx = type("D", (), {"root": tmp_path / "bibench/bi-bench/7", "tasks": []})()
     result = bibench.score_knowledge(tmp_path / "ws", {}, dsx)
@@ -187,9 +187,9 @@ def test_relbench_join_scorer(tmp_path):
         "relbench_demo", [{"name": n, "source": n, "fields": [ontology.field("x", "Integer")]} for n in schema["tables"]],
         [{**ontology.relationship("results", ["raceId"], "races", ["raceId"]), "name": "a"}],
         provenance={"method": "llm"})
-    ontology.write_ontology(tmp_path / "knowledge/ontology", {"semantic_model": model})
+    ontology.write_ontology(tmp_path / "kb/knowledge/ontology", {"semantic_model": model})
     dsx = type("D", (), {"scenario": "rel-f1", "schema": schema})()
-    report = relbench.db_report(tmp_path / "knowledge", dsx)
+    report = relbench.db_report(tmp_path, dsx)
     assert report["scores"][""] == {"n_pred": 1, "n_gold": 2, "n_hit": 1,
                                     "precision": 1.0, "recall": 0.5, "f1": pytest.approx(2 / 3)}
     assert not relbench.db_report(tmp_path / "empty", dsx)["reported"]

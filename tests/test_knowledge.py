@@ -11,7 +11,7 @@ def unit(**changes):
 
 
 def test_roundtrip(tmp_path):
-    path = tmp_path / "knowledge" / "units.jsonl"
+    path = tmp_path / "kb/knowledge" / "units.jsonl"
     units = [unit(content="金融知识", meta={"score": 0.3})]
     write_units(path, units)
     assert load_units(path) == units

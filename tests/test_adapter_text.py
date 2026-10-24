@@ -40,7 +40,7 @@ def test_score_knowledge_grounding(tmp_path):
         {"id": "rule", "content": "公司由创始人创立", "form": "rule", "status": "inferred", "provenance": "derived",
          "derived_from": ["founded"]},
     ]
-    write_units(ws / "knowledge/units.jsonl", units)
+    write_units(ws / "kb/knowledge/units.jsonl", units)
     assert not check_units(units, root=ws)
     result = scorer.score(ws, w.status(ws), None, None, [])
     m = result["metrics"]

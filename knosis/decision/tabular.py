@@ -7,7 +7,7 @@ import pandas as pd
 
 from pathlib import Path
 
-from ..knowledge import active, load_units
+from ..knowledge import active, load_units, layout
 from ..knowledge.evidence import run_check
 from . import register, register_knowledge
 
@@ -80,7 +80,7 @@ def score_knowledge(ws, state, ds) -> dict:
     # 其他可见表（dev / test 特征）照常提供，只把 train 换成带标签的留出行。
     visible = {name: frame for name, (_, frame) in read_tables([Path(ws) / "data"]).items()}
     items = []
-    for unit in active(load_units(ws / "knowledge/units.jsonl")):
+    for unit in active(load_units(layout(ws).units)):
         if unit.get("check", {}).get("kind") != "sql":
             continue
         train, _ = run_check(unit, ws, visible | {"train": frames["train"]})

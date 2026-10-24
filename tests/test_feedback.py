@@ -87,7 +87,7 @@ def test_driver_auto_feedback_per_round(ngd_root, tmp_path, monkeypatch):
         prompts.append(command[-1])
         state = w.status(ws)
         directory = w.stage_dir(ws, state)
-        write_units(ws / "knowledge/units.jsonl", [{"id": f"r{state['round']}", "content": "c", "form": "fact",
+        write_units(ws / "kb/knowledge/units.jsonl", [{"id": f"r{state['round']}", "content": "c", "form": "fact",
                                                      "status": "observed", "provenance": "tool:x@1()"}])
         (directory / "changelog.md").write_text("round")
         write_units(directory / "dev_predictions.jsonl", [{"id": t["id"], "answer": gold(t["id"])} for t in dev[:state["round"]]])
@@ -99,11 +99,11 @@ def test_driver_auto_feedback_per_round(ngd_root, tmp_path, monkeypatch):
     assert [r["id"] for r in records] == ["001-refine-r1", "002-refine-r2"]
     assert "001-refine-r1.json" in prompts[1] and "001-refine-r1" not in prompts[0]
     # 反馈记录随知识版本快照
-    assert (ws / "stages/3_refine/round_1/knowledge/feedback/001-refine-r1.json").exists()
+    assert (ws / "stages/3_refine/round_1/evidence/feedback/001-refine-r1.json").exists()
     fork = w.fork(ws, tmp_path / "k1", "K_1")
-    assert [p.name for p in (fork / "knowledge/feedback").iterdir()] == ["001-refine-r1.json"]
+    assert [p.name for p in (fork / "evidence/feedback").iterdir()] == ["001-refine-r1.json"]
     assert w.status(fork)["feedback"]["mode"] == "none"
-    assert not (w.fork(ws, tmp_path / "none", "none") / "knowledge/feedback").exists()
+    assert not list((w.fork(ws, tmp_path / "none", "none") / "evidence/feedback").iterdir())
 
 
 def test_full_mode_requires_all_dev(ngd_root, tmp_path):
