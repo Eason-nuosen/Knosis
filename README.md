@@ -1,9 +1,13 @@
 # Knosis
 
-> Knosis = know + gnosis。**面向 agent 的知识底座与实验平台。**
+> Knosis = knowledge + gnosis。**面向 agent 的知识底座与实验平台。**
 
-日常用法：给自己的 agent 一个**个人知识库**。会话结束后收集其中的知识，整理成知识体系，
-下一次会话通过 MCP 取用（见下面「五分钟上手」）。
+两类场景，同一套知识层：
+
+- **个人 agent**：给自己的 agent 一个**个人知识库**。从日常使用轨迹（Codex / Claude Code 会话）里收集知识，
+  整理成知识体系，下一次会话通过 MCP 取用（见下面「五分钟上手」）。
+- **企业级任务**：在具体任务上（各类 benchmark、业务数据）让 agent 边做边累积与任务相关的知识和理解，
+  经证据验证后写回知识库，可继承到同类新任务（见「快速开始（benchmark 工作区）」）。
 
 Knosis 把多源数据接进来，让 agent（Codex / Claude Code 等）从中构造**可审计、可撤回的显式知识**，
 再用这些知识做决策，并评测知识到底有没有用。Knosis 本身不是 agent：它提供数据、知识格式、工具与评测，
@@ -14,7 +18,7 @@ agent 负责思考。所有后续工作（新数据、新工具、新的知识�
 | 层 | 模块 | 内容 |
 | --- | --- | --- |
 | **数据层** | `knosis.data` | 统一入口 `load_dataset`，10 个数据入口返回同一个 `Dataset(tasks, files, schema, units, metrics)` |
-| **知识层** | `knosis.knowledge` | 两大块：**kb/**（知识主体：κ 单元、OSI 标准的本体、skill、知识体系大纲）+ **evidence/**（来源与验证：证据账本、可执行检查、dev 反馈、轨迹、内化记录）；结构与证据一致性检查；内化（去重、矛盾处理、构建知识体系） |
+| **知识层** | `knosis.knowledge` | 两大块：**kb/**（知识主体：κ 单元、OSI 标准的本体、skill、知识体系大纲）+ **evidence/**（来源与验证：证据账本、可执行检查、dev 反馈、轨迹、内化记录）；结构与证据一致性检查；内化（去重、矛盾处理、构建知识体系、结构化：知识图谱与流程图） |
 | **工具层** | `knosis.tools` | 统一的 `TOOL.md + run.py`：SQL、表画像、join 发现（参考 BI-Agent）、ULTRA、TabPFN |
 | **决策层** | `knosis.decision` | decide 产物的打分（从原始目录读 GT），与训练先验 / 含噪答案等参照对比，并统计知识被引用的情况 |
 | 工作区 | `knosis.workspace` | 把四层串起来：explore → extract → refine（多轮）→ decide，每步验收并提交 git，GT 不进工作区 |
@@ -170,7 +174,7 @@ v0.5 之前的步骤序列用 `knosis migrate` 转换（引用的步号一并改
 | 知识层 | 两大块 kb/ + evidence/；κ 粒度分对象知识（instance / relation / dataset）与元知识（method 怎么得到知识 / usage 怎么用好知识）；证据账本 + 可执行检查 + OSI 本体 + skill（usage 管有没有用，skill 管怎么做）；检查必填字段、来源、I1、I2、I5、状态与证据一致、证据过期、method 脚本可脱离原工作区运行、去重别名与矛盾标记；I3、I4 未实现 |
 | 知识库 | 独立知识库：继承（可按粒度）、写回（被引用的轨迹随知识带走）、导入 ontology-bench 标注（可去 GT） |
 | 工具层 | sql / profile / joins / fit / newton / tabpfn（含 cv，本机 CPU 推断已验证）/ autoschemakg（文本 → KG，agent 自己抽取或 `--llm` 命令）可用；ULTRA 只适配接口 |
-| 内化、知识体系与 MCP | `knowledge consolidate`：去重（merged + merged_into）、矛盾处理（收窄条件 / 裁决 / superseded_by / conflicts_with + contested）、构建知识体系（`kb/outline.yaml` + 归纳单元），每步验收、可回滚、留痕；`knosis mcp` 手写 stdio 服务，15 个工具；`knosis migrate` 转换 v0.4 布局 |
+| 内化、知识体系与 MCP | `knowledge consolidate`：去重（merged + merged_into）、矛盾处理（收窄条件 / 裁决 / superseded_by / conflicts_with + contested）、构建知识体系（`kb/outline.yaml` + 归纳单元）、结构化（知识图谱 `kb/graph.json` + 流程图 `kb/flows/`，另有计算出的派生图与规则 / 公式卡片），每步验收、可回滚、留痕；`knosis kb merge --namespace` 把不同数据集的工作区合进一个知识库；`knosis mcp` 手写 stdio 服务，16 个工具；`knosis migrate` 转换 v0.4 布局 |
 | agent 接入 | Codex 驱动模式在单表、方程、多表、KG 四类场景跑通演示（含 refine 自动反馈），以及从 Codex 自身轨迹与 agent-rsi AppWorld 轨迹提取知识，结果见 [docs/demos.md](docs/demos.md)；Claude Code 接口相同，未做 smoke |
 
 范围与定位见 [docs/scope.md](docs/scope.md)；路线：跨 agent 读者对照、只继承 method / skill 的迁移实验、L2 复杂查询。设计背景见 [docs/design.md](docs/design.md)。

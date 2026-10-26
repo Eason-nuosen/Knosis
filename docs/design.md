@@ -3,7 +3,7 @@
 
 # Knosis — 开源项目计划
 
-> Knosis = know + gnosis。**面向智能体的知识底座**：把多源数据构造成显式知识（L1），对知识做内化与复杂查询（L2），再把内化后的知识接进 agent 的决策（L3）。
+> Knosis = knowledge + gnosis。**面向智能体的知识底座**：把多源数据构造成显式知识（L1），对知识做内化与复杂查询（L2），再把内化后的知识接进 agent 的决策（L3）。
 > 对应 position paper 的 knowledge-centric loop：**D（发现）→ T+R（内化）→ U（使用）**。
 
 ---

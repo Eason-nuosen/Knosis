@@ -16,6 +16,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import yaml
+
 from .evidence import data_inputs, load_evidence, run_check
 from .layout import CHECKS, FEEDBACK, ONTOLOGY, SKILLS, TRACES, ensure, layout
 from .units import load_units, scope_of, write_units
@@ -68,6 +70,12 @@ def inherit(kb, target, scopes=None) -> dict:
     for part, wanted in PARTS.items():
         if (kb / part).is_dir() and (not scopes or not wanted or wanted & set(scopes)):
             shutil.copytree(kb / part, target / part, dirs_exist_ok=True, ignore=IGNORE)
+    # 知识图谱与流程图引用的是整个知识库的单元：只在全部继承时一起带走，部分继承时由新工作区的 structure 重建。
+    if not scopes:
+        if (kb / "kb/graph.json").exists():
+            shutil.copy2(kb / "kb/graph.json", target / "kb/graph.json")
+        if (kb / "kb/flows").is_dir():
+            shutil.copytree(kb / "kb/flows", target / "kb/flows", dirs_exist_ok=True)
     return {"path": str(kb), "version": version, "scopes": scopes, "units": len(units)}
 
 
@@ -90,8 +98,28 @@ def portable(ws, unit) -> tuple[bool, str]:
     return verdict == here and "Traceback" not in note, note
 
 
-def merge(ws, kb) -> str:
+def namespaced(unit, rename) -> dict:
+    """单元里所有指向其他单元的字段按 `rename`（旧 id → 新 id）改写。"""
+    unit = {**unit, "id": rename(unit["id"])}
+    for key in ("derived_from", "conflicts_with"):
+        if unit.get(key):
+            unit[key] = [rename(x) for x in unit[key]]
+    for key in ("merged_into", "superseded_by"):
+        if unit.get(key):
+            unit[key] = rename(unit[key])
+    if isinstance(unit.get("meta"), dict) and unit["meta"].get("of"):
+        unit["meta"] = {**unit["meta"], "of": rename(unit["meta"]["of"])}
+    if isinstance(unit.get("check"), dict) and str(unit["check"].get("path", "")).startswith(CHECKS + "/"):
+        unit["check"] = {**unit["check"], "path": unit["check"]["path"].replace(CHECKS + "/", f"{CHECKS}/{rename.ns}/", 1)}
+    return unit
+
+
+def merge(ws, kb, namespace=None) -> str:
     """把工作区当前知识层写回 KB，返回新版本号。
+
+    `namespace`：把多个不同数据集的工作区合进同一个 KB 时用。工作区的单元 id 加前缀 `<namespace>/`，skill 改名为
+    `<namespace>-<名字>`，检查脚本放进 `evidence/checks/<namespace>/`，所有引用（派生、别名、替换、矛盾、usage 的评价对象、
+    证据、skill 的 uses）一并改写，避免不同工作区里同名的 id 互相覆盖。
 
     κ 按 id 合并（工作区版本覆盖，旧版本留在 KB 的 git 历史里）；证据追加未见过的；
     工作区新产生的反馈记录改名为 `<工作区名>.<id>`，并改写指向它们的来源；
@@ -121,21 +149,44 @@ def merge(ws, kb) -> str:
         from .evidence import add_evidence
 
         add_evidence(ws, extra)
-    units = {u["id"]: u for u in load_units(dst.units)}
-    units |= {u["id"]: json.loads(rewrite(json.dumps(u, ensure_ascii=False))) for u in load_units(src.units)}
-    # 工作区里删掉、但仍被派生引用的单元，用它在历史快照里的最后版本补进 KB，保证 I1 在 KB 里也成立。
     from ..workspace import snapshots
 
-    history = {u["id"]: u for d in snapshots(ws) for u in load_units(layout(d).units)}
+    def rename(uid):
+        if not namespace or uid.startswith("ontology/"):
+            return uid
+        return f"skill:{namespace}-{uid[6:]}" if uid.startswith("skill:") else f"{namespace}/{uid}"
+
+    rename.ns = namespace
+    fix = (lambda u: namespaced(u, rename)) if namespace else (lambda u: u)  # noqa: E731
+    units = {u["id"]: u for u in load_units(dst.units)}
+    incoming = [fix(json.loads(rewrite(json.dumps(u, ensure_ascii=False)))) for u in load_units(src.units)]
+    units |= {u["id"]: u for u in incoming}
+    # 工作区里删掉、但仍被派生引用的单元，用它在历史快照里的最后版本补进 KB，保证 I1 在 KB 里也成立。
+    history = {u["id"]: u for d in snapshots(ws) for u in (fix(x) for x in load_units(layout(d).units))}
     missing = {p for u in units.values() for p in u.get("derived_from", [])} - set(units)
     units |= {uid: history[uid] for uid in missing if uid in history}
     old = load_evidence(kb)
     key = lambda e: (e["unit"], e["verdict"], e["source"], e["created"])  # noqa: E731
     known = {key(e) for e in old}
     new = [json.loads(rewrite(json.dumps(e, ensure_ascii=False))) for e in load_evidence(ws)]
+    new = [{**e, "unit": rename(e["unit"])} for e in new]
     new = [{**e, "id": f"e-{len(old) + i + 1:04d}"} for i, e in enumerate(x for x in new if key(x) not in known)]
     for part in (ONTOLOGY, CHECKS, SKILLS):
-        if (ws / part).is_dir():
+        if not (ws / part).is_dir():
+            continue
+        if namespace and part == CHECKS:
+            shutil.copytree(ws / part, kb / part / namespace, dirs_exist_ok=True, ignore=IGNORE)
+        elif namespace and part == SKILLS:
+            for path in (ws / part).glob("*/SKILL.md"):
+                _, head, body = path.read_text(encoding="utf-8").split("---", 2)
+                meta = yaml.safe_load(head)
+                meta["name"] = f"{namespace}-{meta['name']}"
+                meta["uses"] = [rename(x) for x in meta.get("uses", [])]
+                out = kb / part / meta["name"]
+                shutil.copytree(path.parent, out, dirs_exist_ok=True, ignore=IGNORE)
+                (out / "SKILL.md").write_text("---\n" + yaml.safe_dump(meta, allow_unicode=True, sort_keys=False)
+                                              + "---" + body, encoding="utf-8")
+        else:
             shutil.copytree(ws / part, kb / part, dirs_exist_ok=True, ignore=IGNORE)
     text = "".join(p.read_text(encoding="utf-8") for p in (src.units, src.ledger) if p.exists())
     cited = set(re.findall(r"data/traces/([^#;\s\"]+?)\.json", text))
@@ -146,7 +197,8 @@ def merge(ws, kb) -> str:
     dst.feedback.mkdir(parents=True, exist_ok=True)
     if src.actions.exists():
         with dst.actions.open("a", encoding="utf-8") as fh:
-            fh.writelines(json.dumps({**a, "workspace": ws.name}, ensure_ascii=False) + "\n" for a in load_units(src.actions))
+            fh.writelines(json.dumps({**a, "workspace": ws.name} | ({"unit": rename(a["unit"])} if a.get("unit") else {}),
+                                     ensure_ascii=False) + "\n" for a in load_units(src.actions))
     for path in src.feedback.glob("*.json"):
         record = json.loads(path.read_text(encoding="utf-8"))
         record["id"] = renames.get(path.stem, path.stem)
@@ -156,11 +208,16 @@ def merge(ws, kb) -> str:
         (dst.feedback / f"{record['id']}.json").write_text(json.dumps(record, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     for path in dst.skills.glob("*/SKILL.md"):
         text = path.read_text(encoding="utf-8")
-        for old, new in renames.items():
-            text = re.sub(rf"(?<![\w.]){re.escape(old)}(?![\w])", new, text)
+        for before, after in renames.items():
+            text = re.sub(rf"(?<![\w.]){re.escape(before)}(?![\w])", after, text)
         path.write_text(text, encoding="utf-8")
     write_units(dst.units, list(units.values()))
     write_units(dst.ledger, old + new)
+    if namespace:  # 记下前缀来自哪个工作区：内化时据此找跨数据集的共通知识
+        sources = kb / "kb/sources.json"
+        known_ns = json.loads(sources.read_text(encoding="utf-8")) if sources.exists() else {}
+        known_ns[namespace] = {"workspace": ws.name, "benchmark": state["benchmark"], "scenario": state["scenario"]}
+        sources.write_text(json.dumps(known_ns, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     issues = check_knowledge(kb)
     if issues:
         git(kb, "checkout", "--", ".")

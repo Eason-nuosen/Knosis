@@ -4,7 +4,7 @@
     evidence/  来源与验证：ledger.jsonl、consolidate.jsonl、checks/、feedback/、traces/
 
 κ 单元见 `units`；证据见 `evidence`；本体（OSI 三层，元素也是 κ）见 `ontology`；skill 见 `skills`；
-大纲见 `outline`；内化（去重、矛盾处理、构建知识体系）见 `consolidate`；v0.4 旧布局用 `migrate` 转换。
+大纲见 `outline`，知识图谱、流程图、派生图与规则卡片见 `structure`；内化（去重、矛盾处理、构建知识体系、结构化）见 `consolidate`；v0.4 旧布局用 `migrate` 转换。
 本模块的函数都以 `root`（工作区、知识库或知识版本快照的根目录）为参数。
 """
 
@@ -66,6 +66,9 @@ def check_knowledge(base, known_ids=frozenset(), root=None) -> list[str]:
     # skill 可以引用 κ、本体单元，以及只在历史版本里出现过的 κ（状态未知，不触发失效检查）。
     known = {i: {} for i in known_ids} | {u["id"]: u for u in [*onto, *units]}
     issues += skills.check_skills(found, known, records)
+    from .structure import check_structure
+
+    issues += check_structure(base)
     current = outline.load_outline(base)
     if current is not None:
         issues += outline.check_outline(current, outline.members(base))

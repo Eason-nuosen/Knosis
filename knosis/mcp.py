@@ -99,6 +99,17 @@ class Server:
         current = None if draft else ol.load_outline(self.ws)
         return ol.render(current or ol.draft(self.ws), items, by_unit(load_evidence(self.ws), self.root))
 
+    def knowledge_graph(self, entity=None, depth=1, view="summary"):
+        from .knowledge import structure
+
+        if entity:
+            return structure.neighbors(self.ws, entity, depth)
+        if view == "flows":
+            return structure.load_flows(self.ws)
+        if view == "cards":
+            return structure.cards(self.ws)
+        return structure.summary(self.ws)
+
     def knowledge_add(self, unit):
         units = self.units()
         if any(u["id"] == unit.get("id") for u in units):
@@ -229,6 +240,9 @@ TOOLS = {
     "knowledge_trace": ("一条知识的发现途径：派生链与全部证据。", {"unit": S}, ("unit",)),
     "knowledge_outline": ("知识体系大纲（kb/outline.yaml）渲染成 markdown；没有大纲或 draft=true 时给按粒度生成的草稿。",
                           {"draft": B}, ()),
+    "knowledge_graph": ("知识体系的结构化形式。不给参数：知识图谱与流程图的摘要；entity：某个实体（id 或名字）周围 depth 跳的子图，"
+                        "边上附引用的单元；view=flows：全部流程图（步骤、检查、判断，各引用单元或 skill）；view=cards：按对象分组的规则与公式。",
+                        {"entity": S, "depth": I, "view": {"type": "string", "enum": ["summary", "flows", "cards"]}}, ()),
     "knowledge_add": ("新增一条 κ（字段同 units.jsonl：id、content、form、provenance、status，可选 scope、condition、about、"
                       "derived_from、meta）。form：finding / fact / rule / formula / schema / tool / procedure。"
                       "写入前检查结构与来源，引入新问题会被拒绝。",

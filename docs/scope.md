@@ -5,6 +5,15 @@
 Knosis 是给 Codex、Claude Code 这类 agent 用的、**以知识为中心**的底座：agent 在异构数据上做任务的同时，
 持续提出、验证、修订一个**可验证的知识库**；Knosis 管知识的格式、证据、验证、选取、继承与评测，本身不是 agent。
 
+## 两类场景
+
+同一套知识层（格式、证据、内化、选取、继承）服务两类场景：
+
+- **个人 agent**：从个人的 agent 使用轨迹（Codex / Claude Code 会话）累积知识，形成个人知识库，后续会话通过 MCP 复用
+  （`knosis kb collect` → 内化 → `knosis install --kb`）。
+- **企业级任务**：在具体任务上（各类 benchmark、业务数据）累积与任务相关的知识和理解：工作区 explore → extract → refine → decide，
+  知识经 dev 反馈、检查与工具验证后写回知识库，继承到同类新任务。benchmark 既是验证手段，也代表这一侧的任务形态。
+
 ## 四个定位
 
 1. **场景：异构数据。** 图（NGDBench）、单表（TabArena）、多表 / 关系库（RelBench、BI-Bench、KramaBench）、

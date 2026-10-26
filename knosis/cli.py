@@ -139,12 +139,18 @@ def knowledge_parser(sub):
     outline.add_argument("--draft", action="store_true", help="看按粒度生成的草稿")
     outline.add_argument("--write", action="store_true", help="把草稿写成 outline.yaml（已有时拒绝）")
     kn.add_parser("candidates", help="内化候选：疑似重复、可能矛盾、有争议的单元").add_argument("--ws", default=".")
-    for name, text in (("consolidate", "内化：去重 → 矛盾处理 → 构建知识体系，每步由 agent 做、Knosis 验收并留痕"),
+    graph = kn.add_parser("graph", help="知识体系的结构化形式：知识图谱、流程图、派生图、规则 / 公式卡片")
+    graph.add_argument("--ws", default=".", help="工作区或知识库")
+    graph.add_argument("--entity", help="只看某个实体（id 或名字）周围的子图")
+    graph.add_argument("--depth", type=int, default=1)
+    graph.add_argument("--view", choices=["summary", "graph", "flows", "derivation", "cards"], default="summary")
+    for name, text in (("consolidate", "内化：去重 → 矛盾处理 → 构建知识体系 → 结构化，每步由 agent 做、Knosis 验收并留痕"),
                        ("organize", "只做内化的「构建知识体系」一步（写 kb/outline.yaml）")):
         cmd = kn.add_parser(name, help=text)
         cmd.add_argument("--ws", default=".", help="工作区或知识库")
         if name == "consolidate":
-            cmd.add_argument("--steps", default="dedup,conflict,organize", help="逗号分隔，取自 dedup / conflict / organize")
+            cmd.add_argument("--steps", default="dedup,conflict,organize,structure",
+                             help="逗号分隔，取自 dedup / conflict / organize / structure")
         cmd.add_argument("--agent", choices=["codex", "claude"], default="codex")
         cmd.add_argument("--model")
         cmd.add_argument("--effort")
@@ -167,6 +173,7 @@ def knowledge_parser(sub):
     merge = kb.add_parser("merge")
     merge.add_argument("ws")
     merge.add_argument("--kb", required=True)
+    merge.add_argument("--namespace", help="合并不同数据集的工作区时给 id 加的前缀（如 newton），避免同名 id 互相覆盖")
     onto = kb.add_parser("import-ontology")
     onto.add_argument("source", nargs="+")
     onto.add_argument("--kb", required=True)
@@ -195,7 +202,7 @@ def knowledge_command(args):
         if args.kb_cmd == "init":
             print(kb.init_kb(args.dir))
         elif args.kb_cmd == "merge":
-            print(kb.merge(args.ws, args.kb))
+            print(kb.merge(args.ws, args.kb, args.namespace))
         elif args.kb_cmd == "collect":
             from .knowledge import collect
 
@@ -212,6 +219,17 @@ def knowledge_command(args):
     history = [u for d in snapshots(ws) for u in knowledge.load_units(knowledge.layout(d).units)] if root else []
     if args.kn_cmd in {"outline", "organize", "consolidate"}:
         outline_command(args)
+    elif args.kn_cmd == "graph":
+        from .knowledge import structure
+
+        if args.entity:
+            print(json.dumps(structure.neighbors(kdir, args.entity, args.depth), ensure_ascii=False, indent=1))
+        elif args.view == "summary":
+            print(structure.summary(kdir))
+        else:
+            data = {"graph": lambda: structure.load_graph(kdir), "flows": lambda: structure.load_flows(kdir),
+                    "derivation": lambda: structure.derivation(kdir), "cards": lambda: structure.cards(kdir)}[args.view]()
+            print(json.dumps(data, ensure_ascii=False, indent=1))
     elif args.kn_cmd == "candidates":
         from .knowledge.consolidate import candidates
 

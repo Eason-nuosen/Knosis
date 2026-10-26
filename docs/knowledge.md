@@ -111,9 +111,9 @@ usage 只能由 feedback / ablation 证据支持为 verified。测试题上的�
 检查：`uses` 能解析；所用知识被撤回或失效后 skill 须为 stale / retracted；`derived_from` 指向存在的反馈记录。
 效果见评价它的 usage 单元（`knosis knowledge skills` 一并列出）；决策时在 `used_units` 里引用 `skill:<名字>`。skill 不按 agent 分开记录。
 
-## 内化：去重、矛盾处理、构建知识体系
+## 内化：去重、矛盾处理、构建知识体系、结构化
 
-`knosis knowledge consolidate [--steps dedup,conflict,organize]` 依次启动 agent 做三步；`knosis knowledge candidates`
+`knosis knowledge consolidate [--steps dedup,conflict,organize,structure]` 依次启动 agent 做四步；`knosis knowledge candidates`
 列出疑似重复（内容相似、锚定同一对象）、可能矛盾（锚定同一对象的相关单元）与有争议的单元，只作提示。
 
 | 步骤 | agent 做什么 | Knosis 检查 |
@@ -121,11 +121,45 @@ usage 只能由 feedback / ablation 证据支持为 verified。测试题上的�
 | dedup 去重 | 同一件事保留一条（合并来源与条件），另一条改为 `merged` + `merged_into` | 别名指向活跃单元；不删除单元；不新增问题 |
 | conflict 矛盾处理 | ① 收窄条件；② 用新证据裁决，一方撤回；③ 环境变了，旧的 stale + `superseded_by`；裁决不了的双方互记 `conflicts_with` 并标 contested | `conflicts_with` 双方都活跃时至少一方 contested；不删除单元 |
 | organize 构建知识体系 | 把单跳知识串成「场景 → 数据间关系 → 具体对象」的大纲 `kb/outline.yaml`；可新增归纳单元 | 大纲引用存在、活跃单元都已归类；归纳单元 `provenance: derived` 且 `derived_from` 至少两条 |
+| structure 结构化 | 把同一批知识组织成知识图谱 `kb/graph.json` 与流程图 `kb/flows/*.json` | 不改任何单元；每条边、每个流程节点引用活跃单元；图谱引用 ≥ 60% 的活跃对象知识，流程图引用 ≥ 60% 的 procedure / method / skill |
 
 每步验收不过带着问题重试一次，仍不过就把 `kb/` 与 `evidence/` 恢复到这一步之前；通过后对比前后单元，把操作
 （merge / supersede / status / conflict / narrow / rewrite / induce）追加到 `evidence/consolidate.jsonl`。
 `knosis kb collect` 收集后自动运行；`knosis ws run --consolidate` 在 refine 结束后运行一次，结果快照为新的 refine 版本（K_final）。
 大纲格式见 [interfaces.md](interfaces.md)；`knosis knowledge organize` 只做第三步。
+
+### 知识体系的组成形式
+
+同一批知识单元（κ、skill、本体单元）有五种组织方式，都只组织、不新增断言，每个节点、边、步骤都引用它来自的单元：
+
+| 形式 | 文件 | 由谁产生 | 回答什么 |
+| --- | --- | --- | --- |
+| 知识体系树 | `kb/outline.yaml` | agent（organize） | 这些知识分几块、各讲什么 |
+| 知识图谱 | `kb/graph.json` | agent（structure） | 环境里有哪些对象、它们之间是什么关系 |
+| 流程图 | `kb/flows/<名字>.json` | agent（structure） | 某类任务按什么步骤做、在哪里检查与分支、每步用哪条知识 |
+| 派生图 | 计算（`derived_from` / `merged_into` / `superseded_by` / `conflicts_with`） | Knosis | 哪条知识由哪些推出、并入或替换；撤回沿它传播 |
+| 规则 / 公式卡片 | 计算（rule、formula 单元按图谱实体分组） | Knosis | 每个对象上有哪些规则与公式 |
+
+```json
+// kb/graph.json
+{"entities": [{"id": "table:orders", "type": "table", "label": "orders", "units": ["extract/orders-key"]}],
+ "relations": [{"src": "table:orders", "rel": "references", "dst": "table:customers", "label": "cust_id，多对一",
+                "units": ["extract/orders-fk"]}]}
+// kb/flows/find-grain.json
+{"name": "find-grain", "title": "判断表的粒度", "goal": "……",
+ "nodes": [{"id": "start", "kind": "start", "text": "拿到一张新表"},
+           {"id": "count", "kind": "step", "text": "按候选键分组计数", "units": ["method/grain-check"]},
+           {"id": "dup", "kind": "decision", "text": "有重复？", "units": ["extract/orders-key"]},
+           {"id": "end", "kind": "end", "text": "记下粒度"}],
+ "edges": [{"src": "start", "dst": "count"}, {"src": "count", "dst": "dup"}, {"src": "dup", "dst": "end", "label": "否"}]}
+```
+
+实体 `id` 全图唯一（`类型:名字`），`type` 建议取 dataset / table / column / entity_type / variable / concept / metric / tool / task；
+每条关系至少引用一条活跃单元，端点必须存在；没有引用的实体必须是某条边的端点。流程图恰有一个 start、至少一个 end、
+所有节点从 start 可达，decision 至少两条出边，step / check / decision 至少引用一条活跃单元或 `skill:<名字>`。
+这些规则由 `knosis knowledge check` 检查（问题以 `structure` 开头）；引用的单元被撤回、失效或合并后，下次 structure 时更新。
+`knosis knowledge graph [--view summary|graph|flows|derivation|cards] [--entity <实体>]` 查看，MCP 工具 `knowledge_graph` 按实体查子图。
+知识图谱与流程图只在完整继承知识库时随之复制；只继承部分粒度时由新工作区的 structure 重建。
 
 ## 独立知识库
 

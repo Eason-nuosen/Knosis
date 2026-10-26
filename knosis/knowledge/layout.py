@@ -6,7 +6,9 @@
     │   │   ├── units.jsonl         κ：对象知识（instance / relation / dataset）+ 元知识（method / usage）
     │   │   └── ontology/           结构化知识（OSI 标准的三层：语义模型 / 概念 / 映射）
     │   ├── skills/<名字>/SKILL.md  使用流程
-    │   └── outline.yaml            知识体系大纲
+    │   ├── outline.yaml            知识体系大纲（树）
+│   ├── graph.json              知识图谱：实体与关系，每条边引用单元
+│   └── flows/<名字>.json       流程图：步骤、检查、判断，每个节点引用单元或 skill
     └── evidence/                   来源与验证的全过程
         ├── ledger.jsonl            证据账本
         ├── consolidate.jsonl       内化操作记录（去重、矛盾处理、构建知识体系）
