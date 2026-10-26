@@ -1,12 +1,26 @@
-"""agent 轨迹：统一成步骤序列放进 `data/traces/`；可选把轨迹所在的环境（数据目录）放进 `data/env/` 供验证。"""
+"""agent 轨迹：统一成 ATIF 轨迹放进 `data/traces/<id>.json`（另有 `.md`）；可选把轨迹所在的环境（数据目录）放进 `data/env/` 供验证。"""
 
 from __future__ import annotations
 
-import json
+import sys
 from pathlib import Path
 
-from ...data.traces import normalize, render as render_trace
+from ...data.traces import calls, dump, normalize, render as render_trace, warning
 from . import place, register, render
+
+
+def describe(name, t) -> str:
+    """BRIEF 里一条轨迹的说明。"""
+    subs = len(t.get("subagent_trajectories", []))
+    fmt = t.get("extra", {}).get("knosis", {}).get("format", "")
+    return (f"- `data/traces/{name}.json`（`.md` 便于阅读）：{fmt} 轨迹，{len(t['steps'])} 步，工具调用 {calls(t)} 次"
+            + (f"，子 agent {subs} 个" if subs else ""))
+
+
+def brief(scenario, lines, n_env=None) -> str:
+    env_note = (f"`data/env/` 是这些轨迹当时面对的环境数据（{n_env} 个文件，只读）：可以在上面重新检查轨迹里的说法。"
+                if n_env is not None else "没有提供轨迹当时的环境，只能依据轨迹本身；无法复核的说法保持 inferred。")
+    return render("traces.md", name=scenario, n_traces=len(lines), listing="\n".join(lines), env=env_note)
 
 
 @register("traces")
@@ -15,14 +29,13 @@ def export(ds, ws: Path, write_data=True, env=None, modalities="trace", **opts) 
     ws = Path(ws)
     lines = []
     for name, path in ds.files.items():
-        steps = normalize(path)
+        t = normalize(path)
         if write_data:
-            out = ws / "data/traces" / f"{name}.jsonl"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text("".join(json.dumps(s, ensure_ascii=False) + "\n" for s in steps), encoding="utf-8")
-            out.with_suffix(".md").write_text(render_trace(steps, name), encoding="utf-8")
-        calls = sum(s["kind"] == "call" for s in steps)
-        lines.append(f"- `data/traces/{name}.jsonl`（与 `.md` 同内容）：{ds.schema['formats'][name]} 轨迹，{len(steps)} 步，其中工具调用 {calls} 次")
+            out = dump(t, ws / "data/traces" / f"{name}.json")
+            out.with_suffix(".md").write_text(render_trace(t, name), encoding="utf-8")
+            if warning(t):
+                print(f"warning: {path}: {warning(t)}", file=sys.stderr)
+        lines.append(describe(name, t))
     files = []
     if env:
         env = Path(env).expanduser().resolve()
@@ -30,10 +43,8 @@ def export(ds, ws: Path, write_data=True, env=None, modalities="trace", **opts) 
         if write_data:
             for p in files:
                 place(p, ws / "data/env" / p.relative_to(env))
-    env_note = (f"`data/env/` 是这些轨迹当时面对的环境数据（{len(files)} 个文件，只读）：可以在上面重新检查轨迹里的说法。"
-                if env else "没有提供轨迹当时的环境，只能依据轨迹本身；无法复核的说法保持 inferred。")
     return {
-        "brief": render("traces.md", name=ds.scenario, n_traces=len(ds.files), listing="\n".join(lines), env=env_note),
+        "brief": brief(ds.scenario, lines, len(files) if env else None),
         "tasks": [], "dev": [], "holdout": [], "output": None,
         "modalities": [m for m in str(modalities).split(",") if m],
     }

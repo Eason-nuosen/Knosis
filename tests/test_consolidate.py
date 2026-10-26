@@ -175,7 +175,7 @@ def test_migrate_workspace(tmp_path):
     assert "usage/a/all" in (ws / "stages/4_decide/used_units.jsonl").read_text()
     assert load_units(ws / "stages/2_extract/kb/knowledge/units.jsonl")[0]["form"] == "procedure"
     assert check_knowledge(ws, root=ws) == []
-    assert migrate(ws)["skipped"] == "already v0.5"
+    assert migrate(ws)["skipped"] == "already current"
 
 
 def test_migrate_kb_cli(tmp_path, capsys):

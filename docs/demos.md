@@ -104,6 +104,7 @@ NGD-Fin 通过上述检查的题里仍有 36% 有结构问题。演示改用人�
 入口 `knosis ws init traces <名字> -o paths=<轨迹> [-o env=<轨迹当时的数据目录>]`。支持四种格式：
 Codex rollout、Claude Code 会话、逐步记录（agent-rsi 的 AppWorld ReAct）、OpenAI 风格 messages。
 四种格式都统一成步骤序列，知识的来源写到 `data/traces/<id>.jsonl#step/<n>`。
+（2026-10-26 起统一成 ATIF v1.7，`data/traces/<id>.json#step/<n>`；本节两个工作区已用 `knosis migrate` 转换，引用改到新步号，评测数字不变，`steps` 按 ATIF 步数计：AppWorld 382 → 137、Codex 33 → 16。）
 BRIEF 要求把轨迹里的话当成那个 agent 的说法，而不是事实：有环境的就复核，没有环境的保持 inferred。
 打分器报告三项：
 - `cites_trace`：引用了真实存在的步骤的知识占比；

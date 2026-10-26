@@ -5,7 +5,7 @@ import pytest
 
 from knosis import Dataset, data_dir, describe, list_datasets, list_scenarios, load_dataset, read
 
-ALL = {"ngdbench", "relbench", "burr", "newtonbench", "llm-srbench", "alphabench", "kramabench", "tabarena", "bibench", "spreadsheetbench", "text", "traces"}
+ALL = {"ngdbench", "relbench", "burr", "newtonbench", "llm-srbench", "alphabench", "kramabench", "tabarena", "bibench", "spreadsheetbench", "text", "traces", "whoandwhen"}
 
 
 def write(path, text):
@@ -26,6 +26,7 @@ def test_registry_and_cards():
     ("newtonbench", ["return ", "mass1 * mass2", "/ distance ** 2", "M**1.5", "-1/log("]),
     ("llm-srbench", ["np.exp(", "sqrt(", "x**2"]),
     ("kramabench", ['"answer":', "def solve"]),
+    ("whoandwhen", ["hc-", "ag-1", "mistake_step\": "]),
 ])
 def test_cards_do_not_leak_gt(name, leaks):
     card = describe(name)

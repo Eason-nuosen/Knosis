@@ -12,6 +12,7 @@ SOURCES = {
     "ngdbench": ("hf", "FeifeiCS/NGDBench"),
     "relbench": ("hf", "stanford-star/relbench-v1"),
     "llm-srbench": ("hf", "nnheui/llm-srbench"),  # gated：需先在 HF 接受条款并 `hf auth login`
+    "whoandwhen": ("hf", "Kevin355/Who_and_When@59b9fcba1aaed7bbf206b5f4d3c68b8face2f49c"),  # 锁定版本，见数据卡
     "tabarena": ("openml", 457),
     "burr": ("git", "https://github.com/HPI-Information-Systems/burr"),
     "newtonbench": ("git", "https://github.com/HKUST-KnowComp/NewtonBench"),
@@ -30,7 +31,8 @@ def download(name: str, include: list[str] | None = None) -> Path:
     if kind == "hf":
         from huggingface_hub import snapshot_download
 
-        snapshot_download(src, repo_type="dataset", local_dir=dest, allow_patterns=include)
+        repo, _, revision = src.partition("@")
+        snapshot_download(repo, repo_type="dataset", revision=revision or None, local_dir=dest, allow_patterns=include)
     elif kind == "openml":
         export_openml_suite(src, dest, include)
     else:

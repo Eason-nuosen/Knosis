@@ -181,7 +181,7 @@ def test_collect(tmp_path, monkeypatch):
     def fake_agent(cmd, cwd, env, stdin, stdout, stderr):  # 模拟 agent：写一条引用轨迹的知识
         units = load_units(kb / "kb/knowledge/units.jsonl")
         write_units(kb / "kb/knowledge/units.jsonl", units + [{"id": "collect/ls", "content": "ls works", "form": "finding",
-                                                  "status": "inferred", "provenance": "evidence/traces/rollout-a.jsonl#step/1"}])
+                                                  "status": "inferred", "provenance": "evidence/traces/rollout-a.json#step/2"}])
         return type("R", (), {"returncode": 0})()
 
     real = collect.subprocess.run

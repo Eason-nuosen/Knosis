@@ -5,7 +5,7 @@
 1. 找会话：Codex 在 `$CODEX_HOME/sessions/**/rollout-*.jsonl`，Claude Code 在 `~/.claude/projects/*/*.jsonl`；
    按修改时间筛选，跳过已收集过的（`collected.jsonl`）、工作目录在知识库内的（收集 / 整理自身的会话）、
    工作目录是 Knosis 工作区的（那里的知识已由工作区流程记录，`--include-workspaces` 可放开）、工具调用少于 `--min-calls` 的。
-2. 统一成步骤序列写进 `<kb>/evidence/traces/<会话 id>.{jsonl,md}`；知识引用写 `evidence/traces/<id>.jsonl#step/<n>`
+2. 统一成 ATIF 轨迹写进 `<kb>/evidence/traces/<会话 id>.{json,md}`（格式见 `knosis.data.traces`）；知识引用写 `evidence/traces/<id>.json#step/<n>`
    （与 `kb merge` 一致，继承进工作区后仍能定位）。
 3. 在知识库目录启动 agent 提取（模板 `templates/collect.md`），验收：知识层检查不新增问题、新单元引用了本次的轨迹；
    不通过带着问题重试一次，仍不通过就把知识库恢复到运行前（要求运行前知识库没有未提交的改动）。
@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ..data.traces import normalize, read, render
+from ..data.traces import calls, dump, normalize, read, render, warning
 from .layout import TRACES, layout
 from .units import load_units, write_units
 
@@ -80,7 +80,7 @@ def find(kb, source="codex", since="1d", include_workspaces=False, min_calls=3, 
         try:
             rows = read(path)
             cwd = session_cwd(rows, source)
-            steps = normalize(path)
+            trace = normalize(path, source)
         except (ValueError, KeyError, IndexError, json.JSONDecodeError):
             skipped["unreadable"] += 1
             continue
@@ -89,10 +89,10 @@ def find(kb, source="codex", since="1d", include_workspaces=False, min_calls=3, 
             skipped["inside_kb"] += 1
         elif cwd and not include_workspaces and in_workspace(cwd):
             skipped["workspace"] += 1
-        elif sum(s["kind"] == "call" for s in steps) < min_calls:
+        elif calls(trace) < min_calls:
             skipped["few_calls"] += 1
         else:
-            found.append({"session": sid, "source": source, "path": str(path), "cwd": cwd, "steps": steps,
+            found.append({"session": sid, "source": source, "path": str(path), "cwd": cwd, "trace": trace, "warning": warning(trace),
                           "modified": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()})
     return sorted(found, key=lambda s: s["modified"]), skipped
 
@@ -100,14 +100,11 @@ def find(kb, source="codex", since="1d", include_workspaces=False, min_calls=3, 
 def write_traces(kb, sessions) -> list[str]:
     lines = []
     for s in sessions:
-        out = layout(kb).traces / f"{s['session']}.jsonl"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in s["steps"]), encoding="utf-8")
-        out.with_suffix(".md").write_text(render(s["steps"], f"{s['session']}（{s['source']}，工作目录 {s['cwd']}）"),
+        out = dump(s["trace"], layout(kb).traces / f"{s['session']}.json")
+        out.with_suffix(".md").write_text(render(s["trace"], f"{s['session']}（{s['source']}，工作目录 {s['cwd']}）"),
                                           encoding="utf-8")
-        calls = sum(x["kind"] == "call" for x in s["steps"])
         lines.append(f"- `{TRACES}/{s['session']}.md`：{s['source']}，{s['modified'][:16]}，工作目录 `{s['cwd']}`，"
-                     f"{len(s['steps'])} 步（工具调用 {calls} 次）")
+                     f"{len(s['trace']['steps'])} 步（工具调用 {calls(s['trace'])} 次）")
     return lines
 
 
@@ -134,9 +131,9 @@ def acceptance(kb, before_issues, before_ids, sessions) -> list[str]:
     for unit in load_units(layout(kb).units):
         if unit["id"] in before_ids:
             continue
-        cited = re.findall(rf"{TRACES}/([^#; ]+)\.jsonl", unit.get("provenance", ""))
+        cited = re.findall(rf"{TRACES}/([^#; ]+)\.json#", unit.get("provenance", ""))
         if unit.get("provenance", "").strip() != "derived" and not set(cited) & ids:
-            issues.append(f"{unit['id']}: new unit must cite this run's traces as {TRACES}/<id>.jsonl#step/<n>")
+            issues.append(f"{unit['id']}: new unit must cite this run's traces as {TRACES}/<id>.json#step/<n>")
     return issues
 
 
@@ -150,6 +147,9 @@ def run(kb, source="codex", since="1d", limit=10, agent="codex", model=None, eff
     sessions, skipped = find(kb, source, since, include_workspaces, min_calls)
     sessions = sessions[:limit]
     summary = {"kb": str(kb), "sessions": [s["session"] for s in sessions], "skipped": skipped}
+    warnings = {s["session"]: s["warning"] for s in sessions if s["warning"]}
+    if warnings:  # 会话格式版本没测过或有没认识的记录：解析可能不完整
+        summary["warnings"] = warnings
     if dry_run or not sessions:
         return summary | {"cwd": [s["cwd"] for s in sessions]}
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:

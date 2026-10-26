@@ -1,7 +1,8 @@
 # 从最近的 agent 会话收集知识
 
 知识库：`$kb`（当前目录，git 仓库；现有 $n_units 条 κ；知识体系大纲：$outline）。
-下面 $n 个会话的轨迹已统一成步骤序列，放在 `evidence/traces/`（`.md` 便于阅读，`.jsonl` 每行一步，`step` 是步号）：
+下面 $n 个会话的轨迹已统一成 ATIF 轨迹，放在 `evidence/traces/`（`.md` 便于阅读，`## step <n>` 是步号；`.json` 是结构化原件，
+一步是一次模型输出或一条用户消息，调用的结果挂在发出调用的那一步）：
 
 $listing
 
@@ -25,8 +26,8 @@ $listing
 2. 新单元写进 `kb/knowledge/units.jsonl`（每行一个 JSON）：`id`（形如 `collect/<主题>-<短描述>`，全库唯一）、`content`、
    `form`（finding / fact / rule / formula / schema / tool / procedure）、`status`（observed / inferred / verified）、
    `scope`（对象知识 instance / relation / dataset，元知识 method / usage）、`provenance`、`condition`（适用范围：哪个项目、目录、工具版本等）。
-   `provenance` 写到轨迹步骤：`evidence/traces/<会话 id>.jsonl#step/<n>`，多处用 ` ; ` 连接。
-3. 证据：`knosis knowledge evidence add --ws . --unit <id> --verdict support|refute --method data --source evidence/traces/<会话 id>.jsonl#step/<n> --note "<依据>"`。
+   `provenance` 写到轨迹步骤：`evidence/traces/<会话 id>.json#step/<n>`，多处用 ` ; ` 连接。
+3. 证据：`knosis knowledge evidence add --ws . --unit <id> --verdict support|refute --method data --source evidence/traces/<会话 id>.json#step/<n> --note "<依据>"`。
    `verified` 至少要有一条支持证据。
 4. 只改 `kb/knowledge/units.jsonl`、`evidence/ledger.jsonl`（用命令写）、`kb/skills/`；不改 `evidence/traces/`、`collected.jsonl`、`kb/outline.yaml`（之后由内化步骤统一去重、处理矛盾、整理大纲）。
 

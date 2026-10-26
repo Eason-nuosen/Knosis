@@ -72,7 +72,7 @@ cd ~/kb && git log --oneline                        # 每次收集一个版本�
 ```python
 from knosis import load_dataset, list_datasets, describe
 
-list_datasets()          # ngdbench relbench burr newtonbench llm-srbench alphabench kramabench tabarena bibench spreadsheetbench text traces
+list_datasets()          # ngdbench relbench burr newtonbench llm-srbench alphabench kramabench tabarena bibench spreadsheetbench text traces whoandwhen
 describe("ngdbench")     # 给 agent 读的说明（来源 / 布局 / 陷阱），不含 GT
 ds = load_dataset("ngdbench", "ngd-fin")
 ds.tasks[0]              # Task(id, input, answer, split, kind, meta)；answer 是 GT，只在评测时读
@@ -144,7 +144,7 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 
 ## 现状（v0.5）
 
-12 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
+13 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
 
 | 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
 | --- | --- | --- | --- | --- | --- |
@@ -159,7 +159,11 @@ decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jso
 | alphabench | evaluate（CSI300） | 因子判断 JSONL | 信号准确率、IC MAE / Spearman、分维度打分 | 50 题 | generate（需 Qlib 现算 IC）、美股 |
 | spreadsheetbench | all / cell / sheet | 每条指令 3 个用例的输出 xlsx | 上游单元格值比较（评测前 LibreOffice 重算公式）：soft / hard；参照：原样交回输入 | 按指令切，默认 dev 5 / 测试 15 | .xlsm 默认跳过；需要 LibreOffice |
 | text | 语料路径 | 无（只评知识层） | 单元数、来源可定位率、引文核对 | 无 | — |
-| traces | 名字，`-o paths=` 轨迹（Codex / Claude Code / 逐步记录 / messages），可选 `-o env=` | 无（只评知识层） | 引用步骤有效率、环境复核率、只核对轨迹的比例 | 无 | 迁移收益另做：合进知识库后在新题上对比 |
+| traces | 名字，`-o paths=` 轨迹（Codex / Claude Code 含子 agent / 逐步记录 / messages / ATIF），可选 `-o env=` | 无（只评知识层） | 引用步骤有效率、环境复核率、只核对轨迹的比例 | 无 | 迁移收益另做：合进知识库后在新题上对比 |
+| whoandwhen | all / algorithm / hand | 每条失败日志的出错 agent 与步骤 JSONL | 上游 agent-level / step-level accuracy；参照：随机猜 | 按日志切，默认 dev 10 / 测试 30 | `-o answer=true` 给出任务标准答案（with ground truth 设置） |
+
+轨迹（`traces`、`whoandwhen`、`kb collect`）统一存成 ATIF v1.7（`<id>.json` + `.md`，格式见 `knosis/data/traces.py`），引用写 `<目录>/<id>.json#step/<n>`；
+v0.5 之前的步骤序列用 `knosis migrate` 转换（引用的步号一并改写）。
 
 | 部分 | 状态 |
 | --- | --- |

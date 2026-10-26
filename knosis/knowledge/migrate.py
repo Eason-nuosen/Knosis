@@ -10,6 +10,10 @@ v0.4：工作区的知识层在 `knowledge/`，知识库本身就是知识层目
   路径 `knowledge/{checks,traces,feedback,ontology}/` → 新位置（单元、证据、大纲、skill、检查脚本、used_units 里都改）。
 - skill 上的证据（unit 为 `skill:<名字>`）转成一条 usage 单元（`usage/skill:<名字>/migrated`，`meta.of` 指向 skill），证据改挂到它上面。
 工作区会按新模板重写 `AGENTS.md`，并各自提交一个 git 版本。
+
+轨迹（v0.5 之后）：`traces/` 下旧的步骤序列 `<id>.jsonl`（每行 `{step, role, kind, text}`）转成 ATIF 轨迹 `<id>.json` + `.md`
+（见 `knosis.data.traces`），引用 `traces/<id>.jsonl#step/<n>` 按新步号改写（旧的多步并成 ATIF 的一步时指向那一步）；
+轨迹工作区的 `BRIEF.md` 按新格式重写。已是 v0.5 布局的工作区或知识库只做这一步。
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..data.traces import detect, dump, legacy, read, render
 from .layout import CHECKS, FEEDBACK, LEDGER, ONTOLOGY, OUTLINE, SKILLS, TRACES, UNITS, ensure
 from .units import load_units, write_units
 
@@ -94,6 +99,91 @@ def convert(old: Path, root: Path) -> dict:
     return {"moved": moved, "units": len(units), "evidence": len(ledger), "skill_evidence": len(by_skill)}
 
 
+LEGACY_REF = re.compile(r"((?:data|evidence)/traces/)([^#;\s\"'`]+?)\.jsonl(?:#step/(\d+))?")
+TEXT = {".jsonl", ".json", ".yaml", ".md", ".py", ".txt"}
+
+
+def files(root, skip=("data", ".git", ".knosis")):
+    for p in root.rglob("*"):
+        rel = p.relative_to(root).parts
+        if p.is_file() and rel[0] not in skip and "__pycache__" not in rel:
+            yield p
+
+
+def upgrade_traces(root: Path) -> dict:
+    """旧步骤序列 → ATIF，并改写所有引用（单元、证据、大纲、skill、检查脚本、反馈、used_units，含各阶段快照）。"""
+    mappings = {}
+    found = [p for p in [*(root / "data/traces").glob("*.jsonl"), *(p for p in files(root) if p.parent.name == "traces"
+                                                                      and p.suffix == ".jsonl")]]
+    for path in found:
+        rows = read(path)
+        if not rows or detect(rows) != "legacy":
+            continue
+        t, mapping = legacy(rows, path.name)
+        mappings.setdefault(path.stem, mapping)
+        out = dump(t, path.with_suffix(".json"))
+        out.with_suffix(".md").write_text(render(t, path.stem), encoding="utf-8")
+        path.unlink()
+    if not mappings:
+        return {"traces": 0}
+
+    def sub(m):
+        name, n = m[2], m[3]
+        if name not in mappings:
+            return m[0]
+        return f"{m[1]}{name}.json" + (f"#step/{mappings[name].get(int(n), int(n))}" if n is not None else "")
+
+    rewritten = 0
+    for path in files(root):
+        if path.suffix not in TEXT or path.parent.name == "traces":
+            continue
+        text = path.read_text(encoding="utf-8")
+        new = LEGACY_REF.sub(sub, text)
+        if new != text:
+            path.write_text(new, encoding="utf-8")
+            rewritten += 1
+    state = root / ".knosis/state.json"
+    if state.exists() and json.loads(state.read_text(encoding="utf-8")).get("benchmark") == "traces":
+        from ..data.traces import load
+        from ..workspace.exporters.traces import brief, describe
+
+        scenario = json.loads(state.read_text(encoding="utf-8"))["scenario"]
+        lines = [describe(p.stem, load(p)) for p in sorted((root / "data/traces").glob("*.json"))]
+        env = root / "data/env"
+        n_env = sum(1 for p in env.rglob("*") if p.is_file()) if env.is_dir() else None
+        (root / "BRIEF.md").write_text(brief(scenario, lines, n_env), encoding="utf-8")
+    return {"traces": len(mappings), "files_rewritten": rewritten}
+
+
+def fresh_inputs(root: Path) -> set:
+    """迁移前仍有效的 (证据 id, 指纹)。迁移只是搬家、改写路径或换轨迹编码，内容不变：迁移后这些指纹换成新文件的，
+    免得证据被判过期；迁移前就已过期的保持过期。"""
+    from .evidence import fingerprint
+
+    out = set()
+    for ledger in (p for p in files(root) if p.name in ("ledger.jsonl", "evidence.jsonl")):
+        for e in load_units(ledger):
+            for key, value in e.get("inputs", {}).items():
+                if (root / key).is_file() and fingerprint(root / key) == value:
+                    out.add((e.get("id"), value))
+    return out
+
+
+def refresh_inputs(root: Path, fresh: set) -> int:
+    from .evidence import fingerprint
+
+    n = 0
+    for ledger in (p for p in files(root) if p.name == "ledger.jsonl"):
+        entries, changed = load_units(ledger), False
+        for e in entries:
+            for key, value in e.get("inputs", {}).items():
+                if (e.get("id"), value) in fresh and (root / key).is_file() and fingerprint(root / key) != value:
+                    e["inputs"][key], changed, n = fingerprint(root / key), True, n + 1
+        if changed:
+            write_units(ledger, entries)
+    return n
+
+
 def commit(path, message) -> None:
     if (path / ".git").exists():
         subprocess.run(["git", "add", "-A"], cwd=path, check=True, capture_output=True)
@@ -105,9 +195,11 @@ def migrate(path) -> dict:
     from string import Template
 
     path = Path(path).resolve()
+    report, messages = None, []
+    fresh = fresh_inputs(path)
     if (path / "kb").is_dir():
-        return {"path": str(path), "skipped": "already v0.5"}
-    if (path / ".knosis/state.json").exists() and (path / "knowledge").is_dir():
+        pass
+    elif (path / ".knosis/state.json").exists() and (path / "knowledge").is_dir():
         report = {"path": str(path), "kind": "workspace", "current": convert(path / "knowledge", path), "snapshots": 0}
         for old in sorted(path.glob("stages/**/knowledge")):
             if (old / "units.jsonl").exists():
@@ -119,14 +211,22 @@ def migrate(path) -> dict:
 
         (path / "AGENTS.md").write_text(Template((TEMPLATES / "AGENTS.md").read_text(encoding="utf-8")).substitute(
             python=sys.executable), encoding="utf-8")
-        commit(path, "migrate to v0.5 layout (kb/ + evidence/)")
-        return report
-    if (path / "units.jsonl").exists():
+        messages.append("migrate to v0.5 layout (kb/ + evidence/)")
+    elif (path / "units.jsonl").exists():
         report = {"path": str(path), "kind": "kb", "current": convert(path, path)}
         gitignore = path / ".gitignore"
         if gitignore.exists():
             gitignore.write_text(gitignore.read_text(encoding="utf-8").replace("outline.draft.yaml", "kb/outline.draft.yaml"),
                                  encoding="utf-8")
-        commit(path, "migrate to v0.5 layout (kb/ + evidence/)")
-        return report
-    raise ValueError(f"{path}: not a v0.4 workspace or knowledge base")
+        messages.append("migrate to v0.5 layout (kb/ + evidence/)")
+    else:
+        raise ValueError(f"{path}: not a v0.4 workspace or knowledge base")
+    traces = upgrade_traces(path)
+    if traces["traces"]:
+        messages.append(f"convert {traces['traces']} traces to ATIF v1.7")
+    if not messages:
+        return {"path": str(path), "skipped": "already current"}
+    report = (report or {"path": str(path), "kind": "workspace" if (path / ".knosis/state.json").exists() else "kb"}) | {"traces": traces}
+    report["fingerprints_refreshed"] = refresh_inputs(path, fresh)
+    commit(path, "; ".join(messages))
+    return report

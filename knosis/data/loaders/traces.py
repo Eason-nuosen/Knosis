@@ -13,7 +13,7 @@ from ..traces import detect, read
 from . import register
 
 METRICS = {
-    "cites_trace": "引用了轨迹步骤（`data/traces/<id>.jsonl#step/<n>`，且步骤存在）的活跃单元比例",
+    "cites_trace": "引用了轨迹步骤（`data/traces/<id>.json#step/<n>`，且步骤存在）的活跃单元比例",
     "env_verified": "有来自环境（数据检查 / 工具 / 可执行检查）的支持证据、而不只是轨迹转述的活跃单元比例",
 }
 

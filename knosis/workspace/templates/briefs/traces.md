@@ -2,7 +2,9 @@
 
 ## 数据是什么
 
-$n_traces 条 agent 轨迹，已统一成步骤序列（每行 `{step, role, kind, name, text}`，`kind` 为 message / reasoning / call / output）：
+$n_traces 条 agent 轨迹，已统一成 ATIF 轨迹（`.md` 便于阅读，`## step <n>` 是步号；`.json` 是结构化原件）。
+一步是一条用户消息，或 agent 的一次输出（文本、思考、工具调用），调用的结果挂在发出调用的那一步；
+多 agent 轨迹里说话的 agent 标在步骤标题上，子 agent 的步骤在 `.md` 末尾：
 
 $listing
 
@@ -15,7 +17,7 @@ $env
 能在环境数据上复核的，复核后再记证据；复核不了的保持 inferred，并写清依据的是哪几步。
 失败的尝试同样是信息来源（例如某个查询结果与后来的反馈不符，说明数据里有问题）。
 
-知识的来源写到轨迹步骤：`data/traces/<轨迹 id>.jsonl#step/<n>`，多步用 ` ; ` 连接；在环境上复核时另记证据。
+知识的来源写到轨迹步骤：`data/traces/<轨迹 id>.json#step/<n>`（子 agent 的步骤写 `#agent/<子 agent id>/step/<n>`），多步用 ` ; ` 连接；在环境上复核时另记证据。
 轨迹里可复用的做法，按性质分开写：关于环境的结论写成普通 κ，「如何发现 / 验证某类知识」写成 `scope=method`，
 「遇到这类任务怎样用这些知识去解」写成 skill（`kb/skills/`）。不要把轨迹里具体题目的答案存成知识。
 

@@ -62,5 +62,5 @@ def split(items, dev, limit=None, seed=0):
 
 from . import (  # noqa: E402,F401
     alphabench, bibench, burr, kramabench, llm_srbench, newtonbench, ngdbench, relbench, spreadsheetbench, tabarena, text,
-    traces,
+    traces, whoandwhen,
 )

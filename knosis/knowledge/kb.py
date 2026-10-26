@@ -95,7 +95,7 @@ def merge(ws, kb) -> str:
 
     κ 按 id 合并（工作区版本覆盖，旧版本留在 KB 的 git 历史里）；证据追加未见过的；
     工作区新产生的反馈记录改名为 `<工作区名>.<id>`，并改写指向它们的来源；
-    被引用的轨迹（`data/traces/<id>.jsonl`）复制进 KB 的 `evidence/traces/`，来源改写为 `evidence/traces/...`，继承后仍能定位。
+    被引用的轨迹（`data/traces/<id>.json` 与 `.md`）复制进 KB 的 `evidence/traces/`，来源改写为 `evidence/traces/...`，继承后仍能定位。
     """
     from . import check_knowledge
     from ..workspace import status
@@ -138,7 +138,7 @@ def merge(ws, kb) -> str:
         if (ws / part).is_dir():
             shutil.copytree(ws / part, kb / part, dirs_exist_ok=True, ignore=IGNORE)
     text = "".join(p.read_text(encoding="utf-8") for p in (src.units, src.ledger) if p.exists())
-    cited = set(re.findall(r"data/traces/([^#;\s\"]+?)\.jsonl", text))
+    cited = set(re.findall(r"data/traces/([^#;\s\"]+?)\.json", text))
     for name in cited:
         for path in (ws / "data/traces").glob(f"{name}.*"):
             dst.traces.mkdir(parents=True, exist_ok=True)
