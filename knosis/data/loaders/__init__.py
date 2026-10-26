@@ -17,5 +17,6 @@ def register(name: str, scenarios: Iterable[str] | Callable[[], Iterable[str]] =
 
 
 from . import (  # noqa: E402,F401
-    alphabench, bibench, burr, kramabench, llm_srbench, newtonbench, ngdbench, relbench, tabarena, text, traces,
+    alphabench, bibench, burr, kramabench, llm_srbench, newtonbench, ngdbench, relbench, spreadsheetbench, tabarena, text,
+    traces,
 )

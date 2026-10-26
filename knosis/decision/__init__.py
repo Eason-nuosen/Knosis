@@ -130,5 +130,6 @@ def mean(rows, key) -> float:
 
 
 from . import (  # noqa: E402,F401
-    alphabench, bibench, burr, graph_qa, kramabench, llm_srbench, newtonbench, relbench, tabular, text, traces,
+    alphabench, bibench, burr, graph_qa, kramabench, llm_srbench, newtonbench, relbench, spreadsheetbench, tabular, text,
+    traces,
 )
