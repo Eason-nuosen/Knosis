@@ -37,6 +37,9 @@ pip install 'knosis[all]'        # 加上各数据集需要的依赖（networkx�
 需要一个编码 agent：[Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://claude.com/claude-code)，两者都已实测。
 从源码安装：`git clone` 后 `pip install -e '.[all]'`，`pytest -q` 跑测试。
 
+给 agent 的提示、任务说明和数据说明默认是英文，agent 写出的知识也会是英文。设置 `KNOSIS_LANG=zh` 改用中文版
+（`knosis/workspace/templates_cn/`、`knosis/data/cards_cn/`），例如 `export KNOSIS_LANG=zh`。
+
 ## 上手：个人知识库
 
 不需要任何数据集。
@@ -117,6 +120,7 @@ knosis ws fork ws/houses --out ws/houses-none --knowledge none   # 对照：不�
 knosis knowledge check       --ws <dir>                    # 结构、来源、状态与证据一致性
 knosis knowledge consolidate --ws <dir>                    # 去重 → 矛盾处理 → 构建知识体系 → 结构化
 knosis knowledge compact     --ws <dir> [--topic <主题>]    # 知识太多时压缩：agent 自己判断，或只压缩某个主题
+knosis knowledge view        --ws <dir>                    # 在浏览器里看知识库（agent 生成的网页）
 knosis mcp --ws <dir>                                      # 以 MCP 暴露知识层与工具（16 个工具）
 ```
 
@@ -145,11 +149,15 @@ knosis knowledge outline --ws <dir>                       # 大纲渲染成 mark
 knosis knowledge graph   --ws <dir>                       # 知识图谱与流程图摘要
 knosis knowledge graph   --ws <dir> --entity <实体> --depth 2   # 某个实体周围的子图，边上附引用的知识
 knosis knowledge graph   --ws <dir> --view flows|derivation|cards
+knosis knowledge view    --ws <dir>                       # agent 写一个自包含网页（view/index.html），在浏览器里打开
+knosis knowledge view    --ws <dir> --request "只看订单相关的知识"   # 按你的要求重新生成
 ```
 
+`knowledge view` 让 agent 读知识库，自己写一个离线可用的 HTML（大纲、知识图谱、流程图、派生图，点开每条知识看内容与证据），
+Knosis 检查它不从网络加载资源、没有改动知识，再用浏览器打开；之后再运行直接打开，`--refresh` 重新生成。
 agent 通过 MCP 的 `knowledge_outline`、`knowledge_graph` 读取同样的内容。
 [在线演示](https://eason-nuosen.github.io/Knosis/)把各数据集上的知识图谱、流程图、派生图、卡片和大纲做成了可交互的网页，
-还有多个数据集合成后的知识总图；网页由 `site/build.py` 从演示工作区生成。
+还有多个数据集合成后的知识总图。
 
 ## 支持的数据
 
@@ -181,7 +189,7 @@ Knosis 面向**异构数据**：同一套知识层（κ + 证据 + 本体）覆�
 | [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | 各数据集上的演示与结果（网页版见[在线演示](https://eason-nuosen.github.io/Knosis/)） |
 | [docs/scope.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/scope.md) | 范围与定位 |
 | [docs/extending.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/extending.md) | 新增数据集、评测或工具 |
-| [docs/design.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/design.md) | 设计背景（四层架构：数据 / 知识 / 工具 / 决策） |
+| [docs/architecture.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/architecture.md) | 架构：四层（数据 / 知识 / 工具 / 决策）与工作区 |
 
 ## 许可
 

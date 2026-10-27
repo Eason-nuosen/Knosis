@@ -1,26 +1,26 @@
 # BI-Bench
 
-## 数据是什么
+## What the data is
 
-来自真实 Power BI 项目的多表数据，共 $n_cases 个用例；每个用例一个目录，里面是该项目的 CSV 表。
-表名、列名保持原项目的样子（可能有拼写错误）；很多列混着数字与文本，按字符串读更稳。
-数据可能含噪声；哪些是噪声、如何处理，由你判断。
+Multi-table data from real Power BI projects, $n_cases cases in total; each case is a directory containing that project's CSV tables.
+Table and column names are kept as in the original project (they may contain typos); many columns mix numbers and text, so reading them as strings is safer.
+The data may contain noise; what counts as noise and how to handle it is up to you.
 
 $cases
 
 $metadata
 
-## 下游任务是什么
+## What the downstream task is
 
-每个用例一道从用户仪表盘里抽出的业务问题，答案都能从该用例的表里算出来：
-要自己判断用哪几张表、怎么 join、要不要先做 unpivot 等变换，再做聚合。
-`tasks/dev.jsonl` 有 $n_dev 道开发题（可提交拿反馈）；测试题共 $n_test 道，只在 decide 阶段给出。
+Each case has one business question extracted from a user dashboard, and every answer can be computed from that case's tables:
+you have to decide which tables to use, how to join them, and whether a transformation such as unpivot is needed first, then aggregate.
+`tasks/dev.jsonl` has $n_dev dev questions (you can submit them for feedback); there are $n_test test questions, given only in the decide stage.
 
-交付 JSONL，每行 `{"id": 用例 id, "answer": 答案}`；答案是一张表 `{"columns": [...], "rows": [[...], ...]}`，
-或单个值。评测按 BI-Bench 上游口径：与任一参考答案匹配即对；参考答案是单个值时，只要它出现在你的表里；
-否则形状必须一致，单元格按多重集合匹配（数值 rtol=1e-2、atol=0.5，不计行列顺序）。
+Deliver JSONL, one line `{"id": case id, "answer": answer}` each; the answer is a table `{"columns": [...], "rows": [[...], ...]}`
+or a single value. Evaluation follows the upstream BI-Bench convention: matching any reference answer counts as correct; when the reference answer is a single value, it only needs to appear in your table;
+otherwise the shapes must agree and cells are matched as multisets (numeric rtol=1e-2, atol=0.5, row and column order ignored).
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让未见过的同类业务问题答得更准：表的含义与粒度、表间关系、需要的变换、常见的口径与陷阱都可以提取。
-知识应当可复用，不应缓存具体测试题的答案。
+Make unseen business questions of the same kind answered more accurately: the meaning and granularity of tables, relationships between tables, required transformations, and common definitions and pitfalls can all be extracted.
+Knowledge should be reusable; it should not cache answers to specific test questions.

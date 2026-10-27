@@ -20,6 +20,7 @@ from pathlib import Path
 import networkx as nx
 
 from knosis.data.loaders.text import SUFFIXES, chunk
+from knosis import lang
 from knosis.tools import write_result
 
 SYSTEM = "You are a helpful assistant who always response in a valid array of JSON objects without any explanation"
@@ -92,10 +93,14 @@ def prepare(paths, out: Path, chunk_chars: int, overlap: int) -> list[dict]:
 
 
 def prompts_markdown(n) -> str:
-    parts = [f"# 抽取提示词（AutoSchemaKG）\n\n`passages.jsonl` 共 {n} 段。对每一段依次执行下面三个提示词（段落正文接在提示词后），"
-             "把三个 JSON 数组合成 `extractions.jsonl` 的一行：\n\n"
-             '`{"id": "<段 id>", "entity_relation_dict": [...], "event_entity_dict": [...], "event_relation_dict": [...]}`\n\n'
-             f"系统提示：{SYSTEM}\n\n只写段落里说了的内容，不要补充外部知识。"]
+    parts = [lang.t(f"# Extraction prompts (AutoSchemaKG)\n\n`passages.jsonl` has {n} passages. For each passage run the three prompts below in turn (passage text appended after the prompt),"
+                    " and combine the three JSON arrays into one line of `extractions.jsonl`:\n\n"
+                    '`{"id": "<passage id>", "entity_relation_dict": [...], "event_entity_dict": [...], "event_relation_dict": [...]}`\n\n'
+                    f"System prompt: {SYSTEM}\n\nWrite only what the passage says; do not add external knowledge.",
+                    f"# 抽取提示词（AutoSchemaKG）\n\n`passages.jsonl` 共 {n} 段。对每一段依次执行下面三个提示词（段落正文接在提示词后），"
+                    "把三个 JSON 数组合成 `extractions.jsonl` 的一行：\n\n"
+                    '`{"id": "<段 id>", "entity_relation_dict": [...], "event_entity_dict": [...], "event_relation_dict": [...]}`\n\n'
+                    f"系统提示：{SYSTEM}\n\n只写段落里说了的内容，不要补充外部知识。")]
     parts += [f"## {name} → `{KEYS[name]}`\n\n```text\n{text}\n```" for name, text in TRIPLE_PROMPTS.items()]
     return "\n\n".join(parts) + "\n"
 
@@ -232,10 +237,13 @@ def to_units(g, edges, passages, schema, max_units, params) -> list[dict]:
     n_er = sum(e["kind"] == "entity_relation" for e in edges)
     units = [{
         "id": "autoschemakg/graph", "form": "schema", "status": "inferred", "scope": "dataset",
-        "content": (f"文本 KG：{kinds['entity']} 个实体、{kinds['event']} 个事件、{kinds['passage']} 段；"
-                    f"实体关系 {n_er} 条（头尾逐字出现在原段落的占 {ok / max(n_er, 1):.0%}），"
-                    f"最常见关系：{', '.join(r for r, _ in relations.most_common(8))}"),
-        "condition": "LLM 抽取，未逐条核对", "provenance": " ; ".join([tool, *sources]),
+        "content": lang.t(f"Text KG: {kinds['entity']} entities, {kinds['event']} events, {kinds['passage']} passages; "
+                          f"{n_er} entity relations ({ok / max(n_er, 1):.0%} with head and tail appearing verbatim in the source passage), "
+                          f"most common relations: {', '.join(r for r, _ in relations.most_common(8))}",
+                          f"文本 KG：{kinds['entity']} 个实体、{kinds['event']} 个事件、{kinds['passage']} 段；"
+                          f"实体关系 {n_er} 条（头尾逐字出现在原段落的占 {ok / max(n_er, 1):.0%}），"
+                          f"最常见关系：{', '.join(r for r, _ in relations.most_common(8))}"),
+        "condition": lang.t("LLM extraction, not checked one by one", "LLM 抽取，未逐条核对"), "provenance": " ; ".join([tool, *sources]),
         "meta": {"nodes": dict(kinds), "edges": g.number_of_edges(), "relations": dict(relations.most_common(20))},
     }]
     degree = {d["id"]: g.degree(k) for k, d in g.nodes(data=True) if d["type"] == "entity"}
@@ -252,14 +260,18 @@ def to_units(g, edges, passages, schema, max_units, params) -> list[dict]:
         units.append({
             "id": f"autoschemakg/er/{len(seen)}", "form": "finding", "status": "inferred", "scope": "relation",
             "content": f"{e['head']} —{e['relation']}→ {e['tail']}",
-            "condition": "LLM 从该段抽取" + ("" if e["grounded"] else "；头或尾实体未逐字出现在原文，可能是改写或幻觉"),
+            "condition": lang.t("extracted by an LLM from this passage", "LLM 从该段抽取") + ("" if e["grounded"] else lang.t(
+                "; the head or tail entity does not appear verbatim in the source, possibly a paraphrase or hallucination",
+                "；头或尾实体未逐字出现在原文，可能是改写或幻觉")),
             "provenance": f"{tool} ; {source}", "meta": e,
         })
     for i, p in enumerate(schema.get("patterns", [])[:20]):
         units.append({
             "id": f"autoschemakg/schema/{i + 1}", "form": "schema", "status": "inferred", "scope": "dataset",
-            "content": f"概念层模式：{p['head']} —{p['relation']}→ {p['tail']}（{p['count']} 条实例）",
-            "condition": "由概念化归纳，概念取每个节点的第一个概念", "provenance": " ; ".join([tool, *sources]), "meta": p,
+            "content": lang.t(f"Concept-level pattern: {p['head']} —{p['relation']}→ {p['tail']} ({p['count']} instances)",
+                              f"概念层模式：{p['head']} —{p['relation']}→ {p['tail']}（{p['count']} 条实例）"),
+            "condition": lang.t("induced by conceptualization, taking each node's first concept",
+                                "由概念化归纳，概念取每个节点的第一个概念"), "provenance": " ; ".join([tool, *sources]), "meta": p,
         })
     return units
 

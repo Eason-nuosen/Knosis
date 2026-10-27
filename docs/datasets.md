@@ -1,50 +1,51 @@
-# 数据入口
+# Datasets
 
-13 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）。
-数据默认在仓库下的 `data/<name>/`（pip 安装时为 `~/.knosis/data/<name>/`），可用 `KNOSIS_DATA_DIR` 指到别处；`knosis download <name>` 取数。
-各数据集的来源、布局与陷阱见 `datacards/`（`knosis describe <name>`）。
+All 13 dataset entries can open a workspace and be evaluated (`knosis ws init <dataset> <scenario>` -> four stages -> `knosis eval`).
+Data lives in `data/<name>/` under a source checkout, or `~/.knosis/data/<name>/` when installed with `pip install knosis`; set `KNOSIS_DATA_DIR` to put it elsewhere. `knosis download <name>` fetches it.
+`knosis describe <name>` prints the agent-facing card (source, layout, pitfalls; `knosis/data/cards/`); upstream sources and licenses are in `datacards/`.
 
-| 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
+| Dataset | Scenario | Deliverable | Metrics (the offline-computable part) | Dev (feedback) | Limitations |
 | --- | --- | --- | --- | --- | --- |
-| ngdbench | ngd-fin | 答案 JSONL（可加噪声断言） | 答案集合 EM / F1；噪声断言 P/R；参照：照抄含噪图答案 | 50 题；演示题集 10 / 20 | NL 题面大量与 Cypher 不一致，见 [demos](demos.md)；其他 4 个域的导出模板 |
-| tabarena | 51 个数据集 | 预测 CSV | RMSE / accuracy / AUC / log loss；参照：训练先验 | 默认 0，`--dev N` 留出训练行 | — |
-| relbench | 库名，`-o task=` | 预测 CSV | AUROC / MAE / MAP@k；参照：平凡基线 | val 划分 | — |
-| bibench | 用例 id 或 `all` | 表 JSONL | 上游匹配规则的 success；`-o metadata=true` 给初始本体 | all 模式 20 例 | — |
-| kramabench | 领域 | 答案 JSONL | 上游 exact / 近似 / 列表 F1 | 约 25% | 需 LLM 判定的口径退化为规范化精确匹配 |
-| burr | 真实库 / micro 场景 / `micro/<类别>` | 映射 JSONL | 上游 class / relation / attribute P/R/F1 | 多场景时约 25% | iswc、npd 的 D2RQ GT 打分 |
-| llm-srbench | split | 表达式 JSONL | NMSE、Acc₀.₁（含 OOD） | 约 20% | 符号等价（需 LLM） |
-| newtonbench | 领域 | 定律函数源码 | 上游 RMSLE；实验用 `newton` 工具 | 按（难度, 版本）整组 | 符号等价（需 LLM） |
-| alphabench | evaluate（CSI300） | 因子判断 JSONL | 信号准确率、IC MAE / Spearman、分维度打分 | 50 题 | generate（需 Qlib 现算 IC）、美股 |
-| spreadsheetbench | all / cell / sheet | 每条指令 3 个用例的输出 xlsx | 上游单元格值比较（评测前 LibreOffice 重算公式）：soft / hard；参照：原样交回输入 | 按指令切，默认 dev 5 / 测试 15 | .xlsm 默认跳过；需要 LibreOffice |
-| text | 语料路径 | 无（只评知识层） | 单元数、来源可定位率、引文核对 | 无 | — |
-| traces | 名字，`-o paths=` 轨迹（Codex / Claude Code 含子 agent / 逐步记录 / messages / ATIF），可选 `-o env=` | 无（只评知识层） | 引用步骤有效率、环境复核率、只核对轨迹的比例 | 无 | 迁移收益另做：合进知识库后在新题上对比 |
-| whoandwhen | all / algorithm / hand | 每条失败日志的出错 agent 与步骤 JSONL | 上游 agent-level / step-level accuracy；参照：随机猜 | 按日志切，默认 dev 10 / 测试 30 | `-o answer=true` 给出任务标准答案（with ground truth 设置） |
+| ngdbench | ngd-fin | answer JSONL (optionally with noise assertions) | answer-set EM / F1; noise assertion P/R; reference: copying answers from the noisy graph | 50 tasks; demo task sets of 10 / 20 | Many NL statements disagree with their Cypher, see [demos](demos.md); only ngd-fin has a BRIEF template, so the other NGDBench domains cannot open workspaces |
+| tabarena | 51 datasets | prediction CSV | RMSE / accuracy / AUC / log loss; reference: training prior | 0 by default, `--dev N` holds out training rows | - |
+| relbench | database name, `-o task=` | prediction CSV | AUROC / MAE / MAP@k; reference: trivial baselines | val split | - |
+| bibench | case id or `all` | table JSONL | upstream matching rule success; `-o metadata=true` provides an initial ontology | 20 cases in `all` mode | - |
+| kramabench | domain | answer JSONL | upstream exact / approximate / list F1 | about 25% | Metrics that need an LLM judge fall back to normalized exact match |
+| burr | real database / micro scenario / `micro/<category>` | mapping JSONL | upstream class / relation / attribute P/R/F1 | about 25% with multiple scenarios | No scoring against the D2RQ GT of iswc and npd |
+| llm-srbench | split | expression JSONL | NMSE, Acc₀.₁ (including OOD) | about 20% | No symbolic equivalence (needs an LLM) |
+| newtonbench | domain | law function source | upstream RMSLE; experiments via the `newton` tool | whole (difficulty, version) groups | No symbolic equivalence (needs an LLM) |
+| alphabench | evaluate (CSI300) | factor judgment JSONL | signal accuracy, IC MAE / Spearman, per-dimension scores | 50 tasks | No generate task (needs IC computed with Qlib); no US equities |
+| spreadsheetbench | all / cell / sheet | output xlsx for each of an instruction's 3 test cases | upstream cell value comparison (formulas recalculated with LibreOffice before scoring): soft / hard; reference: returning the input unchanged | split by instruction, dev 5 / test 15 by default | .xlsm skipped by default; requires LibreOffice |
+| text | corpus path | none (knowledge layer only) | unit count, locatable-provenance rate, citation checks | none | - |
+| traces | name, `-o paths=` traces (Codex / Claude Code including subagents / step-by-step logs / messages / ATIF), optional `-o env=` | none (knowledge layer only) | valid cited-step rate, environment re-check rate, share checked against traces only | none | Transfer benefit is measured separately: merge into a knowledge base and compare on new tasks |
+| whoandwhen | all / algorithm / hand | JSONL with the failing agent and step for each failure log | upstream agent-level / step-level accuracy; reference: random guess | split by log, dev 10 / test 30 by default | `-o answer=true` provides the task's reference answer (the with-ground-truth setting) |
 
-轨迹（`traces`、`whoandwhen`、`kb collect`）统一存成 ATIF v1.7（`<id>.json` + `.md`，格式见 `knosis/data/traces.py`），
-引用写 `<目录>/<id>.json#step/<n>`；v0.5 之前的步骤序列用 `knosis migrate` 转换（引用的步号一并改写）。
+Traces (`traces`, `whoandwhen`, `kb collect`) are all stored as ATIF v1.7 (`<id>.json` + `.md`, format in `knosis/data/traces.py`),
+cited as `<dir>/<id>.json#step/<n>`; `knosis migrate` converts traces stored as older step sequences (rewriting cited step numbers too).
 
-## Python 接口
+## Python API
 
 ```python
 from knosis import load_dataset, list_datasets, describe
 
-list_datasets()          # 13 个数据入口
-describe("ngdbench")     # 给 agent 读的说明（来源 / 布局 / 陷阱），不含 GT
+list_datasets()          # the 13 dataset entries
+describe("ngdbench")     # agent-facing description (source / layout / pitfalls), no GT
 ds = load_dataset("ngdbench", "ngd-fin")
-ds.tasks[0]              # Task(id, input, answer, split, kind, meta)；answer 是 GT，只在评测时读
-g = ds.read("clean")     # 按后缀打开：parquet/csv → DataFrame，gpickle → 图 ...
+ds.tasks[0]              # Task(id, input, answer, split, kind, meta); answer is GT, read only at evaluation
+g = ds.read("clean")     # opens by suffix: parquet/csv -> DataFrame, gpickle -> graph ...
 ```
 
 ```python
 from knosis.knowledge import check_knowledge, ontology
 
-check_knowledge("ws/x", root="ws/x")                      # κ 结构 + 证据一致 + 本体引用 + 去重别名与矛盾标记
-model = ontology.from_bibench(load_dataset("bibench", "101248502"))   # Power BI 元数据 → 本体 core 层
+check_knowledge("ws/x", root="ws/x")                      # κ structure + evidence consistency + ontology refs + dedup aliases and conflict marks
+model = ontology.from_bibench(load_dataset("bibench", "101248502"))   # Power BI metadata -> ontology core layer
 ontology.write_ontology("onto/", {"semantic_model": model})
-ontology.ontology_units(ontology.load_ontology("onto/"))  # 本体元素展开成 κ（form=schema）
+ontology.ontology_units(ontology.load_ontology("onto/"))  # expand ontology elements into κ (form=schema)
 ```
 
 ```bash
-knosis ontology convert relbench rel-f1 --out onto/f1    # manifest 的主外键 → core 层
+knosis ontology convert relbench rel-f1 --out onto/f1    # primary / foreign keys from the manifest -> core layer
 knosis ontology check onto/f1
+knosis ontology units onto/f1                            # print the κ view of the ontology
 ```

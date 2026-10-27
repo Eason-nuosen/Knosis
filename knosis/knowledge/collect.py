@@ -11,7 +11,7 @@
 3. Launch the extraction agent in the KB directory (template `templates/collect.md`); acceptance: no new knowledge-layer issues and new
    units cite this run's traces. On failure retry once with the issues; if it still fails, restore the KB to its pre-run state
    (requires no uncommitted changes in the KB before the run).
-4. On success record in `collected.jsonl`, then consolidate (`consolidate`: dedup -> conflicts -> organize; `--no-consolidate` skips it),
+4. On success record in `collected.jsonl`, then consolidate (`consolidate`: dedup -> conflicts -> organize -> structure; `--no-consolidate` skips it),
    and finally commit a git version.
 
 Raw traces are copied into the knowledge base (a local git repository) and may contain paths or internal information; the prompt tells the agent not to put keys or passwords into knowledge.
@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..data.traces import calls, dump, normalize, read, render, warning
+from ..lang import t
 from .layout import TRACES, layout
 from .units import load_units, write_units
 
@@ -103,22 +104,26 @@ def write_traces(kb, sessions) -> list[str]:
     lines = []
     for s in sessions:
         out = dump(s["trace"], layout(kb).traces / f"{s['session']}.json")
-        out.with_suffix(".md").write_text(render(s["trace"], f"{s['session']}（{s['source']}，工作目录 {s['cwd']}）"),
+        out.with_suffix(".md").write_text(render(s["trace"], t(f"{s['session']} ({s['source']}, working directory {s['cwd']})",
+                                                              f"{s['session']}（{s['source']}，工作目录 {s['cwd']}）")),
                                           encoding="utf-8")
-        lines.append(f"- `{TRACES}/{s['session']}.md`：{s['source']}，{s['modified'][:16]}，工作目录 `{s['cwd']}`，"
-                     f"{len(s['trace']['steps'])} 步（工具调用 {calls(s['trace'])} 次）")
+        lines.append(t(f"- `{TRACES}/{s['session']}.md`: {s['source']}, {s['modified'][:16]}, working directory `{s['cwd']}`, "
+                       f"{len(s['trace']['steps'])} steps ({calls(s['trace'])} tool calls)",
+                       f"- `{TRACES}/{s['session']}.md`：{s['source']}，{s['modified'][:16]}，工作目录 `{s['cwd']}`，"
+                       f"{len(s['trace']['steps'])} 步（工具调用 {calls(s['trace'])} 次）"))
     return lines
 
 
 def prompt(kb, sessions) -> str:
     from string import Template
 
-    from ..workspace import TEMPLATES
+    from ..workspace import templates
 
     units = load_units(layout(kb).units)
-    return Template((TEMPLATES / "collect.md").read_text(encoding="utf-8")).substitute(
+    return Template((templates() / "collect.md").read_text(encoding="utf-8")).substitute(
         kb=Path(kb).resolve(), n=len(sessions), listing="\n".join(write_traces(kb, sessions)), n_units=len(units),
-        outline="有，先读 `kb/outline.yaml`" if layout(kb).outline.exists() else "还没有")
+        outline=t("yes, read `kb/outline.yaml` first", "有，先读 `kb/outline.yaml`") if layout(kb).outline.exists()
+        else t("not yet", "还没有"))
 
 
 def git(kb, *args) -> str:
@@ -173,7 +178,7 @@ def run(kb, source="codex", since="1d", limit=10, agent="codex", model=None, eff
                           "issues": issues}, ensure_ascii=False))
         if not issues:
             break
-        text += "\n验收未通过，请修正：\n" + "\n".join(issues)
+        text += t("\nAcceptance failed, please fix:\n", "\n验收未通过，请修正：\n") + "\n".join(issues)
     if issues:
         git(kb, "reset", "--hard", "HEAD")
         git(kb, "clean", "-fd", "-e", "*.log", "-e", "kb/outline.draft.yaml")

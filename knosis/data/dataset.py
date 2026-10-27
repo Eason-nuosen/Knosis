@@ -9,11 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..lang import localized
+
 # In a source checkout the default is the repo's data/; a pip-installed package has no repo, so it defaults to ~/.knosis/data.
 REPO = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("KNOSIS_DATA_DIR") or
                 (REPO / "data" if (REPO / "pyproject.toml").exists() else Path.home() / ".knosis/data"))
-CARDS_DIR = Path(__file__).resolve().parent / "cards"
+CARDS_DIR = Path(__file__).resolve().parent / "cards"  # English; cards_cn/ holds the Chinese ones (KNOSIS_LANG=zh)
 
 
 def data_dir(name: str) -> Path:
@@ -70,7 +72,7 @@ class Dataset:
 
 
 def card(name: str) -> str:
-    return (CARDS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    return (localized(CARDS_DIR) / f"{name}.md").read_text(encoding="utf-8")
 
 
 def read(path: str | Path, **kw) -> Any:

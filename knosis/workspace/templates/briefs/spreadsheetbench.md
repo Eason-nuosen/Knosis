@@ -1,30 +1,30 @@
 # SpreadsheetBench — $scenario
 
-## 数据是什么
+## What the data is
 
-`data/<指令 id>/` 下是每条指令的输入表格：`1_input.xlsx`、`2_input.xlsx`、`3_input.xlsx` 是同一条指令的 3 个测试用例
-（同一类表格，数据或表格位置不同）。表格来自 Excel 论坛的真实求助帖，常见表头不在第一行、一个 sheet 里有多块数据、
-合并单元格、文本形式的数字或日期等情况。数据可能含噪声；哪些是噪声、如何处理，由你判断。
-Python 环境已装 openpyxl；工具 `sheet` 可查看表格结构，并用 LibreOffice 重算公式（见 `TOOLS.md`）。
+`data/<instruction id>/` holds the input spreadsheets for each instruction: `1_input.xlsx`, `2_input.xlsx` and `3_input.xlsx` are 3 test cases of the same instruction
+(the same kind of spreadsheet, with different data or table positions). The spreadsheets come from real help-request posts on Excel forums; headers not on the first row, multiple data blocks in one sheet,
+merged cells, numbers or dates stored as text, and similar situations are common. The data may contain noise; what counts as noise and how to handle it is up to you.
+The Python environment has openpyxl installed; the `sheet` tool can inspect spreadsheet structure and recalculate formulas with LibreOffice (see `TOOLS.md`).
 
-## 下游任务是什么
+## What the downstream task is
 
-每道题是一条自然语言指令（`instruction`），要求修改表格：在指定位置算出结果（Cell-Level），或对整块数据做变换（Sheet-Level）。
-`answer_position` 给出答案所在的区域（如 `'Sheet1'!D2:D20`，多段用逗号分隔；不写 sheet 时指第一个 sheet）。
-`tasks/dev.jsonl` 有 $n_dev 条开发指令，测试指令（$n_test 条）在 decide 阶段给出；本工作区共 $n_cell 条 Cell-Level、$n_sheet 条 Sheet-Level。
-开发与测试是**不同的指令**：知识要能迁移到没见过的指令上。
+Each question is a natural-language instruction (`instruction`) asking you to modify the spreadsheet: compute results at a specified location (Cell-Level), or transform a whole data block (Sheet-Level).
+`answer_position` gives the region where the answer goes (e.g. `'Sheet1'!D2:D20`, multiple ranges separated by commas; without a sheet name it refers to the first sheet).
+`tasks/dev.jsonl` has $n_dev dev instructions; the test instructions ($n_test) are given in the decide stage; this workspace has $n_cell Cell-Level and $n_sheet Sheet-Level instructions in total.
+Dev and test are **different instructions**: the knowledge must transfer to instructions you have not seen.
 
-每条指令的 3 个用例都要交：把改好的表格另存（不要改 `data/` 里的原文件），交付 `predictions.jsonl`，每行
-`{"id": 指令 id, "answer": {"1": "<输出路径>", "2": "...", "3": "..."}}`，路径相对 `predictions.jsonl` 所在目录
-（如 `outputs/<id>/1_output.xlsx`）。保留原有的 sheet 名与表格内容，只做指令要求的修改。
+All 3 cases of each instruction must be delivered: save the modified spreadsheets as new files (do not modify the original files in `data/`), and deliver `predictions.jsonl`, one line
+`{"id": instruction id, "answer": {"1": "<output path>", "2": "...", "3": "..."}}` each, with paths relative to the directory containing `predictions.jsonl`
+(e.g. `outputs/<id>/1_output.xlsx`). Keep the original sheet names and spreadsheet contents, and make only the modifications the instruction asks for.
 
-评测：每个输出文件先用 LibreOffice 打开、重算公式并另存，再只比较 `answer_position` 内的单元格**值**
-（数值保留 2 位小数，日期按 Excel 序列号，空串等于空，类型不同即不等；不比颜色与格式）。
-写公式或写值都可以，但公式必须在 LibreOffice 里算出正确结果；用 `knosis tool run sheet -- recalc` 可以先确认。
-指标：soft = 各指令用例通过率的平均，hard = 3 个用例全部通过的指令占比。
+Evaluation: each output file is first opened in LibreOffice, its formulas recalculated and the file re-saved; then only the cell **values** within `answer_position` are compared
+(numbers rounded to 2 decimal places, dates as Excel serial numbers, empty string equals empty, different types are unequal; colors and formatting are not compared).
+You may write formulas or values, but formulas must compute the correct result in LibreOffice; you can check first with `knosis tool run sheet -- recalc`.
+Metrics: soft = average case pass rate over instructions, hard = fraction of instructions whose 3 cases all pass.
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让没见过的指令也做得对：表格布局与数据块的定位方法、常见的数据坑（文本数字、合并单元格、空行）、
-各类操作（查找、匹配、汇总、筛选、删除、重排）的可靠做法、openpyxl / LibreOffice 的实际行为与限制，都可以写成知识。
-知识应当可复用，不应缓存具体指令的答案。
+Make unseen instructions done correctly as well: methods for locating table layouts and data blocks, common data pitfalls (numbers as text, merged cells, blank rows),
+reliable ways to perform each kind of operation (lookup, matching, aggregation, filtering, deletion, reordering), and the actual behavior and limitations of openpyxl / LibreOffice can all be written as knowledge.
+Knowledge should be reusable; it should not cache answers to specific instructions.

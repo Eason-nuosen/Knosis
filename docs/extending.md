@@ -1,69 +1,71 @@
-# 扩展 Knosis
+# Extending Knosis
 
-每类扩展只碰一个文件或目录，并补一个用 `tmp_path` 造最小数据的测试。需要真实数据的测试在数据不存在时 `pytest.skip`。
+Each kind of extension touches only one file or directory, plus a test that builds minimal data with `tmp_path`. Tests that need real data call `pytest.skip` when the data is absent.
 
-## 新增数据集（数据层）
+## Adding a dataset (data layer)
 
-1. `knosis/data/loaders/<name>.py`：一个 `load(scenario, root=None, **kw) -> Dataset`，用 `@register("<name>", scenarios=...)` 注册，
-   并在 `knosis/data/loaders/__init__.py` 的 import 列表里加上模块名。
-2. `knosis/data/cards/<name>.md`：给 agent 读的说明（来源、布局、陷阱），**不得包含 GT**。
-3. 可选：`knosis/data/download.py` 的 `SOURCES` 加一行；`datacards/<name>.md` 写上游来源与许可（给人看）。
+1. `knosis/data/loaders/<name>.py`: a `load(scenario, root=None, **kw) -> Dataset`, registered with `@register("<name>", scenarios=...)`,
+   and the module name added to the import list in `knosis/data/loaders/__init__.py`.
+2. `knosis/data/cards/<name>.md`: a description for agents (source, layout, pitfalls); it **must not contain GT**. `knosis describe <name>` prints it.
+3. Optional: a line in `SOURCES` in `knosis/data/download.py`; `datacards/<name>.md` with upstream source and license (for humans).
 
-`Task.answer` 放 GT（值或文件路径），`Task.input` 放题面；GT 不进 `meta`，除非字段名说明它是提示（如 BI-Bench 的 `oracle`）。
+`Task.answer` holds GT (a value or a file path) and `Task.input` holds the task statement; GT does not go into `meta` unless the field name says it is a hint (e.g. BI-Bench's `oracle`).
 
-## 让数据集能开工作区
+## Opening workspaces on a dataset
 
-写 `knosis/workspace/exporters/<name>.py`，用 `@register("<name>")` 装饰 `export(ds, ws, write_data=True, **opts) -> dict`，
-并加进 `exporters/__init__.py` 末尾的 import 列表：
+Write `knosis/workspace/exporters/<name>.py`, decorate `export(ds, ws, write_data=True, **opts) -> dict` with `@register("<name>")`,
+and add it to the import list at the end of `exporters/__init__.py`:
 
-| 返回键 | 内容 |
+| Return key | Content |
 | --- | --- |
-| `brief` | BRIEF.md 正文（模板放 `workspace/templates/briefs/`，事实先从数据算出来再写；只说数据可能含噪声，不教怎么处理） |
-| `tasks` | 测试题（无答案），每项至少有 `id`；decide 阶段才写到 `tasks/tasks.jsonl` |
-| `dev` | 开发题（无答案，与测试题不重叠），用于反馈；可为空 |
-| `holdout` | 写进 BRIEF 当示例、不参与测试的题目 id |
-| `output` | decide 交付文件名：`predictions.jsonl`（每行 `{id, answer}`）或 `predictions.csv`（`row_id`, `prediction`, …）；没有下游预测时为 None |
-| `modalities` | 用于挑选 TOOLS.md 里的工具，如 `["graph"]`、`["table"]`、`["tables"]` |
+| `brief` | Body of BRIEF.md (template in `workspace/templates/briefs/`; compute the facts from the data first, then write; say only that the data may contain noise, not how to handle it) |
+| `tasks` | Test tasks (no answers), each with at least an `id`; written to `tasks/tasks.jsonl` only in the decide stage |
+| `dev` | Dev tasks (no answers, disjoint from test tasks), used for feedback; may be empty |
+| `holdout` | Task ids shown as examples in BRIEF and excluded from testing |
+| `output` | Decide deliverable file name: `predictions.jsonl` (one `{id, answer}` per line) or `predictions.csv` (`row_id`, `prediction`, ...); None when there is no downstream prediction |
+| `modalities` | Used to pick tools for TOOLS.md, e.g. `["graph"]`, `["table"]`, `["tables"]` |
 
-`write_data=False` 时只返回上述内容不写数据（decide 阶段重新生成题目时用），同样的 `opts` 必须给出同样的划分（`split()` 按 seed 切分）。
-原始文件用 `place()` 放进工作区（硬链接，跨盘时复制）；不要用软链接，它会暴露原始目录与旁边的 GT。
-命令行的 `ws init` 用 `--dev` / `--limit` / `--seed` / `-o key=value` 把参数传给导出器。
+With `write_data=False` it returns the above without writing data (used to regenerate tasks in the decide stage); the same `opts` must give the same split (`split()` splits by seed).
+Put raw files into the workspace with `place()` (hard link, copy across filesystems); do not use symlinks, which expose the raw directory and the GT next to it.
+On the command line, `ws init` passes `--dev` / `--limit` / `--seed` / `-o key=value` to the exporter.
 
-## 新增评测（决策层）
+## Adding an evaluation (decision layer)
 
-在 `knosis/decision/<name>.py` 写打分器并注册，加进 `decision/__init__.py` 末尾的 import 列表：
+Write a scorer in `knosis/decision/<name>.py`, register it, and add it to the import list at the end of `decision/__init__.py`:
 
 ```python
 from . import register
 
 @register("<name>")
 def score(ws, state, ds, path, ids) -> dict:
-    # path：交付文件；ids：要打分的题目 id（测试题或 dev 题）；ds：从原始目录重新加载的 Dataset（含 GT）
-    return {"metrics": {...},                       # 汇总指标
-            "items": [{"id": ..., "ok": ..., "gold": ...}, ...],   # 逐题结果，反馈会原样返回给 agent（score 模式去掉 gold）
-            "reference": {...}}                     # 可选：平凡基线
+    # path: deliverable file; ids: task ids to score (test or dev); ds: Dataset reloaded from the raw directory (with GT)
+    return {"metrics": {...},                       # aggregate metrics
+            "items": [{"id": ..., "ok": ..., "gold": ...}, ...],   # per-task results, returned to the agent as feedback (gold removed in score mode)
+            "reference": {...}}                     # optional: trivial baselines
 ```
 
-同一个函数既用于 `knosis eval`（测试题），也用于 `knosis feedback submit`（dev 题）。
+The same function serves `knosis eval` (test tasks) and `knosis feedback submit` (dev tasks).
+To score whether the knowledge itself is correct (separately from whether it helps the task), optionally add `score_knowledge(ws, state, ds) -> dict` registered with `@register_knowledge("<name>")`;
+its result goes into the `knowledge` section of the evaluation report and is never returned to the agent.
 
-## 新增工具（工具层）
+## Adding a tool (tool layer)
 
-建目录 `knosis/tools/<name>/`：
+Create `knosis/tools/<name>/`:
 
-- `TOOL.md`：YAML 头 `name / version / kind(program|model) / modality / stage / license`，正文写用途、命令示例、输出、限制。
-  正文会被拼进工作区的 TOOLS.md，agent 靠它决定要不要用。
-- `run.py`：命令行入口，`--out DIR` 输出目录；结束时调用 `knosis.tools.write_result(out, name, params, units, started)`，
-  写 `units.jsonl`（κ，`inferred` 或 `observed`，provenance 以 `tool:<name>@<version>(...)` 开头）和 `run.json`。
-- `__init__.py`（空），便于测试直接 import。
+- `TOOL.md`: YAML front matter `name / version / kind(program|model) / modality / stage / license`; the body covers purpose, example commands, output and limitations.
+  The body is concatenated into the workspace's TOOLS.md, and the agent relies on it to decide whether to use the tool.
+- `run.py`: command-line entry point with `--out DIR` for output; at the end call `knosis.tools.write_result(out, name, params, units, started)`,
+  which writes `units.jsonl` (κ, `inferred` or `observed`, provenance starting with `tool:<name>@<version>(...)`) and `run.json`.
+- `__init__.py` (empty), so tests can import it directly.
 
-工具不改数据。依赖重的工具只在真实推断路径里 import，并提供 `--prepare-only`；
-运行时用 `KNOSIS_<NAME>_PYTHON` 指定解释器，核心包不装这些依赖。
-表格工具可用 `knosis.tools.read_tables(paths)` 统一读取 CSV / parquet。
+Tools do not modify data. Tools with heavy dependencies import them only on the real inference path and provide `--prepare-only`;
+at run time `KNOSIS_<NAME>_PYTHON` selects the interpreter, and the core package does not install these dependencies.
+Table tools can use `knosis.tools.read_tables(paths)` to read CSV / parquet uniformly.
 
-## 新增知识格式（知识层）
+## Adding a knowledge format (knowledge layer)
 
-κ 的字段集合与检查只在 `knosis/knowledge/units.py`；本体的读写、引用、检查与转换只在 `knosis/knowledge/ontology.py`。
-新增一种数据源 → 本体的转换，写一个 `from_<name>(ds) -> dict`（返回 core 层文档），复用 `from_tables` / `relationship` / `eob`，
-并在 `cli.py` 的 `ontology convert` 里登记。
+κ fields and checks live only in `knosis/knowledge/units.py`; ontology reading, writing, references, checks and conversion live only in `knosis/knowledge/ontology.py`.
+For a new data source -> ontology conversion, write `from_<name>(ds) -> dict` (returning a core-layer document), reusing `from_tables` / `relationship` / `eob`,
+and register it in `ontology convert` in `cli.py`.
 
-代码风格：短小、直接、不写防御性代码；出错就直接抛出。
+Code style: short and direct, no defensive code; let errors raise.

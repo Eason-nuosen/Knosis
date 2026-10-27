@@ -1,47 +1,47 @@
 # NGD-Fin
 
-## 数据是什么
+## What the data is
 
-金融领域的观测属性图，文件为 `data/graph.gpickle`。
-图类型为 `$graph_type`，共 $n_nodes 个节点、$n_edges 条边。
-节点 id 形如 `Account:9570149208163490`，节点和边的类型都在属性 `label` 中。
-以下统计直接来自导出的观测图。
+An observed property graph from the financial domain, in the file `data/graph.gpickle`.
+The graph type is `$graph_type`, with $n_nodes nodes and $n_edges edges.
+Node ids look like `Account:9570149208163490`; node and edge types are both in the attribute `label`.
+The statistics below come directly from the exported observed graph.
 
-节点类型与数量：
+Node types and counts:
 
 $node_types
 
-节点属性：
+Node attributes:
 
 $attributes
 
-边类型与数量：
+Edge types and counts:
 
 $edge_types
 
-观测图可能含噪声：错误的类型或属性取值、异常值、多余或缺失的边等。先自己探索数据，哪些是噪声、如何处理，由你判断。
+The observed graph may contain noise: wrong types or attribute values, outliers, extra or missing edges, etc. Explore the data yourself first; what counts as noise and how to handle it is up to you.
 
-## 下游任务是什么
+## What the downstream task is
 
-非聚合题需要多跳查找，聚合题包括计数、求和、平均和比较。
+Non-aggregate questions require multi-hop lookups; aggregate questions include counting, summing, averaging and comparison.
 $query_help
-节点写 id 字符串（如 `Account:1`）。
-评测按答案集合比较：忽略顺序与重复，对象只比较取值，数值保留 6 位有效数字。
-以下仅为任务示例，不参与最终测试；测试题只在 decide 阶段提供。
+Write nodes as id strings (e.g. `Account:1`).
+Evaluation compares answer sets: order and duplicates are ignored, objects are compared by value only, and numbers are kept to 6 significant digits.
+The following are task examples only and are not part of the final test; test questions are provided only in the decide stage.
 
 $examples
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让未见过的同类问题答得更准：关于这张图的结构、取值、规律与可信度的知识，都可以提取。
-知识应当可复用，不应缓存具体测试题的答案。
+Make unseen questions of the same kind answered more accurately: knowledge about this graph's structure, values, regularities and trustworthiness can all be extracted.
+Knowledge should be reusable; it should not cache answers to specific test questions.
 
-$noise_section每行一条断言，指出观测图中你认为与真实图不符的一处。
+$noise_section one assertion per line, pointing out one place in the observed graph that you believe differs from the true graph.
 
-- `{"kind": "node_label", "node": "<节点 id>"}`：该节点的 `label` 不对
-- `{"kind": "node_attr", "node": "<节点 id>", "field": "<属性名>"}`：该节点这个属性的取值不对；省略 `field` 表示该节点有属性不对
-- `{"kind": "edge", "src": "<节点 id>", "dst": "<节点 id>", "key": <边 key>, "type": "added"}`：观测图中这条边不该存在；
-  `"type": "relabel"` 表示边存在但 `label` 不对；`type` 可省略
-- `{"kind": "missing_edge", "src": "<节点 id>", "dst": "<节点 id>", "label": "<边类型>"}`：真实图中有、观测图中缺的边
+- `{"kind": "node_label", "node": "<node id>"}`: this node's `label` is wrong
+- `{"kind": "node_attr", "node": "<node id>", "field": "<attribute name>"}`: this node's value for this attribute is wrong; omitting `field` means some attribute of the node is wrong
+- `{"kind": "edge", "src": "<node id>", "dst": "<node id>", "key": <edge key>, "type": "added"}`: this edge should not exist in the observed graph;
+  `"type": "relabel"` means the edge exists but its `label` is wrong; `type` may be omitted
+- `{"kind": "missing_edge", "src": "<node id>", "dst": "<node id>", "label": "<edge type>"}`: an edge present in the true graph but missing from the observed graph
 
-这份文件作为知识单独评测（按类别计精确率与召回率），不影响问答得分。
+This file is evaluated separately as knowledge (precision and recall per category) and does not affect the QA score.

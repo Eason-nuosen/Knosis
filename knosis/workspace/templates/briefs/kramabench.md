@@ -1,24 +1,24 @@
 # KramaBench — $domain
 
-## 数据是什么
+## What the data is
 
-一个「$domain」领域的数据湖，放在 `data/` 下：共 $n_files 个文件，约 $size_mb MB。
-文件类型：$suffixes。
-文件格式不统一，可能有表格、地理数据、文本、表格软件文件等；哪些文件与哪道题有关需要自己判断。
-数据可能含噪声；哪些是噪声、如何处理，由你判断。
+A data lake for the "$domain" domain, under `data/`: $n_files files in total, about $size_mb MB.
+File types: $suffixes.
+File formats are not uniform and may include tables, geographic data, text, spreadsheet files, etc.; you have to work out which files are relevant to which question.
+The data may contain noise; what counts as noise and how to handle it is up to you.
 
-## 下游任务是什么
+## What the downstream task is
 
-每道题是一个需要端到端数据处理才能回答的问题（找文件、清洗、合并、计算）。
-`tasks/dev.jsonl` 有 $n_dev 道开发题，测试题（$n_test 道）在 decide 阶段给出。
-每题的 `answer_kind` 说明答案形状：数值、字符串或列表。
+Each question requires end-to-end data processing to answer (finding files, cleaning, merging, computing).
+`tasks/dev.jsonl` has $n_dev dev questions; the test questions ($n_test) are given in the decide stage.
+Each question's `answer_kind` states the shape of the answer: number, string or list.
 
-交付 `predictions.jsonl`，每行 `{"id": 题目 id, "answer": 答案}`：
-数值写数字（不带单位与千分位），字符串写简短的结论本身，列表写 JSON 数组。
-评测：数值要求与真值一致（小数允许极小的舍入误差；部分题按相对误差打分），
-字符串忽略大小写与首尾空白比较，列表按元素计算 F1。
+Deliver `predictions.jsonl`, one line `{"id": question id, "answer": answer}` each:
+write numbers as numbers (no units or thousands separators), strings as the short conclusion itself, and lists as JSON arrays.
+Evaluation: numbers must match the ground truth (decimals allow a very small rounding error; some questions are scored by relative error),
+strings are compared ignoring case and leading/trailing whitespace, and lists are scored by element-level F1.
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让同一个数据湖上未见过的问题答得更准：文件里有什么、字段含义与单位、文件之间如何对应、
-数据质量与可信度、常用的处理方法，都可以写成知识。知识应当可复用，不应缓存具体测试题的答案。
+Make unseen questions on the same data lake answered more accurately: what the files contain, field meanings and units, how files correspond to one another,
+data quality and trustworthiness, and commonly used processing methods can all be written as knowledge. Knowledge should be reusable; it should not cache answers to specific test questions.

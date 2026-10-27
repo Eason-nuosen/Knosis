@@ -1,37 +1,37 @@
-# 从最近的 agent 会话收集知识
+# Collect knowledge from recent agent sessions
 
-知识库：`$kb`（当前目录，git 仓库；现有 $n_units 条 κ；知识体系大纲：$outline）。
-下面 $n 个会话的轨迹已统一成 ATIF 轨迹，放在 `evidence/traces/`（`.md` 便于阅读，`## step <n>` 是步号；`.json` 是结构化原件，
-一步是一次模型输出或一条用户消息，调用的结果挂在发出调用的那一步）：
+Knowledge base: `$kb` (the current directory, a git repository; currently $n_units κ; knowledge base outline: $outline).
+The trajectories of the following $n sessions have been unified into ATIF trajectories under `evidence/traces/` (`.md` is for reading, `## step <n>` is the step number; `.json` is the structured original,
+one step is one model output or one user message, and the result of a call is attached to the step that issued the call):
 
 $listing
 
-## 任务
+## Task
 
-从这些会话里提取**以后的 agent 会用得上、并且能被环境证据反驳的知识**，写进本知识库：
+From these sessions, extract **knowledge that future agents can use and that can be refuted by environment evidence**, and write it into this knowledge base:
 
-- 关于环境的结论：项目 / 仓库的结构与约定、数据的特点与坑、工具和命令的实际行为、服务器与环境配置、报错的原因与解决办法；
-- `scope=method`（元知识）：如何发现或验证某类知识的步骤；
-- skill（`kb/skills/<名字>/SKILL.md`，格式见已有 skill 或 `knosis` 的说明）：遇到某类任务怎样用这些知识去解，只在有清楚的可复用流程时写。
+- Conclusions about the environment: structure and conventions of projects / repositories, characteristics and pitfalls of data, actual behavior of tools and commands, server and environment configuration, causes of errors and how to fix them;
+- `scope=method` (meta-knowledge): steps for discovering or verifying a class of knowledge;
+- skill (`kb/skills/<name>/SKILL.md`, format as in existing skills or the `knosis` instructions): how to use this knowledge to solve a kind of task; write one only when there is a clear reusable procedure.
 
-不要记：用户偏好与对话记忆（这不是知识，不能被环境反驳）、一次性的具体任务答案、闲聊、密钥与口令。
-会话里 agent 说的话是它的说法，不等于事实；轨迹里有命令输出能直接支持的，记一条证据，否则保持 `inferred`。
-会话之间没有东西值得记时，可以一条都不加。
+Do not record: user preferences and conversation memory (this is not knowledge and cannot be refuted by the environment), one-off answers to specific tasks, small talk, keys and passwords.
+What the agent says in a session is its claim, not fact; where command output in the trajectory directly supports it, record a piece of evidence, otherwise keep it `inferred`.
+If nothing in the sessions is worth recording, you may add nothing at all.
 
-## 写法
+## How to write
 
-1. 先看已有知识，避免重复：`knosis knowledge outline --ws .`、`knosis knowledge select --ws . --text <关键词>`。
-   - 与已有单元说的是同一件事：不新增，给它记一条支持证据；
-   - 与已有单元矛盾：记一条反驳证据，把它改为 `contested`（或在确定时 `retracted`），新知识照常写并在 `condition` 里说明。
-2. 新单元写进 `kb/knowledge/units.jsonl`（每行一个 JSON）：`id`（形如 `collect/<主题>-<短描述>`，全库唯一）、`content`、
-   `form`（finding / fact / rule / formula / schema / tool / procedure）、`status`（observed / inferred / verified）、
-   `scope`（对象知识 instance / relation / dataset，元知识 method / usage）、`provenance`、`condition`（适用范围：哪个项目、目录、工具版本等）。
-   `provenance` 写到轨迹步骤：`evidence/traces/<会话 id>.json#step/<n>`，多处用 ` ; ` 连接。
-3. 证据：`knosis knowledge evidence add --ws . --unit <id> --verdict support|refute --method data --source evidence/traces/<会话 id>.json#step/<n> --note "<依据>"`。
-   `verified` 至少要有一条支持证据。
-4. 只改 `kb/knowledge/units.jsonl`、`evidence/ledger.jsonl`（用命令写）、`kb/skills/`；不改 `evidence/traces/`、`collected.jsonl`、`kb/outline.yaml`（之后由内化步骤统一去重、处理矛盾、整理大纲）。
+1. First look at existing knowledge to avoid duplicates: `knosis knowledge outline --ws .`, `knosis knowledge select --ws . --text <keywords>`.
+   - Says the same thing as an existing unit: do not add a new one; record a supporting piece of evidence for it;
+   - Contradicts an existing unit: record a refuting piece of evidence, change it to `contested` (or `retracted` when certain), write the new knowledge as usual and explain in `condition`.
+2. Write new units into `kb/knowledge/units.jsonl` (one JSON per line): `id` (like `collect/<topic>-<short description>`, unique across the knowledge base), `content`,
+   `form` (finding / fact / rule / formula / schema / tool / procedure), `status` (observed / inferred / verified),
+   `scope` (object knowledge instance / relation / dataset, meta-knowledge method / usage), `provenance`, `condition` (applicable range: which project, directory, tool version, etc.).
+   Point `provenance` to trajectory steps: `evidence/traces/<session id>.json#step/<n>`; join multiple locations with ` ; `.
+3. Evidence: `knosis knowledge evidence add --ws . --unit <id> --verdict support|refute --method data --source evidence/traces/<session id>.json#step/<n> --note "<basis>"`.
+   `verified` requires at least one supporting piece of evidence.
+4. Only modify `kb/knowledge/units.jsonl`, `evidence/ledger.jsonl` (written with commands), `kb/skills/`; do not modify `evidence/traces/`, `collected.jsonl`, `kb/outline.yaml` (the consolidation step later does dedup, contradiction handling and outline organization uniformly).
 
-## 验收
+## Acceptance check
 
-`knosis knowledge check --ws .` 不新增问题；每条新单元的 `provenance` 引用了本次 `evidence/traces/` 里的会话。
-最后用两三句话说明记了什么、跳过了什么。
+`knosis knowledge check --ws .` introduces no new problems; the `provenance` of every new unit references a session in this run's `evidence/traces/`.
+Finally, explain in two or three sentences what you recorded and what you skipped.

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from knosis import lang
 from knosis.tools import write_result
 
 
@@ -97,8 +98,9 @@ def findings(scores, missing, graph_path, topk):
             location = f"edge/{edge}" if kind == "suspicious" else f"node/{row['src']}"
             units.append({
                 "id": f"ultra/{kind}/{len(units)}", "form": "finding",
-                "content": f"{'可疑边' if kind == 'suspicious' else '可能缺失的边'}: {edge}",
-                "condition": "模型候选，需用数据验证",
+                "content": (lang.t("Suspicious edge", "可疑边") if kind == 'suspicious'
+                            else lang.t("Possibly missing edge", "可能缺失的边")) + f": {edge}",
+                "condition": lang.t("model candidate, verify with the data", "模型候选，需用数据验证"),
                 "provenance": f"tool:ultra@0.1(topk={topk}) ; {graph_path}#{location}",
                 "status": "inferred", "meta": row,
             })

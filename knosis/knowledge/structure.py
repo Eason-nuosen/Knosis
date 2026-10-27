@@ -39,6 +39,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from ..lang import t
 from .layout import layout
 from .units import INACTIVE, load_units
 
@@ -276,22 +277,26 @@ def cards(base) -> list[dict]:
         key = owner.get(u["id"], "")
         groups.setdefault(key, []).append({"id": u["id"], "form": u["form"], "content": u["content"],
                                            "condition": u.get("condition", ""), "status": u["status"]})
-    return [{"entity": k, "label": labels.get(k, "其他"), "units": v} for k, v in sorted(groups.items(), key=lambda x: (x[0] == "", x[0]))]
+    return [{"entity": k, "label": labels.get(k, t("Other", "其他")), "units": v} for k, v in sorted(groups.items(), key=lambda x: (x[0] == "", x[0]))]
 
 
 def summary(base) -> str:
     """Text summary for humans and agents."""
     graph, cov = load_graph(base), coverage(base)
-    lines = [f"知识图谱：{cov['entities']} 个实体、{cov['relations']} 条关系，引用了 {cov['graph']:.0%} 的活跃对象知识（{cov['objects']} 条）"
-             if graph else "知识图谱：还没有（kb/graph.json）",
-             f"流程图：{cov['n_flows']} 张，引用了 {cov['flows']:.0%} 的 procedure / method / skill（{cov['procedural']} 条）"]
+    lines = [(t(f"Knowledge graph: {cov['entities']} entities, {cov['relations']} relations, citing {cov['graph']:.0%} of active object "
+                f"knowledge ({cov['objects']} units)",
+                f"知识图谱：{cov['entities']} 个实体、{cov['relations']} 条关系，引用了 {cov['graph']:.0%} 的活跃对象知识（{cov['objects']} 条）")
+              if graph else t("Knowledge graph: none yet (kb/graph.json)", "知识图谱：还没有（kb/graph.json）")),
+             t(f"Flowcharts: {cov['n_flows']}, citing {cov['flows']:.0%} of procedure / method / skill ({cov['procedural']} units)",
+               f"流程图：{cov['n_flows']} 张，引用了 {cov['flows']:.0%} 的 procedure / method / skill（{cov['procedural']} 条）")]
     if graph:
         types = Counter(e.get("type", "?") for e in graph.get("entities", []))
         rels = Counter(r.get("rel") for r in graph.get("relations", []))
-        lines.append("实体类型：" + "，".join(f"{k} {v}" for k, v in types.most_common()))
-        lines.append("关系：" + "，".join(f"{k} {v}" for k, v in rels.most_common(12)))
+        lines.append(t("Entity types: ", "实体类型：") + t(", ", "，").join(f"{k} {v}" for k, v in types.most_common()))
+        lines.append(t("Relations: ", "关系：") + t(", ", "，").join(f"{k} {v}" for k, v in rels.most_common(12)))
     for flow in load_flows(base) if flows_dir(base).is_dir() else []:
-        lines.append(f"- 流程 {flow.get('name')}：{flow.get('title')}（{len(flow.get('nodes', []))} 个节点）")
+        lines.append(t(f"- Flow {flow.get('name')}: {flow.get('title')} ({len(flow.get('nodes', []))} nodes)",
+                       f"- 流程 {flow.get('name')}：{flow.get('title')}（{len(flow.get('nodes', []))} 个节点）"))
     return "\n".join(lines)
 
 

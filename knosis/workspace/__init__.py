@@ -26,9 +26,16 @@ from ..data import LOADERS, load_dataset
 from ..knowledge import check_knowledge, check_units, ensure, feedback, layout, load_units, ontology_docs, scope_of, write_units
 from ..knowledge.layout import CHECKS, PARTS
 from ..knowledge.kb import inherit, seen_items
+from ..lang import t
 from .exporters import EXPORTERS
 
-TEMPLATES = Path(__file__).parent / "templates"
+TEMPLATES = Path(__file__).parent / "templates"  # English; templates_cn/ holds the Chinese ones (KNOSIS_LANG=zh)
+
+
+def templates() -> Path:
+    from ..lang import localized
+
+    return localized(TEMPLATES)
 STAGES = {"explore": "1_explore", "extract": "2_extract", "refine": "3_refine", "decide": "4_decide"}
 
 
@@ -75,11 +82,11 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
         (ws / directory).mkdir(parents=True, exist_ok=True)
     ensure(ws)
     (ws / "BRIEF.md").write_text(exported["brief"], encoding="utf-8")
-    agents = Template((TEMPLATES / "AGENTS.md").read_text(encoding="utf-8")).substitute(python=sys.executable)
+    agents = Template((templates() / "AGENTS.md").read_text(encoding="utf-8")).substitute(python=sys.executable)
     (ws / "AGENTS.md").write_text(agents, encoding="utf-8")
     (ws / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
     (ws / "TOOLS.md").write_text(tools_markdown(exported["modalities"]), encoding="utf-8")
-    (ws / ".gitignore").write_text("__pycache__/\n*.pyc\n.knosis/runs.jsonl\n.knosis/eval.json\n", encoding="utf-8")
+    (ws / ".gitignore").write_text("__pycache__/\n*.pyc\n.knosis/runs.jsonl\n.knosis/eval.json\nview/\n", encoding="utf-8")
     inherited, exclude = None, []
     if kb:
         inherited = inherit(kb, ws, kb_scope)
@@ -91,11 +98,14 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
     if inherited:
         from ..knowledge import ontology_docs
 
-        names = ", ".join(f"`{n or 'ontology'}`" for n in ontology_docs(ws)) or "无"
+        names = ", ".join(f"`{n or 'ontology'}`" for n in ontology_docs(ws)) or t("none", "无")
         with (ws / "BRIEF.md").open("a", encoding="utf-8") as fh:
-            fh.write(f"\n## 继承的知识\n\n本工作区从独立知识库继承了 {inherited['units']} 条 κ 与本体 {names}"
-                     f"（已在 `kb/`，证据在 `evidence/`，原样快照在 `stages/0_inherit/`）。它们来自别的任务或别人的标注，"
-                     "未必正确、未必适用于这里的任务：用 `knosis knowledge select` 挑选，按证据采用、修正、收窄或撤回。\n")
+            fh.write(t(f"\n## Inherited knowledge\n\nThis workspace inherited {inherited['units']} κ and the ontology {names} from a standalone knowledge base"
+                       f" (already in `kb/`, evidence in `evidence/`, verbatim snapshot in `stages/0_inherit/`). They come from other tasks or other people's annotations"
+                       " and are not necessarily correct or applicable to the task here: pick with `knosis knowledge select`, and adopt, revise, narrow or retract them based on evidence.\n",
+                       f"\n## 继承的知识\n\n本工作区从独立知识库继承了 {inherited['units']} 条 κ 与本体 {names}"
+                       f"（已在 `kb/`，证据在 `evidence/`，原样快照在 `stages/0_inherit/`）。它们来自别的任务或别人的标注，"
+                       "未必正确、未必适用于这里的任务：用 `knosis knowledge select` 挑选，按证据采用、修正、收窄或撤回。\n"))
     if options.get("root") is not None:
         options["root"] = str(Path(options["root"]).resolve())
     save_state(ws, {
@@ -115,16 +125,27 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
 def feedback_note(ws, state) -> str:
     """The paragraph about dev feedback in stage prompts."""
     if state["feedback"]["mode"] == "none":
-        return "本工作区没有 dev 反馈。"
-    note = (f"`tasks/dev.jsonl` 是开发题（与测试题不重叠）。按 decide 的交付格式回答，"
-            f"运行 `knosis feedback submit <文件>` 得到逐题结果"
-            f"{'和正确答案' if state['feedback']['mode'] == 'answer' else '（只给对错与分数）'}，"
-            f"{'每次必须回答全部开发题' if state['feedback'].get('full') else '可以自己选择回答哪些开发题'}；"
-            f"回看每道题的结果，答对和答错的都可以总结出知识（依据写成证据，method=feedback），"
-            f"记录写入 `evidence/feedback/`；本工作区还剩 {feedback.left(ws, state)} 次。")
+        return t("This workspace has no dev feedback.", "本工作区没有 dev 反馈。")
+    answer = state['feedback']['mode'] == 'answer'
+    full = state['feedback'].get('full')
+    left = feedback.left(ws, state)
+    note = t(f"`tasks/dev.jsonl` holds dev tasks (disjoint from the test tasks). Answer them in the decide deliverable format and "
+             f"run `knosis feedback submit <file>` to get per-task results"
+             f"{' and the correct answers' if answer else ' (correctness and scores only)'}; "
+             f"{'every submission must answer all dev tasks' if full else 'you may choose which dev tasks to answer'}. "
+             f"Review each task's result: both correct and wrong answers can yield knowledge (write the basis as evidence, method=feedback); "
+             f"records go to `evidence/feedback/`. This workspace has {left} submissions left.",
+             f"`tasks/dev.jsonl` 是开发题（与测试题不重叠）。按 decide 的交付格式回答，"
+             f"运行 `knosis feedback submit <文件>` 得到逐题结果"
+             f"{'和正确答案' if answer else '（只给对错与分数）'}，"
+             f"{'每次必须回答全部开发题' if full else '可以自己选择回答哪些开发题'}；"
+             f"回看每道题的结果，答对和答错的都可以总结出知识（依据写成证据，method=feedback），"
+             f"记录写入 `evidence/feedback/`；本工作区还剩 {left} 次。")
     last = feedback.own(ws)[-1:]
     if last:
-        note += f"\n最近一次反馈：`evidence/feedback/{last[0]['id']}.json`，指标 {json.dumps(last[0]['metrics'], ensure_ascii=False)[:300]}。"
+        metrics = json.dumps(last[0]['metrics'], ensure_ascii=False)[:300]
+        note += t(f"\nLatest feedback: `evidence/feedback/{last[0]['id']}.json`, metrics {metrics}.",
+                  f"\n最近一次反馈：`evidence/feedback/{last[0]['id']}.json`，指标 {metrics}。")
     return note
 
 
@@ -138,16 +159,19 @@ def next_prompt(ws) -> str:
         exported = EXPORTERS[state["benchmark"]](ds, ws, write_data=False, **opts)
         exclude = set(state.get("exclude", []))
         write_units(ws / "tasks/tasks.jsonl", [t for t in exported["tasks"] if t["id"] not in exclude])
-    template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
-    note = CONTROL if state.get("knowledge") == "none" else ""
+    template = (templates() / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
+    note = control_note() if state.get("knowledge") == "none" else ""
     # Templates always include $control; older workspaces' templates may not, so missing variables are treated as empty.
     return Template(template).substitute({"control": "", "feedback": "", **state},
-                                         output=state["output"] or "（本数据集没有下游预测）",
+                                         output=state["output"] or t("(this dataset has no downstream prediction)", "（本数据集没有下游预测）"),
                                          feedback=feedback_note(ws, state), control=note)
 
 
-CONTROL = ("\n\n## 对照条件\n\n这是对照工作区：知识层为本轮的 baseline，**不要新增知识单元或方法**，"
-           "也不要在 workspace 里写可复用的检测脚本。只用数据、工具和常识直接完成任务与交付。\n")
+def control_note() -> str:
+    return t("\n\n## Control condition\n\nThis is a control workspace: the knowledge layer is this round's baseline. **Do not add knowledge units or methods**,"
+             " and do not write reusable detection scripts in the workspace. Complete the tasks and deliverables directly using only the data, tools and common sense.\n",
+             "\n\n## 对照条件\n\n这是对照工作区：知识层为本轮的 baseline，**不要新增知识单元或方法**，"
+             "也不要在 workspace 里写可复用的检测脚本。只用数据、工具和常识直接完成任务与交付。\n")
 
 
 def prediction_ids(path) -> tuple[list, list]:

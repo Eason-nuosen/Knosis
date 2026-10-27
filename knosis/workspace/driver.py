@@ -8,6 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from ..lang import t
 from ..knowledge import feedback, layout, load_units
 from . import check, goto, next_prompt, prediction_ids, save_state, stage_dir, stage_issues, status
 
@@ -53,8 +54,10 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=
     for stage in stages or ["explore", "extract"]:
         goto(ws, stage)
         for _ in range(rounds if stage == "refine" else 1):
-            prompt = next_prompt(ws) + (f"\n\n## 本次实验的附加要求\n\n{note}\n" if note else "") + \
-                "\n驱动模式：由运行器验收和提交，不要自行运行 ws check 或切换阶段。"
+            prompt = next_prompt(ws) + (t(f"\n\n## Additional requirements for this experiment\n\n{note}\n",
+                                          f"\n\n## 本次实验的附加要求\n\n{note}\n") if note else "") + \
+                t("\nDriver mode: the runner checks and commits; do not run ws check yourself or switch stages.",
+                  "\n驱动模式：由运行器验收和提交，不要自行运行 ws check 或切换阶段。")
             directory = stage_dir(ws, status(ws))
             issues = []
             for attempt in range(2):
@@ -82,7 +85,7 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")
                 if not issues:
                     break
-                prompt += "\n验收未通过，请修正：\n" + "\n".join(issues)
+                prompt += t("\nAcceptance check failed, please fix:\n", "\n验收未通过，请修正：\n") + "\n".join(issues)
             if issues:
                 raise RuntimeError("\n".join(issues))
         if stage == "refine":
@@ -108,8 +111,9 @@ def consolidate_ws(ws, agent, model, effort) -> None:
         state["stage"] = "refine"
         directory = stage_dir(ws, state)
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / "changelog.md").write_text("# 内化\n\n" + "\n".join(
-            f"- {r['step']}：{'通过' if not r['issues'] else '未通过，已恢复'}，操作 {json.dumps(r.get('actions', {}), ensure_ascii=False)}"
+        (directory / "changelog.md").write_text(t("# Consolidation\n\n", "# 内化\n\n") + "\n".join(
+            t(f"- {r['step']}: {'passed' if not r['issues'] else 'failed, reverted'}, actions {json.dumps(r.get('actions', {}), ensure_ascii=False)}",
+              f"- {r['step']}：{'通过' if not r['issues'] else '未通过，已恢复'}，操作 {json.dumps(r.get('actions', {}), ensure_ascii=False)}")
             for r in results) + "\n", encoding="utf-8")
         copy_knowledge(ws, directory)
         state["round"] += 1

@@ -1,50 +1,50 @@
-# 内化 3/3：构建知识体系
+# Consolidation 3/3: build the knowledge system
 
-知识层根目录：`$base`（$n_units 条活跃 κ，$n_skills 个 skill，$n_inactive 条已失效）。
-目标：把零散的单跳知识（一条只讲一个对象、一步关系）串成清晰的脉络，写入 `$base/kb/outline.yaml`。
+Knowledge layer root: `$base` ($n_units active κ, $n_skills skills, $n_inactive inactive).
+Goal: link scattered single-hop knowledge (each unit about only one object or one-step relation) into a clear thread, written to `$base/kb/outline.yaml`.
 
-## 输入
+## Inputs
 
-- `$base/kb/knowledge/units.jsonl`、`$base/kb/skills/*/SKILL.md`、`$base/evidence/ledger.jsonl`；
-  可用 `knosis knowledge select --ws $base --include-inactive`、`knosis knowledge trace <id> --ws $base` 查看。
-- 按粒度自动生成的草稿：`$draft`（`knosis knowledge outline --ws $base --draft` 可看渲染结果）。
+- `$base/kb/knowledge/units.jsonl`, `$base/kb/skills/*/SKILL.md`, `$base/evidence/ledger.jsonl`;
+  you can inspect them with `knosis knowledge select --ws $base --include-inactive`, `knosis knowledge trace <id> --ws $base`.
+- A draft generated automatically by scope: `$draft` (`knosis knowledge outline --ws $base --draft` shows the rendered result).
 - $existing
 
-## 要求
+## Requirements
 
-1. 层级从上到下：**场景**（任务、目标，以及对它有用的 usage 元知识与 skill）→ **数据间关系**（实体 / 表 / 变量之间的结构）
-   → **数据本身**（数据集整体规律、具体对象）。method 可以单列一个「方法」分支，也可以挂在用到它的场景下。
-   按语义分组，不要只按粒度或文件机械分组；同一主题的知识放在一起，一节一般 2 到 15 条。
-2. 每节写 `title` 与 `summary`（一两句：这一节的知识讲什么、对哪类任务有用）。**summary 只概括成员单元已经说了的内容**，
-   不新增断言、不写数字以外的推测；对错仍以单元和证据为准。
-3. 每条活跃的 κ 与 skill（`skill:<名字>`）至少放进一节；可以放进多节。本体单元（`ontology/...`）不必逐个列出。
-   已撤回、失效、已合并（merged）的单元只能放在 `archive: true` 的节里，或者不放。
-4. 去重与矛盾处理已在前两步做过；仍觉得可疑的，在所在节的 `notes` 里写明（列出 id 与理由），不改动原单元。
-5. **归纳**：串联时如果多条单跳知识能合成一条上位规律（多条具体对象 → 数据整体规律；多次成功的做法 → method），
-   可以在 `kb/knowledge/units.jsonl` 新增归纳单元：`provenance` 写 `derived`，`derived_from` 列出全部原单元（至少两条），
-   `status` 为 `inferred`（能验证时照常验证并记证据后再改 verified）。归纳只在确有把握时做，不改原单元。
-6. 除归纳单元外，不修改 `units.jsonl`、证据与 skill；大纲写 `kb/outline.yaml`。格式见草稿与下面的示例。
+1. Hierarchy from top to bottom: **scenario** (task, goal, and the usage meta-knowledge and skills useful for it) → **relations between data** (structure between entities / tables / variables)
+   → **the data itself** (overall dataset regularities, specific objects). method can be a separate "methods" branch, or hang under the scenario that uses it.
+   Group by meaning, not mechanically by scope or file only; put knowledge on the same topic together; a section usually has 2 to 15 units.
+2. Each section has a `title` and a `summary` (one or two sentences: what the knowledge in this section covers and which kind of task it is useful for). **The summary only summarizes what the member units already say**;
+   it adds no assertions and no speculation beyond the numbers; correctness is still determined by the units and evidence.
+3. Every active κ and skill (`skill:<name>`) goes into at least one section; it can go into several. Ontology units (`ontology/...`) need not be listed one by one.
+   Retracted, inactive and merged units may only go into sections with `archive: true`, or be left out.
+4. Dedup and contradiction handling were done in the previous two steps; for anything you still find suspicious, write it in the `notes` of its section (list the ids and reasons), without changing the original units.
+5. **Induction**: if, while linking, several single-hop pieces of knowledge can be combined into a higher-level regularity (several specific objects → an overall dataset regularity; several successful practices → method),
+   you may add induced units to `kb/knowledge/units.jsonl`: `provenance` is `derived`, `derived_from` lists all original units (at least two),
+   `status` is `inferred` (when it can be verified, verify as usual and record evidence before changing it to verified). Induce only when you are truly confident, and do not change the original units.
+6. Apart from induced units, do not modify `units.jsonl`, evidence or skills; write the outline to `kb/outline.yaml`. See the draft and the example below for the format.
 
 ```yaml
-title: <这份知识体系的名字>
-summary: <一两句>
+title: <name of this knowledge system>
+summary: <one or two sentences>
 sections:
   - id: scene-gravity
-    title: 场景：从受控实验发现幂律
-    summary: ……
+    title: "Scenario: discovering power laws from controlled experiments"
+    summary: ...
     units: [skill:discover-positive-power]
     sections:
       - id: scene-gravity/method
-        title: 估计指数的方法
-        summary: ……
+        title: Methods for estimating the exponent
+        summary: ...
         units: [extract/single-axis-scaling, extract/log-domain-check]
   - id: archive
-    title: 已撤回
+    title: Retracted
     archive: true
     units: [extract/all-inverse-square]
 ```
 
-## 验收
+## Acceptance check
 
-`knosis knowledge outline --ws $base` 末尾没有「未归类」一节，且 `knosis knowledge check --ws $base` 不新增问题$check_note。
-最后用两三句话说明脉络怎么组织、归纳了什么。
+`knosis knowledge outline --ws $base` has no "Uncategorized" section at the end, and `knosis knowledge check --ws $base` introduces no new problems$check_note.
+Finally, explain in two or three sentences how the thread is organized and what you induced.

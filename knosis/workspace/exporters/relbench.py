@@ -8,6 +8,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from ...data.loaders.relbench import task_splits
+from ... import lang
 from . import place, register, render, split
 
 
@@ -45,7 +46,8 @@ def export(ds, ws: Path, write_data=True, task=None, dev=None, limit=None, seed=
             if write_data:
                 place(path, out)
             n = pq.ParquetFile(path).metadata.num_rows
-        tables.append(f"- `{table}`：{n} 行，列 {', '.join(pq.read_schema(path).names)}")
+        names = ', '.join(pq.read_schema(path).names)
+        tables.append(lang.t(f"- `{table}`: {n} rows, columns {names}", f"- `{table}`：{n} 行，列 {names}"))
     if write_data:
         train = pd.read_parquet(splits["train"].answer)
         train.insert(0, "row_id", row_ids("train", len(train)))
@@ -54,15 +56,20 @@ def export(ds, ws: Path, write_data=True, task=None, dev=None, limit=None, seed=
             frame = frame[key_columns(spec)].copy()
             frame.insert(0, "row_id", row_ids(prefix, len(frame)))
             frame[frame["row_id"].isin(ids)].to_parquet(Path(ws) / f"data/{name}.parquet", index=False)
+    none = lang.t("none", "无")
     schema = "\n".join(
-        f"- `{t}`：主键 {s.get('pkey') or '无'}，时间列 {s.get('time_col') or '无'}，外键 {s.get('fkeys') or '无'}"
+        lang.t(f"- `{t}`: primary key {s.get('pkey') or none}, time column {s.get('time_col') or none}, foreign keys {s.get('fkeys') or none}",
+               f"- `{t}`：主键 {s.get('pkey') or none}，时间列 {s.get('time_col') or none}，外键 {s.get('fkeys') or none}")
         for t, s in ds.schema["tables"].items()
     )
     formats = {
-        "binary_classification": "`prediction` 为正类（标签 1）的概率或分数；按 AUROC 评测",
-        "regression": "`prediction` 为数值；按 MAE 评测",
-        "recommendation": f"`prediction` 为 JSON 列表，按相关度从高到低列出最多 {spec.get('eval_k', 10)} 个 "
-                          f"`{spec.get('dst_entity_col')}`；按 MAP@{spec.get('eval_k', 10)} 评测",
+        "binary_classification": lang.t("`prediction` is the probability or score of the positive class (label 1); evaluated by AUROC",
+                                        "`prediction` 为正类（标签 1）的概率或分数；按 AUROC 评测"),
+        "regression": lang.t("`prediction` is a number; evaluated by MAE", "`prediction` 为数值；按 MAE 评测"),
+        "recommendation": lang.t(f"`prediction` is a JSON list of at most {spec.get('eval_k', 10)} "
+                                 f"`{spec.get('dst_entity_col')}`, ordered by relevance from high to low; evaluated by MAP@{spec.get('eval_k', 10)}",
+                                 f"`prediction` 为 JSON 列表，按相关度从高到低列出最多 {spec.get('eval_k', 10)} 个 "
+                                 f"`{spec.get('dst_entity_col')}`；按 MAP@{spec.get('eval_k', 10)} 评测"),
     }
     brief = render(
         "relbench.md", db=ds.scenario, description=ds.schema.get("description", ""), task=spec["name"],

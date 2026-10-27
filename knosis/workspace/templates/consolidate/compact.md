@@ -1,30 +1,30 @@
-# 内化：压缩
+# Consolidation: compaction
 
-知识层根目录：`$base`（$n_units 条活跃 κ，$n_inactive 条已失效）。目标：$goal
+Knowledge layer root: `$base` ($n_units active κ, $n_inactive inactive). Goal: $goal
 
-## 范围
+## Range
 
 $scope
 
-可以用 `knosis knowledge select --ws $base --text <关键词>` 自己再找，`knosis knowledge trace <id> --ws $base` 看一条知识的来历。
+You may search further yourself with `knosis knowledge select --ws $base --text <keywords>`, and see the history of a piece of knowledge with `knosis knowledge trace <id> --ws $base`.
 
-## 做法
+## Procedure
 
-压缩只减少条数，不丢信息：被压缩掉的单元都要能沿别名找到概括它的那条。
+Compaction only reduces the count; it loses no information: every compacted unit must be reachable via its alias to the unit that summarizes it.
 
-1. 找出可以合起来说的一组单元：同一对象的多条零散断言、同一规律在多个对象上的实例、相近的方法步骤、措辞不同的同一件事。
-   条件不同、相互矛盾、粒度跨度大到合起来会丢信息的不要合。
-2. 每组保留一条作为主单元（也可以新建一条概括单元）：改写它的 `content` / `condition`，把组内的成立条件、例外、关键数字都写进去；
-   `provenance` 合并组内各条的来源（用 ` ; ` 连接）；新建的概括单元 `status` 取组内最弱的状态（有 verified 也只能写 inferred，
-   除非给它补证据：`knosis knowledge evidence add --ws $base --unit <主单元> --verdict support --method derivation --source merge:<被并单元> --note "<依据>"`）。
-3. 组内其余单元改为 `"status": "merged"`，加 `"merged_into": "<主单元 id>"`，其余字段原样保留（它们成为别名，引用它们的派生单元、skill、
-   大纲都会按别名解析到主单元）。
-4. 价值很低、已被别的单元完整覆盖的单元，同样并入覆盖它的那条（merged），不要直接撤回。
-5. 不删除任何单元；改 `kb/knowledge/units.jsonl`（和必要的证据）。大纲 `kb/outline.yaml`、知识图谱 `kb/graph.json`、流程图 `kb/flows/` 里
-   对被并单元的引用改指主单元（同一处引用重复了就去掉一个），不做其他改动。$topic_rule
+1. Find groups of units that can be stated together: several scattered assertions about the same object, instances of the same regularity on several objects, similar method steps, the same thing in different wording.
+   Do not merge units whose conditions differ, that contradict each other, or whose scope spans so widely that merging would lose information.
+2. Keep one unit per group as the primary unit (you may also create a new summarizing unit): rewrite its `content` / `condition` to include the group's conditions, exceptions and key numbers;
+   `provenance` merges the sources of the units in the group (joined with ` ; `); the `status` of a new summarizing unit takes the weakest status in the group (even if there is verified, it can only be inferred,
+   unless you add evidence for it: `knosis knowledge evidence add --ws $base --unit <primary unit> --verdict support --method derivation --source merge:<merged unit> --note "<basis>"`).
+3. Change the other units in the group to `"status": "merged"`, add `"merged_into": "<primary unit id>"`, and keep all other fields as they are (they become aliases; derived units, skills
+   and the outline that reference them are resolved through the alias to the primary unit).
+4. Units of very low value that are fully covered by another unit are likewise merged into the unit covering them (merged); do not retract them directly.
+5. Do not delete any unit; modify `kb/knowledge/units.jsonl` (and necessary evidence). In the outline `kb/outline.yaml`, the knowledge graph `kb/graph.json` and the flows `kb/flows/`,
+   repoint references to merged units to the primary unit (if this duplicates a reference in the same place, remove one), and make no other changes.$topic_rule
 
-## 验收
+## Acceptance check
 
-`knosis knowledge check --ws $base` 不新增问题$check_note；没有单元被删除；活跃单元数减少；这一步变为失效的单元都有 `merged_into`
-（或 `superseded_by`）指向活跃单元。确实没有可压缩的就什么都不改。
-最后用两三句话说明压缩了哪几组、各组为什么能合，哪些看起来相近但没有合、为什么。
+`knosis knowledge check --ws $base` introduces no new problems$check_note; no unit was deleted; the number of active units decreased; every unit that became inactive in this step has `merged_into`
+(or `superseded_by`) pointing to an active unit. If there is truly nothing to compact, change nothing.
+Finally, explain in two or three sentences which groups you compacted and why each could be merged, and which looked similar but were not merged and why.

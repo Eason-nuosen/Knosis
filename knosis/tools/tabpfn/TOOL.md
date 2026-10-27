@@ -6,11 +6,11 @@ modality: [table]
 stage: [explore, extract, decide]
 env: knosis-tabpfn
 requires: [tabpfn, torch]
-license: "TabPFN 当前上游代码 Apache-2.0；模型权重采用独立且随版本变化的许可，部分受 gated/非商用限制，须核对所选 checkpoint。"
+license: "Current upstream TabPFN code is Apache-2.0; the model weights use a separate license that changes between versions, and some are gated or non-commercial. Check the license of the checkpoint you choose."
 ---
 
-表格预测、训练集 OOF 可疑标签检查，以及特征变体交叉验证（检验特征工程假设）。输入 parquet，只读；
-`row_id` 不作为特征。支持分类概率/熵，以及回归预测/分位数区间/残差。
+Tabular prediction, out-of-fold (OOF) checks for suspicious training labels, and cross-validation of feature variants (to test feature-engineering hypotheses). Inputs are parquet files and are read only;
+`row_id` is never used as a feature. Supports class probabilities / entropy for classification, and predictions / quantile intervals / residuals for regression.
 
 ```bash
 knosis tool run tabpfn -- predict --train data/train.parquet --test data/test_features.parquet --target TARGET --out stages/4_decide/tabpfn --prepare-only
@@ -21,30 +21,31 @@ knosis tool run tabpfn -- cv --train data/train.parquet --target TARGET --folds 
   --variant 'group_x=subset:kind=="x"' --unit ratio=k-12 --out stages/2_extract/tabpfn_cv
 ```
 
-`--prepare-only` 不导入 TabPFN，不下载模型：输出 `input_summary.parquet`、
-空 `units.jsonl` 和 `run.json`，用于 Mac 上检查接口，绝不输出伪预测。
-真实 predict 输出 `predictions.parquet`；oof 输出 `oof_predictions.parquet`
-和标签可疑项 finding。所有注解都为 inferred，不直接写入知识层。
+`--prepare-only` does not import TabPFN or download a model: it writes `input_summary.parquet`,
+an empty `units.jsonl` and `run.json`, for checking the interface on a machine without the model environment. It never outputs fake predictions.
+A real `predict` writes `predictions.parquet` (classification: prediction, per-class probabilities, entropy as uncertainty; regression: prediction, 0.1 / 0.9 quantiles, interval width as uncertainty)
+and one finding per high-uncertainty test row; `oof` writes `oof_predictions.parquet` (with truth, true-label probability or residual, and a suspicion score)
+and one suspicious-label finding per high-suspicion training row. Both keep the top `--topk` rows (default 50). All annotations are inferred and are not written directly to the knowledge layer.
 
-`--problem-type auto|classification|regression`；auto 以目标 dtype 判断，
-数值型分类标签应显式选 classification。
-`--model` 是所选版本的本地 checkpoint 路径，默认取环境变量 `KNOSIS_TABPFN_MODEL`，未设则 auto 使用安装版本的默认权重。
-`--device` 默认 auto。`--max-rows` 默认 10000，`--max-features` 默认 500，
-固定 `--seed` 下采样并在 run.json 记录实际训练行与特征；这不是所有版本的统一上限，
-请按所选权重的上限与显存修改。OOF 始终覆盖所有训练行，只对每折 fit 数据下采样。
-OOF 不读取测试标签，低真值概率或大残差不是噪声的充分证据。
+`--problem-type auto|classification|regression`; auto decides from the target dtype (numeric means regression),
+so numeric class labels should explicitly use classification.
+`--model` is the local checkpoint path for the chosen version; it defaults to the environment variable `KNOSIS_TABPFN_MODEL`, and if that is unset, `auto` uses the installed version's default weights.
+`--device` defaults to auto. `--max-rows` defaults to 10000 and `--max-features` to 500;
+rows and features beyond these are randomly subsampled with the fixed `--seed`, and the actual training rows and features are recorded in run.json. These are not universal limits across versions;
+adjust them to the limits of the chosen weights and your GPU memory. OOF always covers all training rows; only each fold's fit data is subsampled.
+OOF does not read test labels; a low true-label probability or a large residual is not sufficient evidence of noise.
 
-`cv`：`--variant NAME=SPEC` 可重复，`base` 为基线（默认全部特征，可覆盖）。SPEC 为空或用 `;` 连接的操作：
-`drop:a,b` 去掉列；`add:name=<pandas eval 表达式>` 新增列（布尔转 0/1）；`subset:<pandas query>` 只在满足条件的行上拟合与评估。
-所有变体用同一套 K 折（回归 KFold，分类 StratifiedKFold，`--seed`）；子集变体与基线在同一批行上比较（基线仍在全部行上拟合）。
-非数值列统一编码为类别码。指标：回归 RMSE，分类 log loss（另报 accuracy），越低越好。
-输出 `cv.csv`（每变体：行数、特征数、均值、折间标准差、基线均值、Δ = 变体 − 基线、折间配对 Δ 标准差），
-每个非基线变体一条 inferred finding（provenance `tool:tabpfn@0.2(cv,variant=...)`）。
-`--unit VARIANT=UNITID` 可重复：为该 κ 写 `evidence.jsonl`，改进超过 1 个配对标准差记 support，变差超过记 refute，否则 undetermined；
-用 `knosis knowledge evidence import <out>/evidence.jsonl` 导入。`--prepare-only` 只输出 `cv_plan.csv`（各变体行数与特征）。
+`cv`: `--variant NAME=SPEC` is repeatable; `base` is the baseline (all features by default, can be overridden). SPEC is empty or a `;`-separated list of operations:
+`drop:a,b` removes columns; `add:name=<pandas eval expression>` adds a column (booleans become 0/1); `subset:<pandas query>` fits and evaluates only on rows that satisfy the condition.
+All variants share the same K folds (KFold for regression, StratifiedKFold for classification, `--seed`); subset variants are compared with the baseline on the same rows (the baseline is still fitted on all rows).
+Non-numeric columns are encoded as category codes. Metrics: RMSE for regression, log loss for classification (accuracy also reported); lower is better.
+Outputs `cv.csv` (per variant: rows, features, mean, std across folds, baseline mean, Δ = variant − baseline, std of the paired per-fold Δ),
+and one inferred finding per non-baseline variant (provenance `tool:tabpfn@0.2(cv,variant=...)`).
+`--unit VARIANT=UNITID` is repeatable: writes `evidence.jsonl` for that κ: an improvement of more than one paired std is support, a worsening of more than one is refute, otherwise undetermined;
+import it with `knosis knowledge evidence import <out>/evidence.jsonl`. With `--prepare-only`, `cv` only writes `cv_plan.csv` (rows and features of each variant).
 
-服务器专用环境安装 `tabpfn` 以及 Knosis，首次真实推断可能下载权重。
-用 `KNOSIS_TABPFN_PYTHON=/opt/conda/envs/knosis-tabpfn/bin/python` 指定环境。
-上游：[PriorLabs/TabPFN](https://github.com/PriorLabs/TabPFN)；
-代码 LICENSE 与 HuggingFace checkpoint 的模型许可分别核对，不将代码许可视作权重许可。
-本版未固定、未下载或验证某个权重，不宣称任何版本均可商用。
+Install `tabpfn` and Knosis in a dedicated environment (typically on a GPU server); the first real inference may download weights.
+Point to that environment with `KNOSIS_TABPFN_PYTHON=/opt/conda/envs/knosis-tabpfn/bin/python`.
+Upstream: [PriorLabs/TabPFN](https://github.com/PriorLabs/TabPFN).
+Check the code LICENSE and the model license of the HuggingFace checkpoint separately; the code license does not cover the weights.
+Knosis does not pin, download or verify any particular weights, and makes no claim that any version is usable commercially.

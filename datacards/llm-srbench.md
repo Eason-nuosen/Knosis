@@ -1,170 +1,178 @@
 # LLM-SRBench
 
-| 项 | 值 |
+| Item | Value |
 | --- | --- |
-| 论文 | LLM-SRBench: A New Benchmark for Scientific Equation Discovery with Large Language Models |
-| arXiv | **2504.10415**（v1 2025-04-14；v2 2025-06-07） |
-| 会议 | **ICML 2025 Oral** |
-| 作者 | Parshin Shojaee, Ngoc-Hieu Nguyen, Kazem Meidani, Amir Barati Farimani, Khoa D Doan, Chandan K Reddy |
-| 机构 | Virginia Tech / VinUniversity / CMU |
-| 代码 | https://github.com/deep-symbolic-mathematics/llm-srbench |
-| 数据 | https://huggingface.co/datasets/nnheui/llm-srbench |
-| 访问 | **gated**（`gated: "auto"`，需 HF_TOKEN） |
-| **许可** | 代码 **MIT** / 论文 **CC BY 4.0** / **HF 数据产物未声明**（见下） |
-| 上游版本 | 无显式版本号；按 HF 快照（`resolve/main/…`）取 |
+| Paper | LLM-SRBench: A New Benchmark for Scientific Equation Discovery with Large Language Models |
+| arXiv | **2504.10415** (v1 2025-04-14; v2 2025-06-07) |
+| Venue | **ICML 2025 Oral** |
+| Authors | Parshin Shojaee, Ngoc-Hieu Nguyen, Kazem Meidani, Amir Barati Farimani, Khoa D Doan, Chandan K Reddy |
+| Institutions | Virginia Tech / VinUniversity / CMU |
+| Code | https://github.com/deep-symbolic-mathematics/llm-srbench |
+| Data | https://huggingface.co/datasets/nnheui/llm-srbench |
+| Access | **gated** (`gated: "auto"`, needs HF_TOKEN) |
+| **License** | Code **MIT** / paper **CC BY 4.0** / **HF data artifacts not declared** (see below) |
+| Upstream version | No explicit version number; fetched as an HF snapshot (`resolve/main/…`) |
 
-## 许可
+## License
 
-三处口径不一致，**分开对待**：
+The three sources disagree; **treat them separately**:
 
-- **代码 MIT**。
-- **论文 CC BY 4.0**。
-- **⚠️ HF 数据产物本身没有任何 license 字段 —— 未声明。** 在意的话联系作者。
+- **Code: MIT.**
+- **Paper: CC BY 4.0.**
+- **⚠️ The HF data artifacts themselves have no license field: not declared.** Contact the authors if this matters.
 
-也就是说：clone 代码、引用论文都没问题；**把 HF 上的 parquet / HDF5 再分发**
-属于未声明授权的部分。
+In other words: cloning the code and citing the paper are fine; **redistributing the parquet / HDF5 from HF**
+falls under the undeclared part.
 
-## 获取
+## Obtaining
 
 ```bash
-knosis download llm-srbench     # 内部走 HF 直连；上游用 snapshot_download，会自己拉
+knosis download llm-srbench     # HF snapshot_download of nnheui/llm-srbench
 ```
 
-**⚠️ 数据是 gated（`gated: "auto"`）。** 匿名访问 `resolve/main/...` 会返回 **401**，
-所以 CI 里必须有 `HF_TOKEN`，而且**要先在 HF 网页上接受条款**。这是最容易卡住的一步。
+**⚠️ The data is gated (`gated: "auto"`).** Anonymous access to `resolve/main/...` returns **401**,
+so CI must have `HF_TOKEN`, and **the terms must first be accepted on the HF website**. This is the step people get stuck on most.
 
-adapter 的报错提示原文就是这个顺序：数据是 gated，需先接受 HF 条款并设置 `HF_TOKEN`，
-再 `knosis download llm-srbench`。
+Order: accept the terms on HF, then `hf auth login` (or set `HF_TOKEN`), then `knosis download llm-srbench`.
 
-取下来之后按 split 加载：
+Load by split:
 
 ```python
-load(split="lsr_transform")            # 默认 split
-load(split="lsr_synth_chem_react")
-load(split="lsr_synth_bio_pop_growth")
-load(split="lsr_synth_phys_osc")
-load(split="lsr_synth_matsci")
+from knosis.data import load_dataset
+
+load_dataset("llm-srbench", "lsr_transform")            # default split
+load_dataset("llm-srbench", "lsr_synth_chem_react")
+load_dataset("llm-srbench", "lsr_synth_bio_pop_growth")
+load_dataset("llm-srbench", "lsr_synth_phys_osc")
+load_dataset("llm-srbench", "lsr_synth_matsci")
 ```
 
-`list_scenarios()` 返回上面五个 split key。
+`list_scenarios("llm-srbench")` returns these five split keys.
 
-adapter 的 `_root` 定位顺序：`<数据根>/llm-srbench` → `<数据根>` → 递归找
-`lsr_bench_data.hdf5` 所在目录（HF 缓存的快照目录结构）。
+The loader finds files under `data/llm-srbench/` recursively: the parquet via `rglob("<split>*.parquet")`
+and the HDF5 via `rglob("lsr_bench_data.hdf5")`, so the HF snapshot layout works as is.
 
-## 体量
+## Size
 
-**体量很小（元数据）加大文件**：5 个 parquet 合计约 **36 KB**，加一个 **239 MB** 的 HDF5。
+**Small metadata plus one large file**: the 5 parquet files total about **36 KB**, plus one **239 MB** HDF5.
 
-| split key | 论文口径 | 磁盘实况 | 域 | 说明 |
+| split key | Paper name | On disk | Domain | Notes |
 | --- | --- | --- | --- | --- |
-| `lsr_transform` | **LSR-Transform** | 111 | 物理 | 从 100 个 Feynman 方程做符号变换得来，抗记忆 |
-| `lsr_synth_chem_react` | LSR-Synth | 36 | 化学 | 化学生成式问题 |
-| `lsr_synth_bio_pop_growth` | LSR-Synth | 24 | 生物 | 种群增长类 |
-| `lsr_synth_phys_osc` | LSR-Synth | **44** | 物理 | 振荡类（⚠️ 论文写 **43**，磁盘上是 **44**） |
-| `lsr_synth_matsci` | LSR-Synth | 25 | 材料 | 材料科学 |
+| `lsr_transform` | **LSR-Transform** | 111 | Physics | Symbolic transforms of 100 Feynman equations; memorization-resistant |
+| `lsr_synth_chem_react` | LSR-Synth | 36 | Chemistry | Chemistry generative problems |
+| `lsr_synth_bio_pop_growth` | LSR-Synth | 24 | Biology | Population growth |
+| `lsr_synth_phys_osc` | LSR-Synth | **44** | Physics | Oscillation (⚠️ the paper says **43**, disk has **44**) |
+| `lsr_synth_matsci` | LSR-Synth | 25 | Materials | Materials science |
 
-**⚠️ 论文说 239 题，磁盘上是 240 题**（物理 split 是 44 而不是 43）——
-差一题的成因未知，需要严格对齐题目数的话自己去 diff `phys_osc` 的名字。
+**⚠️ The paper says 239 problems; the disk has 240** (the physics split has 44, not 43).
+The cause of the extra problem is unknown; if you need an exact count, diff the `phys_osc` names yourself.
 
-adapter 在 schema 里同时记录两个数：`n_problems`（磁盘）与 `n_problems_paper`（论文口径），
-**不做归一也不做断言**。
+**Two construction routes with different properties:**
 
-**两条构造路线，性质不同：**
+- **LSR-Transform** (111 problems): take **100 classic Feynman equations**, **turn one input variable into the target**,
+  and solve symbolically with **SymPy** to get a new equation. Only analytically solvable transforms are kept, data points are projected
+  into the new equation's valid domain, and complexity is kept within the node-count distribution of the original Feynman set. **This is physics.**
+- **LSR-Synth** (129 problems): **GPT-4o** first generates **known terms** and **synthetic novel terms** for a scientific problem,
+  then **`solve_ivp`** checks solvability, **GPT-4o** checks novelty, data points are generated,
+  and finally **two domain experts manually validate** the expressions and data-point plots.
+  Four domains: chemistry 36, biology 24, physics 44, materials 25.
 
-- **LSR-Transform**（111 题）：拿 **100 个经典 Feynman 方程**，把其中一个**输入变量变成目标**，
-  再用 **SymPy** 符号求解得到新方程。只保留解析可解的变换，数据点也投影到新方程的有效域里，
-  复杂度控制在原 Feynman 的节点数分布内。**这是物理。**
-- **LSR-Synth**（129 题）：**GPT-4o** 先为某个科学问题生成**已知项**与**合成的新项**，
-  再用 **`solve_ivp`** 检查可解性、用 **GPT-4o** 做新颖性检查、生成数据点，
-  最后**两位领域专家人工校验**表达式与数据点图。
-  分四个域：化学 36、生物 24、物理 44、材料 25。
+**Memorization resistance is the benchmark's core contribution**: problems are constructed rather than copied from textbooks,
+so an LLM cannot pass off a memorized answer as a "discovery".
 
-**抗记忆是本基准的核心贡献** —— 题目不是从教科书里直接抄来的，而是构造过的，
-防止 LLM 靠背答案冒充「发现」。
+**Variable metadata**: names and meanings (`symbols` + `symbol_descs`), **but no units**.
+No units field, no dimensions, no SI annotation anywhere in the schema.
+`symbol_properties` is a free-form list of strings (encoding variable roles/flags);
+**upstream has not published its vocabulary**, so do not assume a fixed enum.
 
-**变量元数据**：有名字和含义（`symbols` + `symbol_descs`），**但没有单位**。
-没有 units 字段、没有量纲、没有 SI 标注 —— 整个 schema 里都找不到（`units_available: False`）。
-`symbol_properties` 是自由格式的字符串列表（编码了变量角色/标志），
-**上游没有公布它的取值词表**，别假设有固定枚举。
+**There is also no `domain` field and no `complexity` field**: the domain is determined by which split you load;
+complexity must be computed yourself (e.g. sympy `count_ops` on `expression`).
 
-**也没有 `domain` 字段、没有 `complexity` 字段** —— 域由你加载哪个 split 决定；
-复杂度只能自己算（比如对 `expression` 跑 sympy 的 `count_ops`）。
-
-## 布局
+## Layout
 
 ```
-<数据根>/                              # dataset_dir("llm-srbench")
-├── lsr_bench_data.hdf5                # 239 MB —— 全部数值数据都在这里
-└── data/                              # 元数据目录（也可直接扁平放在数据根下）
-    ├── lsr_transform-<…>.parquet      # 111 条
-    ├── lsr_synth_chem_react-<…>.parquet    # 36 条
-    ├── lsr_synth_bio_pop_growth-<…>.parquet # 24 条
-    ├── lsr_synth_phys_osc-<…>.parquet       # 44 条
-    └── lsr_synth_matsci-<…>.parquet         # 25 条
+data/llm-srbench/
+├── lsr_bench_data.hdf5                # 239 MB: all numeric data is here
+└── data/                              # metadata directory
+    ├── lsr_transform-<…>.parquet      # 111 rows
+    ├── lsr_synth_chem_react-<…>.parquet    # 36 rows
+    ├── lsr_synth_bio_pop_growth-<…>.parquet # 24 rows
+    ├── lsr_synth_phys_osc-<…>.parquet       # 44 rows
+    └── lsr_synth_matsci-<…>.parquet         # 25 rows
 ```
 
-adapter 用 glob 定位，**不硬编码哪个后缀**：`pdir.glob("lsr_*.parquet")` 找 parquet 目录、
-`base.rglob("lsr_transform-*.parquet")` 兜底找 HF 快照里的位置；
-split key 由文件名取 `path.stem.split("-")[0]` 得到。
-
-**parquet 的列**（五个文件同构）：
+**Parquet columns** (all five files share them):
 
 ```
 name / symbols / symbol_descs / symbol_properties / expression
 ```
 
-**里面没有任何数值数据。**
+**There is no numeric data in them.**
 
-**数值在 HDF5**（`lsr_bench_data.hdf5`）。组路径：
+**Numbers are in the HDF5** (`lsr_bench_data.hdf5`). Group paths:
 
-| split | HDF5 组路径 |
+| split | HDF5 group path |
 | --- | --- |
 | `lsr_transform` | `/lsr_transform/{name}` |
-| `lsr_synth_*` | `/lsr_synth/{数据集}/{name}`，例如 `/lsr_synth/bio_pop_growth/BPG0` |
+| `lsr_synth_*` | `/lsr_synth/{dataset}/{name}`, e.g. `/lsr_synth/bio_pop_growth/BPG0` |
 
-每个组里的 dataset 键是：
+Dataset keys inside each group:
 
 ```
-train / test / ood_test        # ood_test 只有 LSR-Synth 有；已对本地 HDF5 核实
+train / test / ood_test        # ood_test exists only for LSR-Synth; verified against the local HDF5
 ```
 
-任务 id 形如 `{split}/{name}`，`answer` 是 `expression`，`kind` 是 `symbolic_regression`，
-组路径在 `task.meta["hdf5_group"]`。
+Column 0 of each array is the target (`symbols[0]`), the rest are the inputs in `symbols` order.
 
-## 评分
+Task ids look like `{split}/{name}`; `input` is the `symbol: description` lines, `answer` is `expression`,
+`kind` is `symbolic_regression`, and the group path is in `task.meta["hdf5_group"]`.
 
-两路：
+## Scoring
 
-- **符号准确率**：**GPT-4o 当裁判**判断数学等价，**先剥掉参数与常数**。
-  与**两位人类标注者在 130 题上的一致率 94.6%**。
-- **数据保真度**：`Acc_τ = 1[max_i |(ŷ-y)/y| ≤ τ]` 与 `NMSE`，
-  在域内测试集**和留出的 OOD 集**上分别算。
+Upstream has two tracks:
 
-**上游最好成绩约 31.5% 符号准确率**，预算标准化为**每题 1000 次 LLM 调用**。
+- **Symbolic accuracy**: **GPT-4o as judge** decides mathematical equivalence, **after stripping parameters and constants**.
+  **94.6% agreement with two human annotators on 130 problems.**
+- **Data fidelity**: `Acc_τ = 1[max_i |(ŷ-y)/y| ≤ τ]` and `NMSE`,
+  computed separately on the in-domain test set **and the held-out OOD set**.
 
-Knosis 登记的指标名：`symbolic_accuracy`、`nmse`、`acc_tau`、`ood_nmse`（只有 LSR-Synth 有）。
+**The best upstream result is about 31.5% symbolic accuracy**, with the budget standardized to **1000 LLM calls per problem**.
 
-适合：符号回归、方程发现、抗记忆评测、域内与域外的泛化对比。
-不适合：需要单位/量纲的物理建模（**本基准完全不含量纲信息**）。
+Good for: symbolic regression, equation discovery, memorization-resistant evaluation, in-domain vs. out-of-domain generalization.
+Not good for: physical modeling that needs units/dimensions (**the benchmark has no dimensional information at all**).
 
-## 已知问题
+## How Knosis uses it
 
-- **gated 下载**，401 是最常见的第一次失败。
-- **⚠️ OOD 只有 LSR-Synth 才有。** LSR-Transform 的题取 `ood_test_samples` 会
-  **静默返回 None 而不是报错**，假设到处都有 OOD 的代码会悄悄出问题。
-- **parquet 与 HDF5 两个文件容易混淆**：parquet 看着像完整数据集但**只有元数据**；
-  而且这个 parquet 是**可再生成的**，很容易做出一个「看起来完整」的小数据集。
-  想当然地用 parquet 当数据集会发现「很完整但没数据」。
-- **符号评分会剥掉常数** —— 数值拟合极好但常数写错，符号准确率照样是 1；
-  反过来，结构对但常数位置怪，也可能被判等价。**别把符号准确率当数值保真度用**，
-  数值那一路要看 NMSE / Acc_τ。
-- **⚠️ split 名在两处不一致**：CLI 里的 token 是**单数词**（`lsrtransform`），
-  HF 的 split 名**带下划线**（`lsr_transform`）—— 上游这两处不一致，**别做归一**。
-- **论文与磁盘题数不一致**：论文 239，磁盘 240（`lsr_synth_phys_osc` 44 vs 43）。
-- 上游的 `feynman` 数据模块是**被注释掉的**，走不通原生 Feynman 评测。
-- 上游 `root` 参数实际上**会被覆盖**（`setup()` 里把 `_dataset_dir` 换成下载快照目录），
-  指到本地副本不生效。
-- 每个搜索方法（**LLM-SR、LaSR、SGA、PySR**）都要**各自单独装上游包**，
-  只装 `requirements.txt` 不够。
-- **变量元数据缺三项**：单位、域字段、复杂度字段 —— 全部需要下游自补。
-  `symbol_properties` 是自由格式，**上游未公布取值词表**，别假设有枚举。
+- Exporter (`knosis/workspace/exporters/llm_srbench.py`): each task gets only its training data,
+  `data/<name>/train.parquet` (columns = `symbols`), plus the variable descriptions; the true expression, `test` and `ood_test`
+  stay in the raw HDF5. `dev` defaults to about 20% of tasks; `limit` samples test tasks. Needs `h5py` (`knosis[hdf5]`).
+  Output: `predictions.jsonl` (one numpy expression per task).
+- Scorer (`knosis/decision/llm_srbench.py`): evaluates the delivered expression on `test` (and `ood_test` when present).
+  NMSE matches upstream `compute_output_base_metrics` (NaN predictions ignored); Acc_τ follows the paper's definition
+  with τ = 0.1 (upstream code has no implementation). Reported: `acc_0.1`, `nmse_median`, `missing`, and for LSR-Synth
+  `ood_acc_0.1` / `ood_nmse_median`. **Symbolic accuracy is not implemented** (it needs an LLM judge).
+  A malformed expression counts as invalid (NMSE = inf) instead of crashing.
+- Knowledge scorer: recomputes formula units (`form=formula` with `meta.task` / `meta.expression`) on held-out points
+  and reports how many accepted equations hold and how many retracted ones indeed do not.
+
+## Known issues
+
+- **Gated download**; 401 is the most common first failure.
+- **⚠️ OOD exists only for LSR-Synth.** In upstream code, asking an LSR-Transform problem for `ood_test_samples`
+  **silently returns None instead of raising**, so code that assumes OOD everywhere breaks quietly.
+- **The parquet and HDF5 files are easy to confuse**: the parquet looks like a complete dataset but **holds only metadata**;
+  and since it is **regenerable**, it is easy to build a small dataset that "looks complete".
+  Treating the parquet as the dataset gives you something "complete but without data".
+- **Symbolic scoring strips constants**: a fit that is numerically excellent but has wrong constants still gets symbolic accuracy 1;
+  conversely, the right structure with oddly placed constants may also be judged equivalent. **Do not use symbolic accuracy as numeric fidelity**;
+  for the numeric track look at NMSE / Acc_τ.
+- **⚠️ Split names differ in two places**: the CLI token is a **single word** (`lsrtransform`),
+  while the HF split name **has underscores** (`lsr_transform`); upstream is inconsistent here, **do not normalize**.
+- **Paper and disk problem counts differ**: paper 239, disk 240 (`lsr_synth_phys_osc` 44 vs 43).
+- Upstream's `feynman` data module is **commented out**, so native Feynman evaluation does not work.
+- Upstream's `root` argument is effectively **overridden** (`setup()` replaces `_dataset_dir` with the downloaded snapshot directory),
+  so pointing it at a local copy has no effect.
+- Each search method (**LLM-SR, LaSR, SGA, PySR**) needs **its own upstream package installed separately**;
+  `requirements.txt` alone is not enough.
+- **Variable metadata lacks three things**: units, a domain field, a complexity field; all must be supplied downstream.
+  `symbol_properties` is free-form and **upstream has not published its vocabulary**; do not assume an enum.

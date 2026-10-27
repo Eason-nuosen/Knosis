@@ -40,7 +40,8 @@ knosis = "knosis.cli:main"
 include = ["knosis*"]
 
 [tool.setuptools.package-data]
-knosis = ["data/cards/*.md", "workspace/templates/*.md", "workspace/templates/*/*.md", "tools/*/*.md"]
+knosis = ["data/cards/*.md", "data/cards_cn/*.md", "workspace/templates/*.md", "workspace/templates/*/*.md",
+          "workspace/templates_cn/*.md", "workspace/templates_cn/*/*.md", "tools/*/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

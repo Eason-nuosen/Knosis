@@ -18,6 +18,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..lang import t
 from .layout import layout
 from .units import load_units, source_issues, write_units
 
@@ -151,19 +152,21 @@ def trace(root, unit_id, history=()) -> str:
         if uid in seen:
             return
         seen.add(uid)
-        unit = units.get(uid, {"content": "（未知单元）", "status": "?", "form": "?"})
+        unit = units.get(uid, {"content": t("(unknown unit)", "（未知单元）"), "status": "?", "form": "?"})
         pad = "  " * depth
         lines.append(f"{pad}- **{uid}** [{unit['form']}/{unit['status']}] {unit['content']}")
         if unit.get("condition"):
-            lines.append(f"{pad}  - 条件：{unit['condition']}")
-        lines.append(f"{pad}  - 来源：{unit.get('provenance', '')}")
-        for key, label in (("merged_into", "已并入"), ("superseded_by", "被替换为"), ("conflicts_with", "与之矛盾")):
+            lines.append(t(f"{pad}  - Condition: {unit['condition']}", f"{pad}  - 条件：{unit['condition']}"))
+        lines.append(t(f"{pad}  - Provenance: {unit.get('provenance', '')}", f"{pad}  - 来源：{unit.get('provenance', '')}"))
+        for key, label in (("merged_into", t("Merged into", "已并入")), ("superseded_by", t("Superseded by", "被替换为")),
+                           ("conflicts_with", t("Conflicts with", "与之矛盾"))):
             if unit.get(key):
-                lines.append(f"{pad}  - {label}：{unit[key]}")
+                lines.append(t(f"{pad}  - {label}: {unit[key]}", f"{pad}  - {label}：{unit[key]}"))
         for entry in evidence.get(uid, []):
             note = entry.get("note", "")
             note = note if len(note) <= 300 else note[:300] + " …"
-            lines.append(f"{pad}  - {entry['created'][:19]} {entry['verdict']}（{entry['method']}，{entry['source']}）{note}")
+            lines.append(t(f"{pad}  - {entry['created'][:19]} {entry['verdict']} ({entry['method']}, {entry['source']}) {note}",
+                            f"{pad}  - {entry['created'][:19]} {entry['verdict']}（{entry['method']}，{entry['source']}）{note}"))
         for parent in unit.get("derived_from", []):
             walk(parent, depth + 1)
 

@@ -4,12 +4,12 @@ version: "0.1"
 kind: program
 modality: [table, tables]
 stage: [explore, extract, refine, decide]
-license: "Apache-2.0（Knosis 自带；思路来自 BI-Agent 的 SQL 执行工具）"
+license: "Apache-2.0 (bundled with Knosis; the idea comes from BI-Agent's SQL execution tool)"
 ---
 
-把一组 CSV / parquet 表载入内存 SQLite，执行 SQL，最后一条语句的结果写入 `result.csv`。
-表名由文件名得到：非字母数字转为下划线，数字开头加下划线（如 `Share of woman.csv` → `Share_of_woman`）。
-列名保持原样，含空格时用双引号引用。
+Loads a set of CSV / parquet tables into an in-memory SQLite database, runs SQL, and writes the result of the last statement that returns rows to `result.csv`.
+Table names come from file names: non-alphanumerics become underscores, and a leading digit gets an underscore prefix (e.g. `Share of woman.csv` → `Share_of_woman`).
+Column names are kept as is; quote them with double quotes when they contain spaces.
 
 ```bash
 knosis tool run sql -- --tables data/ --list --out stages/1_explore/sql
@@ -17,4 +17,5 @@ knosis tool run sql -- --tables data/ --query 'SELECT COUNT(*) FROM train' --out
 knosis tool run sql -- --tables data/a.csv data/b.csv --file q.sql --out stages/4_decide/sql
 ```
 
-`--list` 只输出表名、来源文件与列名。结果不是知识，不产出 κ；`units.jsonl` 为空。
+Exactly one of `--query`, `--file` or `--list` is required. `--tables` takes files or directories (directories expand to their csv / parquet files; files starting with `_` are skipped).
+`--list` only outputs table names, source files, row counts and column names. Results are not knowledge, so no κ is produced; `units.jsonl` is empty.

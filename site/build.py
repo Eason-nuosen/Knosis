@@ -20,7 +20,7 @@ from knosis.knowledge.skills import load_skills
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# One demo per benchmark (2026-10-24, v0.5: explore → extract → refine ×2 → consolidate → decide, Codex gpt-6.1-sol / medium)
+# One demo per benchmark (explore → extract → refine ×2 → consolidate → decide, Codex gpt-6.1-sol / medium)
 DEMOS = [
     {"key": "ngd", "dir": "v05-ngd", "modality": "噪声知识图谱", "title": "NGDBench NGD-Fin：含噪金融图问答",
      "task": "图里注入了节点类型、属性、边的噪声；人工核对的演示题集，dev 10 / 测试 20，dev 给正确答案作反馈，每次须答全部 dev 题。",

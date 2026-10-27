@@ -12,6 +12,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..lang import t
 from .layout import layout
 from .units import load_units
 
@@ -87,11 +88,15 @@ def usage(ws, record, used, kinds) -> None:
         others = [ok[t] for t in cited if kinds.get(t, "all") == kind and uid not in cited[t]]
         rate = sum(hits) / len(hits)
         base = sum(others) / len(others) if others else None
-        content = (f"在 {kind} 类 dev 题上，用到 {uid} 的 {len(hits)} 题答对 {sum(hits)} 题（{rate:.0%}）；"
-                   + (f"没用到的 {len(others)} 题答对率 {base:.0%}。" if others else "同类题都用到了它。"))
+        content = t(f"On {kind} dev questions, {sum(hits)} of the {len(hits)} questions using {uid} were answered correctly ({rate:.0%}); "
+                    + (f"the {len(others)} questions not using it had accuracy {base:.0%}." if others else "all questions of this kind used it."),
+                    f"在 {kind} 类 dev 题上，用到 {uid} 的 {len(hits)} 题答对 {sum(hits)} 题（{rate:.0%}）；"
+                    + (f"没用到的 {len(others)} 题答对率 {base:.0%}。" if others else "同类题都用到了它。"))
         unit_id = f"usage/{uid}/{kind}"
         fresh[unit_id] = {"id": unit_id, "content": content, "form": "fact", "scope": "usage",
-                          "condition": f"统计自反馈记录 {record['id']}，样本小，相关不等于因果；可用 ws fork --drop 做消融",
+                          "condition": t(f"computed from feedback record {record['id']}; small sample, correlation is not causation; "
+                                         "ablate with ws fork --drop",
+                                         f"统计自反馈记录 {record['id']}，样本小，相关不等于因果；可用 ws fork --drop 做消融"),
                           "provenance": f"feedback:{record['id']}", "status": "inferred",
                           "derived_from": [] if uid.startswith("skill:") else [uid],
                           "meta": {"of": uid, "kind": kind, "n_used": len(hits), "acc_used": rate, "n_other": len(others), "acc_other": base}}

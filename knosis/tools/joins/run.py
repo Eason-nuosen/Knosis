@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from knosis.knowledge import ontology
+from knosis import lang
 from knosis.tools import read_tables, write_result
 
 
@@ -51,9 +52,11 @@ def findings(candidates, tables, min_containment):
         src, dst = tables[r["from_table"]][0], tables[r["to_table"]][0]
         units.append({
             "id": f"joins/{i}", "form": "finding", "status": "inferred",
-            "content": f"可能的 join：{r['from_table']}.{r['from_column']} → {r['to_table']}.{r['to_column']}"
-                       f"（包含率 {r['containment']:.2f}）",
-            "condition": "取值包含关系，未验证语义",
+            "content": lang.t(f"Possible join: {r['from_table']}.{r['from_column']} → {r['to_table']}.{r['to_column']}"
+                              f" (containment {r['containment']:.2f})",
+                              f"可能的 join：{r['from_table']}.{r['from_column']} → {r['to_table']}.{r['to_column']}"
+                              f"（包含率 {r['containment']:.2f}）"),
+            "condition": lang.t("value containment only, semantics not verified", "取值包含关系，未验证语义"),
             "provenance": f"tool:joins@0.1(min_containment={min_containment}) ; {src}#col/{r['from_column']} ; {dst}#col/{r['to_column']}",
             "meta": r,
         })

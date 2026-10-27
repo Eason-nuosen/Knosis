@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from knosis import lang
 from knosis.tools import read_tables, write_result
 
 PERIOD = re.compile(
@@ -36,7 +37,8 @@ def findings(table, path, rows, max_missing, min_period_columns):
     n = rows[0]["rows"] if rows else 0
     units.append({
         "id": f"profile/{table}", "form": "schema", "status": "observed",
-        "content": f"表 {table}：{n} 行，{len(rows)} 列；候选主键（非空且唯一）：{keys or '无'}",
+        "content": lang.t(f"Table {table}: {n} rows, {len(rows)} columns; candidate primary keys (non-null and unique): {keys or 'none'}",
+                          f"表 {table}：{n} 行，{len(rows)} 列；候选主键（非空且唯一）：{keys or '无'}"),
         "provenance": f"tool:profile@0.1() ; {path}",
         "meta": {"rows": n, "columns": [r["column"] for r in rows], "key_candidates": keys},
     })
@@ -44,18 +46,21 @@ def findings(table, path, rows, max_missing, min_period_columns):
         location = f"tool:profile@0.1(max_missing={max_missing}) ; {path}#col/{r['column']}"
         if r["distinct"] <= 1 and n > 1:
             units.append({"id": f"profile/{table}/{r['column']}/constant", "form": "finding", "status": "inferred",
-                          "content": f"{table}.{r['column']} 取值恒定（{r['examples'] or '全空'}）",
-                          "condition": "只看当前文件", "provenance": location, "meta": r})
+                          "content": lang.t(f"{table}.{r['column']} is constant ({r['examples'] or 'all empty'})",
+                                            f"{table}.{r['column']} 取值恒定（{r['examples'] or '全空'}）"),
+                          "condition": lang.t("current file only", "只看当前文件"), "provenance": location, "meta": r})
         elif r["missing"] > max_missing:
             units.append({"id": f"profile/{table}/{r['column']}/missing", "form": "finding", "status": "inferred",
-                          "content": f"{table}.{r['column']} 缺失率 {r['missing']:.1%}",
-                          "condition": "只看当前文件", "provenance": location, "meta": r})
+                          "content": lang.t(f"{table}.{r['column']} missing rate {r['missing']:.1%}",
+                                            f"{table}.{r['column']} 缺失率 {r['missing']:.1%}"),
+                          "condition": lang.t("current file only", "只看当前文件"), "provenance": location, "meta": r})
     periods = [r["column"] for r in rows if PERIOD.match(r["column"].strip())]
     if len(periods) >= min_period_columns:
         units.append({
             "id": f"profile/{table}/wide", "form": "finding", "status": "inferred",
-            "content": f"{table} 疑似宽表：{len(periods)} 列的列名像时间（{', '.join(periods[:6])} …），可能需要 unpivot 成长表",
-            "condition": "按列名启发式判断", "provenance": f"tool:profile@0.1() ; {path}",
+            "content": lang.t(f"{table} looks like a wide table: {len(periods)} column names look like time periods ({', '.join(periods[:6])} …); it may need to be unpivoted into a long table",
+                              f"{table} 疑似宽表：{len(periods)} 列的列名像时间（{', '.join(periods[:6])} …），可能需要 unpivot 成长表"),
+            "condition": lang.t("heuristic based on column names", "按列名启发式判断"), "provenance": f"tool:profile@0.1() ; {path}",
             "meta": {"period_columns": periods},
         })
     return units

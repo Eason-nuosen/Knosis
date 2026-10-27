@@ -4,17 +4,18 @@ version: "0.1"
 kind: program
 modality: [table, tables]
 stage: [explore, extract]
-license: "Apache-2.0（Knosis 自带）"
+license: "Apache-2.0 (bundled with Knosis)"
 ---
 
-表格画像：每列的类型、缺失率、不同值个数、是否唯一、取值范围与样例，输出 `profile.csv`。
-同时产出 κ：每张表一条 `schema`（行数、候选主键，observed），
-以及可疑项 `finding`（inferred）：常数列、高缺失列、疑似宽表（多列列名像年份 / 月份 / 日期，
-可能需要 unpivot，对应 BI-Agent 的 transform 工具）。
+Table profiling: for each column, the dtype, missing rate, number of distinct values, uniqueness, value range and examples, written to `profile.csv`.
+It also produces κ: one `schema` per table (row count, candidate primary keys; observed),
+and suspicious-item `finding`s (inferred): constant columns, columns with high missing rates (> `--max-missing`, default 0.5), and likely wide tables (at least `--min-period-columns`, default 4,
+column names that look like years / quarters / months / dates, which may need an unpivot; the counterpart of BI-Agent's transform tool).
 
 ```bash
 knosis tool run profile -- --tables data/ --out stages/1_explore/profile
 knosis tool run profile -- --tables data/train.parquet --out stages/1_explore/profile --max-missing 0.3
 ```
 
-来源写成传入的路径加 `#col/<列名>`，在工作区内请传 `data/...` 相对路径，以便 `ws check` 定位。
+`--tables` takes files or directories (directories expand to their csv / parquet files; files starting with `_` are skipped).
+Sources are written as the given path plus `#col/<column>`; inside a workspace, pass relative `data/...` paths so that `ws check` can locate them.

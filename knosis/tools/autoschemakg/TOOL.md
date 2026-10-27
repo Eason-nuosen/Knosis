@@ -4,34 +4,40 @@ version: "0.1"
 kind: program
 modality: [text]
 stage: [explore, extract]
-license: "Apache-2.0（Knosis 自带）；抽取与概念化提示词取自 AutoSchemaKG（HKUST-KnowComp，MIT）"
+license: "Apache-2.0 (bundled with Knosis); the extraction and conceptualization prompts come from AutoSchemaKG (HKUST-KnowComp, MIT)"
 ---
 
-把非结构化文本建成知识图谱，流程与 AutoSchemaKG（arXiv 2505.23628，NGD-Econ / NGD-MCP 的图即由它构建）一致：
-1. 三元组抽取：每段文本抽三类三元组，实体—实体（Head / Relation / Tail）、事件—实体（Event / Entity）、
-   事件—事件（before / after / at the same time / because / as a result）；
-2. 概念化（schema 归纳）：给实体、事件、关系各写几个抽象概念，概念层就是归纳出的 schema，不需要预先定义。
+Builds a knowledge graph from unstructured text, following the AutoSchemaKG pipeline (arXiv 2505.23628; the NGD-Econ / NGD-MCP graphs were built with it):
+1. Triple extraction: from each passage, extract three kinds of triples: entity–entity (Head / Relation / Tail), event–entity (Event / Entity),
+   and event–event (before / after / at the same time / because / as a result);
+2. Conceptualization (schema induction): write a few abstract concepts for each entity, event and relation. The concept layer is the induced schema; nothing has to be defined in advance.
 
-**抽取由 agent 自己做**（你就是那个 LLM）：`prepare` 切段并写出提示词，你按 `PROMPTS.md` 为每段写一行
-`extractions.jsonl`，再 `build`。也可以给 `--llm '<命令>'` 让工具逐段调用一个读 stdin 的命令自动抽取。
+**The agent does the extraction itself** (you are the LLM): `prepare` chunks the text and writes the prompts; following `PROMPTS.md`, you write one line of
+`extractions.jsonl` per passage, then run `build`. Alternatively, `extract --llm '<command>'` calls a command that reads the prompt from stdin, once per passage and prompt, and writes `extractions.jsonl` automatically.
 
 ```bash
-# 1. 切段，写 passages.jsonl 与 PROMPTS.md
+# 1. Chunk the text; writes passages.jsonl and PROMPTS.md (--overlap sets the chunk overlap, default 0)
 knosis tool run autoschemakg -- prepare --text data/ --out stages/1_explore/kg --chunk-chars 3000
-# 2. 按 PROMPTS.md 写 stages/1_explore/kg/extractions.jsonl（或：extract --llm 'claude -p' 自动抽取）
-# 3. 建图：graph.graphml、nodes.csv、edges.csv、units.jsonl；并写 concept_todo.jsonl（待概念化的节点）
+# 2. Write stages/1_explore/kg/extractions.jsonl following PROMPTS.md
+#    (or extract automatically: extract --dir stages/1_explore/kg --llm 'claude -p' [--limit N])
+# 3. Build the graph: graph.graphml, nodes.csv, edges.csv, units.jsonl; also writes concept_todo.jsonl (nodes to conceptualize)
 knosis tool run autoschemakg -- build --dir stages/1_explore/kg
-# 4. 可选：按 concept_todo.jsonl 写 concepts.jsonl（每行 {"name", "type", "concepts": [...]}），再 build 一次得到 schema.json
+# 4. Optional: following concept_todo.jsonl, write concepts.jsonl (one {"name", "type", "concepts": [...]} per line),
+#    or generate it with: conceptualize --dir stages/1_explore/kg --llm 'claude -p'
+#    then build again to get schema.json
 knosis tool run autoschemakg -- build --dir stages/1_explore/kg
-# 查询：某节点的邻居（名字子串匹配，不分大小写）
+# Query: neighbors of a node (case-insensitive name substring match)
 knosis tool run autoschemakg -- query --dir stages/1_explore/kg --node "PUMA" --hops 1
 ```
 
-`extractions.jsonl` 每行与 AutoSchemaKG 输出同格式：
-`{"id": "<段 id>", "entity_relation_dict": [{"Head", "Relation", "Tail"}], "event_entity_dict": [{"Event", "Entity": [...]}], "event_relation_dict": [{"Head", "Relation", "Tail"}]}`。
-`build --extractions <文件>` 也能直接读上游的抽取文件（带 `original_text` 的行，如 NGD-Econ 的 `kg_extraction/*.json`）。
+Each line of `extractions.jsonl` has the same format as AutoSchemaKG output:
+`{"id": "<passage id>", "entity_relation_dict": [{"Head", "Relation", "Tail"}], "event_entity_dict": [{"Event", "Entity": [...]}], "event_relation_dict": [{"Head", "Relation", "Tail"}]}`.
+Items with missing or non-string fields (common in truncated LLM output) are skipped.
+`build --extractions <file>` can also read an upstream extraction file directly (lines carrying `original_text`, such as NGD-Econ's `kg_extraction/*.json`);
+those passages are numbered by line and their source is written as `<file>#line/<n>`.
 
-`edges.csv`（head, relation, tail, kind, passage, grounded）可以交给 `sql` 工具查询。
-输出的 κ 全部是 inferred：一条图摘要（schema），每条实体三元组一条 finding（按头实体度数取前 `--max-units` 条），
-有概念层时再加概念层的关系模式。来源写成 `data/<文件>#<start>-<end>`（与 text 评测同格式）。
-`meta.grounded` 表示头尾实体是否在原段落里逐字出现；不出现的多半是改写或幻觉，采纳前要回原文核对。
+`concept_todo.jsonl` lists the highest-degree entities and events (`--concept-limit`, default 100) plus the most frequent relations, each with context and a ready-made prompt.
+`edges.csv` (head, relation, tail, kind, passage, grounded) can be queried with the `sql` tool.
+All output κ are inferred: one graph summary (schema), one finding per entity triple (ranked by head-entity degree, deduplicated, top `--max-units`, default 200),
+and, when a concept layer exists, the concept-level relation patterns (up to 20). Sources are written as `data/<file>#<start>-<end>` (the same format as the text evaluation).
+`meta.grounded` tells whether both head and tail entities appear verbatim in the original passage; ones that do not are usually paraphrases or hallucinations, so check the original text before adopting them.

@@ -1,103 +1,104 @@
-# Knosis 的范围
+# Scope of Knosis
 
-## 一句话
+## In one sentence
 
-Knosis 是给 Codex、Claude Code 这类 agent 用的、**以知识为中心**的底座：agent 在异构数据上做任务的同时，
-持续提出、验证、修订一个**可验证的知识库**；Knosis 管知识的格式、证据、验证、选取、继承与评测，本身不是 agent。
+Knosis is a **knowledge-centric** foundation for agents such as Codex and Claude Code: while an agent works on tasks over heterogeneous data,
+it continually proposes, verifies and revises a **verifiable knowledge base**. Knosis manages the knowledge's format, evidence, verification, selection, inheritance and evaluation; it is not an agent itself.
 
-## 两类场景
+## Two settings
 
-同一套知识层（格式、证据、内化、选取、继承）服务两类场景：
+The same knowledge layer (format, evidence, consolidation, selection, inheritance) serves two settings:
 
-- **个人 agent**：从个人的 agent 使用轨迹（Codex / Claude Code 会话）累积知识，形成个人知识库，后续会话通过 MCP 复用
-  （`knosis kb collect` → 内化 → `knosis install --kb`）。
-- **企业级任务**：在具体任务上（各类 benchmark、业务数据）累积与任务相关的知识和理解：工作区 explore → extract → refine → decide，
-  知识经 dev 反馈、检查与工具验证后写回知识库，继承到同类新任务。benchmark 既是验证手段，也代表这一侧的任务形态。
+- **Personal agents**: knowledge accumulates from a person's agent sessions (Codex / Claude Code) into a personal knowledge base, which later sessions reuse over MCP
+  (`knosis kb collect` -> consolidation -> `knosis install --kb`).
+- **Enterprise tasks**: knowledge and understanding accumulate on concrete tasks (benchmarks, business data) through a workspace explore -> extract -> refine -> decide;
+  after dev feedback, checks and tool verification, the knowledge is written back to a knowledge base and inherited by new tasks of the same kind. Benchmarks are both a means of verification and representative of this kind of task.
 
-## 四个定位
+## Four principles
 
-1. **场景：异构数据。** 图（NGDBench）、单表（TabArena）、多表 / 关系库（RelBench、BI-Bench、KramaBench）、
-   映射（Burr）、方程 / 模拟器（LLM-SRBench、NewtonBench）、时序（AlphaBench）、文本。
-2. **对象：agent。** 嵌入模式（agent 读 `AGENTS.md` / skill，自己调 Knosis）或驱动模式（Knosis 启动 agent 逐阶段完成）。
-   Knosis 不自己当 agent，也不训练模型；KFM 将来作为可替换的知识计算组件接入。
-3. **亮点：knowledge-centric。** agent 不只是完成任务，而是在任务中不断迭代知识：
-   用结果（dev 反馈、工具、检查）支持或反驳知识，修正条件，撤回失效的部分，并把方法本身沉淀为元知识。
-4. **必须点：可验证，且正确与有用分开。** 每条知识可以被支持、反驳、判为无法判定或不适用；
-   知识正确不等于对当前任务有用，所以按任务选取知识是单独的一步。本体也是知识的一种。
+1. **Setting: heterogeneous data.** Graphs (NGDBench), single tables (TabArena), multiple tables / relational databases (RelBench, BI-Bench, KramaBench),
+   mappings (Burr), equations / simulators (LLM-SRBench, NewtonBench), time series (AlphaBench), spreadsheets (SpreadsheetBench), agent traces (Who&When), text.
+2. **Target: agents.** Embedded mode (the agent reads `AGENTS.md` / the skill and calls Knosis itself) or driver mode (Knosis launches the agent stage by stage).
+   Knosis is not an agent and does not train models.
+3. **Focus: knowledge-centric.** The agent does not just finish tasks; it iterates on knowledge while doing them:
+   it uses results (dev feedback, tools, checks) to support or refute knowledge, narrows conditions, retracts what no longer holds, and distills methods into meta-knowledge.
+4. **Requirement: verifiable, with correctness separate from usefulness.** Every piece of knowledge can be supported, refuted, judged undetermined or not applicable;
+   correct knowledge is not necessarily useful for the task at hand, so selecting knowledge for a task is a separate step. Ontologies are one kind of knowledge.
 
-## 知识与 memory、skill 的区别
+## Knowledge vs. memory and skills
 
-判别标准：**能不能被环境中的证据反驳**。能被反驳的才算知识。
+The criterion: **can it be refuted by evidence from the environment?** Only what can be refuted counts as knowledge.
 
-| | memory | skill | knowledge（Knosis） |
+| | memory | skill | knowledge (Knosis) |
 | --- | --- | --- | --- |
-| 内容 | 发生过什么、看到过什么 | 怎么做一件事 | 关于环境 / 数据的带条件断言 |
-| 能否判真假 | 只是记录 | 看好不好用 | 能，可被支持或反驳 |
-| 价值标准 | 能检索到 | 任务成功 | 正确性与收益分开衡量 |
-| 和读者的关系 | 绑定某个 agent | 和读者能力有关 | 真假不依赖读者，收益依赖读者 |
-| 怎么更新 | 追加 | 改写 | 证据驱动：接受、收窄条件、撤回并向下游传播 |
+| Content | What happened, what was seen | How to do something | Conditional assertions about the environment / data |
+| True or false? | Only a record | Judged by whether it works | Yes; can be supported or refuted |
+| Value criterion | Can be retrieved | Task success | Correctness and benefit measured separately |
+| Relation to reader | Bound to one agent | Depends on the reader's ability | Truth independent of the reader, benefit depends on the reader |
+| How it updates | Append | Rewrite | Evidence-driven: accept, narrow conditions, retract and propagate downstream |
 
-三者有交集：memory 和 agent 的经历是知识的候选来源；「如何发现某类知识」的步骤可以写成 method 元知识，它同样带条件、可被验证。
-区别不在存储形式，而在**有没有证据和状态**。
+The three overlap: memory and agent experience are candidate sources of knowledge; the steps for "how to discover a kind of knowledge" can be written as method meta-knowledge, which is likewise conditional and verifiable.
+The difference is not the storage format but **whether there is evidence and status**.
 
-Knosis 同时管理知识与 skill，但分开存放、分开评价：**知识是对环境的理解，与 agent 无关，必须能被环境证据反驳；
-skill 是如何运用知识解某类任务（使用流程）**。「有没有用」本身也是可以被反驳的断言，写成 usage 元知识：
-**usage 管有没有用，skill 管怎么做**。skill 建在知识之上（引用知识与 usage 单元的 id），由 agent 在 RSI 中根据反馈补充；
-聪明的 agent 也许用不上，但它照样记录在库里。
+Knosis manages both knowledge and skills, stored and evaluated separately: **knowledge is understanding of the environment, independent of the agent, and must be refutable by environmental evidence;
+a skill is how to apply knowledge to a class of tasks (a procedure)**. "Whether it helps" is itself a refutable assertion, written as usage meta-knowledge:
+**usage says whether it helps, a skill says how**. Skills build on knowledge (they cite ids of knowledge and usage units) and are added by the agent during RSI based on feedback;
+a capable agent may not need them, but they are still recorded in the library.
 
-## 知识层由什么组成：kb + evidence
+## What the knowledge layer consists of: kb + evidence
 
-| 块 | 组成 | 文件 | 作用 |
+| Part | Component | File | Role |
 | --- | --- | --- | --- |
-| **kb**（知识主体） | 知识 | `kb/knowledge/units.jsonl` + `kb/knowledge/ontology/` | κ（内容、形式、粒度、条件、来源、状态）；本体是结构化知识的另一种存法（OSI 标准三层），元素展开为 `form=schema` 的 κ |
-| | skill | `kb/skills/<名字>/SKILL.md` | 如何运用知识解某类任务：适用条件、引用的知识、步骤 |
-| | 大纲 | `kb/outline.yaml` | 知识体系：把单跳知识串成「场景 → 数据间关系 → 具体对象」的脉络 |
-| **evidence**（来源与验证） | 证据账本 | `evidence/ledger.jsonl` | 每次验证一条：支持 / 反驳 / 无法判定 / 不适用，方法、来源、所依赖数据的指纹 |
-| | 检查脚本 | `evidence/checks/` | 可执行检查，Knosis 重跑并记证据 |
-| | 反馈记录 | `evidence/feedback/` | dev 题上的结果，作为证据来源 |
-| | 轨迹 | `evidence/traces/` | 收集来的会话等来源材料 |
-| | 内化记录 | `evidence/consolidate.jsonl` | 去重、矛盾处理、构建知识体系做了哪些操作 |
+| **kb** (knowledge body) | knowledge | `kb/knowledge/units.jsonl` + `kb/knowledge/ontology/` | κ (content, form, scope, condition, provenance, status); ontologies are another way to store structured knowledge (OSI three layers), with elements expanded into `form=schema` κ |
+| | skills | `kb/skills/<name>/SKILL.md` | How to apply knowledge to a class of tasks: conditions, cited knowledge, steps |
+| | outline | `kb/outline.yaml` | Knowledge structure: links single-hop knowledge into "scenario -> relations between data -> specific objects" |
+| | graph and flows | `kb/graph.json`, `kb/flows/` | Knowledge graph of objects and relations; flowcharts of task procedures |
+| **evidence** (sources and verification) | ledger | `evidence/ledger.jsonl` | One entry per verification: support / refute / undetermined / not applicable, with method, source and fingerprints of the data it depends on |
+| | check scripts | `evidence/checks/` | Executable checks that Knosis reruns and records as evidence |
+| | feedback records | `evidence/feedback/` | Results on dev tasks, used as evidence sources |
+| | traces | `evidence/traces/` | Collected sessions and other source material |
+| | consolidation log | `evidence/consolidate.jsonl` | Operations performed by dedup, conflict resolution, organize, structure and compact |
 
-kb 里只放结论，evidence 里放过程；κ 的 `provenance` 与 `check` 只是指向 evidence 的指针。
+kb holds only conclusions and evidence holds the process; a κ's `provenance` and `check` are just pointers into evidence.
 
-**发现途径与管理能力**：一条知识从哪些单元派生、被哪些证据支持或反驳、哪些候选被撤回，构成它的证据链
-（`knosis knowledge trace`）；Knosis 负责管理这条链：账本、检查重跑、状态与证据一致性检查、数据变化后证据过期、撤回传播。
+**How knowledge was found, and how it is managed**: the units a piece of knowledge was derived from, the evidence that supports or refutes it, and the candidates that were retracted form its evidence chain
+(`knosis knowledge trace`). Knosis manages this chain: the ledger, rerunning checks, status/evidence consistency checks, evidence expiry when data changes, and retraction propagation.
 
-## 粒度：对象知识与元知识
+## Granularity: object knowledge and meta-knowledge
 
-| 层 | scope | 说的是什么 | 怎么验证 |
+| Level | scope | What it is about | How it is verified |
 | --- | --- | --- | --- |
-| 对象知识 | instance | 某个具体对象（行、节点、边、列） | 对照 GT 逐项比对；直接查数据 |
-| 对象知识 | relation | 对象之间的结构（join、本体关系） | 包含依赖 / 外键检查；对比 GT 关系 |
-| 对象知识 | dataset | 这份数据整体的规律、分布、公式 | 在留出行 / 留出点上重跑检查 |
-| 元知识 | method | 怎么**得到**知识：发现与验证的方法（只写步骤） | 脚本脱离原工作区可运行，换数据后仍产出有效结果 |
-| 元知识 | usage | 怎么**用好**知识：哪些知识或 skill 对哪类任务、什么读者有效 | dev 反馈统计、消融（`ws fork --drop`） |
+| Object knowledge | instance | A specific object (row, node, edge, column) | Compare item by item against GT; query the data directly |
+| Object knowledge | relation | Structure between objects (joins, ontology relations) | Inclusion dependency / foreign key checks; compare against GT relations |
+| Object knowledge | dataset | Patterns, distributions, formulas of the data as a whole | Rerun checks on held-out rows / points |
+| Meta-knowledge | method | How to **obtain** knowledge: methods for discovery and verification (steps only) | The script runs outside its original workspace and still produces valid results on new data |
+| Meta-knowledge | usage | How to **use** knowledge well: which knowledge or skills help which tasks and readers | Dev feedback statistics, ablation (`ws fork --drop`) |
 
-不设「领域规律」一层：跨数据普遍成立的断言需要多份同类数据才能检验；只在一份数据上验证过的规律归 dataset，
-想迁移的写成 method，迁移靠方法在新数据上重跑，而不是让新数据相信旧规律。
+There is no "domain law" level: an assertion that holds across data can only be tested on several datasets of the same kind. A pattern verified on one dataset belongs to `dataset`;
+what should transfer is written as `method`, and transfer happens by rerunning the method on new data, not by having new data trust an old pattern.
 
-## 内化：不重复、不矛盾、成体系
+## Consolidation: no duplicates, no contradictions, organized
 
-知识库会越收越多：同一件事被不同会话重复记下、新证据推翻旧结论、环境变了旧知识过期。内化是一组作用在 kb 上的算子，
-agent 判断内容，Knosis 检查不变式并在 evidence 里留痕：verify（重跑检查）、dedup（去重，`merged_into` 别名）、
-conflict（收窄条件 / 证据裁决 / `superseded_by` 版本替换 / `conflicts_with` + contested）、
-organize（构建知识体系，归纳出的上位规律是新断言，须写明出处并再验证）。命令 `knosis knowledge consolidate`。
+A knowledge base keeps growing: the same fact gets recorded by different sessions, new evidence overturns old conclusions, and knowledge goes stale when the environment changes. Consolidation is a set of operators on kb;
+the agent judges content, Knosis checks invariants and logs to evidence: verify (rerun checks), dedup (`merged_into` aliases),
+conflict (narrow conditions / decide by evidence / `superseded_by` version replacement / `conflicts_with` + contested),
+organize (build the outline; induced higher-level patterns are new assertions that must state their sources and be verified again), structure (knowledge graph and flowcharts), and compact (merge units that can be stated together). The command is `knosis knowledge consolidate`.
 
-## 跨任务迭代：独立知识库
+## Across tasks: standalone knowledge bases
 
-知识库独立于工作区，是一个 git 仓库。工作区开始时继承（可以只继承元知识），结束后写回；写回前检查结构与证据一致性。
-这使「跨任务积累」「换 agent 继承」「环境变化后识别失效」成为可以做的实验。
+A knowledge base is independent of workspaces and is a git repository. A workspace inherits from it at the start (optionally only meta-knowledge) and writes back at the end; structure and evidence consistency are checked before write-back.
+This makes "accumulation across tasks", "inheritance by a different agent" and "detecting stale knowledge after the environment changes" possible to test.
 
-## 三个评测量
+## Three evaluation measures
 
-| 量 | 测什么 | 怎么测 |
+| Measure | What it tests | How |
 | --- | --- | --- |
-| 正确性 | 知识本身对不对 | 在知识真值已知的环境里核对：NGD 噪声断言对比真实噪声；方程在留出点上重算；规律检查在留出行上重跑；本体对比 GT 关系 |
-| 适用 / 选取 | 选的知识用在这里是否合适 | `used_units`、单条知识消融（`ws fork --drop`） |
-| 收益 | 对任务有没有帮助 | none / K_inherit / K_0 / K_final 对照；换读者对照 |
+| Correctness | Whether the knowledge itself is right | Check in environments where the true knowledge is known: NGD noise assertions against the real noise; equations recomputed on held-out points; pattern checks rerun on held-out rows; ontologies against GT relations |
+| Applicability / selection | Whether the selected knowledge fits here | `used_units`, single-unit ablation (`ws fork --drop`) |
+| Benefit | Whether it helps the task | Controls with none / K_inherit / K_0 / K_final; controls with a different reader |
 
-另报成本：agent 运行时长（`.knosis/runs.jsonl`）。
+Cost is also reported: agent run time (`.knosis/runs.jsonl`).
 
-## 不做
+## Out of scope
 
-训练 KFM；自研 agent；硬性的 GT 隔离（目前是软隔离，正式评测应把原始数据放在 agent 环境之外）；覆盖所有数据集的 LLM 评审。
+Training models; building an agent; hard GT isolation (isolation is soft: for formal evaluation, keep the raw data outside the agent's environment); LLM judging across all datasets.

@@ -13,6 +13,7 @@ import pandas as pd
 from scipy import stats
 from scipy.optimize import curve_fit
 
+from knosis import lang
 from knosis.tools import write_result
 
 FUNCTIONS = {name: getattr(np, name) for name in
@@ -118,11 +119,11 @@ def main(argv=None):
         units.append({
             "id": f"fit/{args.target}", "form": "formula", "status": "inferred",
             "content": f"{args.target} = {result['fitted']}",
-            "condition": "，".join(f"{c} ∈ [{lo:.4g}, {hi:.4g}]" for c, (lo, hi) in result["ranges"].items()),
+            "condition": lang.t(", ", "，").join(f"{c} ∈ [{lo:.4g}, {hi:.4g}]" for c, (lo, hi) in result["ranges"].items()),
             "provenance": source, "meta": {**meta, "residual_correlations": result["residual_correlations"][:5]},
         })
     if args.unit:
-        note = summary(result).replace("\n", "；")
+        note = summary(result).replace("\n", lang.t("; ", "；"))
         line = {"unit": args.unit, "verdict": verdict(result, args.accept, args.reject), "method": "tool", "source": source, "note": note}
         (out / "evidence.jsonl").write_text(json.dumps(line, ensure_ascii=False) + "\n", encoding="utf-8")
     write_result(out, "fit", {k: v for k, v in vars(args).items()}, units, started)

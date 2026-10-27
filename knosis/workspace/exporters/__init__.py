@@ -23,7 +23,6 @@ from pathlib import Path
 from string import Template
 from typing import Callable
 
-BRIEFS = Path(__file__).resolve().parents[1] / "templates" / "briefs"
 EXPORTERS: dict[str, Callable] = {}
 
 
@@ -47,7 +46,9 @@ def place(src, dst) -> None:
 
 
 def render(template, **values):
-    return Template((BRIEFS / template).read_text(encoding="utf-8")).substitute(values)
+    from .. import templates  # imported here: knosis.workspace imports this module first
+
+    return Template((templates() / "briefs" / template).read_text(encoding="utf-8")).substitute(values)
 
 
 def split(items, dev, limit=None, seed=0):

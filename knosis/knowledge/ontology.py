@@ -20,6 +20,8 @@ from pathlib import Path
 
 import yaml
 
+from ..lang import t
+
 VERSION = "0.2.0.dev0"
 EOB_VERSION = "0.2"
 LAYERS = ("semantic_model", "ontology", "mapping")
@@ -161,22 +163,24 @@ def ontology_units(docs: dict[str, dict], prefix: str = "kb/knowledge/ontology")
         path = f"{model['name']}.semantic_model.yaml"
         for ds in model.get("datasets", []):
             cols = ", ".join(f"{f['name']}:{f.get('datatype', '?')}" for f in ds.get("fields", []))
-            key = f"；主键 {ds['primary_key']}" if ds.get("primary_key") else ""
+            key = t(f"; primary key {ds['primary_key']}", f"；主键 {ds['primary_key']}") if ds.get("primary_key") else ""
             hint = (ds.get("ai_context") or {}).get("instructions", "")
-            add(f"dataset/{ds['name']}", f"表 {ds['name']}（{source_text(ds)}）列 {cols}{key}" + (f"。{hint}" if hint else ""),
+            add(f"dataset/{ds['name']}", t(f"table {ds['name']} ({source_text(ds)}) columns {cols}{key}" + (f". {hint}" if hint else ""),
+                                           f"表 {ds['name']}（{source_text(ds)}）列 {cols}{key}" + (f"。{hint}" if hint else "")),
                 path, f"dataset/{ds['name']}", ds, model, ds["name"])
         for r in model.get("relationships", []):
             content = f"{r['from']}({', '.join(r['from_columns'])}) → {r['to']}({', '.join(r['to_columns'])})"
-            add(f"join/{r['name']}", f"join：{content}", path, f"relationship/{r['name']}", r, model, r["name"])
+            add(f"join/{r['name']}", t(f"join: {content}", f"join：{content}"), path, f"relationship/{r['name']}", r, model, r["name"])
         for m in model.get("metrics", []):
             expr = m["expression"]["dialects"][0]["expression"]
-            add(f"metric/{m['name']}", f"度量 {m['name']} = {expr}", path, f"metric/{m['name']}", m, model, m["name"])
+            add(f"metric/{m['name']}", t(f"metric {m['name']} = {expr}", f"度量 {m['name']} = {expr}"), path, f"metric/{m['name']}", m, model, m["name"])
     onto = docs.get("ontology")
     if onto:
         path = f"{onto['name']}.ontology.yaml"
         for c in onto.get("ontology", []):
             extends = f" extends {c['extends']}" if c.get("extends") else ""
-            add(f"concept/{c['concept']}", f"{c['type']} {c['concept']}{extends}：{c.get('description', '')}".rstrip("："),
+            add(f"concept/{c['concept']}", t(f"{c['type']} {c['concept']}{extends}: {c.get('description', '')}".rstrip(": "),
+                                             f"{c['type']} {c['concept']}{extends}：{c.get('description', '')}".rstrip("：")),
                 path, f"concept/{c['concept']}", c, onto, c["concept"])
             for r in c.get("relationships", []):
                 add(f"relation/{c['concept']}.{r['name']}", "; ".join(r.get("verbalizes", [])) or r["name"],
@@ -187,7 +191,7 @@ def ontology_units(docs: dict[str, dict], prefix: str = "kb/knowledge/ontology")
 def source_text(ds: dict) -> str:
     """Short source description of a dataset: SQL views get only a marker, not the full SQL (often a reproduction of GT transformations) in κ."""
     source = ds.get("source", "")
-    return "（SQL 视图）" if SQL.match(source) else source
+    return t("(SQL view)", "（SQL 视图）") if SQL.match(source) else source
 
 
 # ---------------------------------------------------------------- strip benchmark GT
@@ -301,14 +305,18 @@ def _strip_notes(root: dict) -> int:
     """Replace root EOB note / source.note with a placeholder when it mentions the oracle or is marked annotator-only."""
     n = 0
     if isinstance(root.get("note"), str) and (_text_hit(root["note"]) or _annotator(root["note"])):
-        root["note"] = "（提到被剔除的 GT 内容，见 provenance.stripped）"
+        root["note"] = stripped_note()
         n += 1
     source = root.get("source")
     if isinstance(source, dict) and isinstance(source.get("note"), str) and (
             _text_hit(source["note"]) or _annotator(source["note"])):
-        source["note"] = "（提到被剔除的 GT 内容，见 provenance.stripped）"
+        source["note"] = stripped_note()
         n += 1
     return n
+
+
+def stripped_note() -> str:
+    return t("(mentioned stripped GT content, see provenance.stripped)", "（提到被剔除的 GT 内容，见 provenance.stripped）")
 
 
 def _annotator(note: str) -> bool:

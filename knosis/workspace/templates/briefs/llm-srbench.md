@@ -1,30 +1,30 @@
 # LLM-SRBench — $split
 
-## 数据是什么
+## What the data is
 
-$n_tasks 道科学方程发现题。每题有一个输出变量和若干输入变量，以及各变量的含义说明；
-训练数据在 `data/<题名>/train.parquet`，列名就是变量名。题目清单（变量、说明、数据路径）在
-`tasks/dev.jsonl`（开发题）与 decide 阶段生成的 `tasks/tasks.jsonl`（测试题）里，两者的数据都已在 `data/` 中。
-数据可能含噪声；如何判断与处理，由你决定。
+$n_tasks scientific equation discovery questions. Each question has one output variable and several input variables, with a description of what each variable means;
+training data is in `data/<question name>/train.parquet`, with the variable names as column names. The question lists (variables, descriptions, data paths) are in
+`tasks/dev.jsonl` (dev questions) and `tasks/tasks.jsonl` generated in the decide stage (test questions); the data for both is already in `data/`.
+The data may contain noise; how to detect and handle it is up to you.
 
-示例 `$example_id`：输出 `$example_output`，输入 $example_inputs。
+Example `$example_id`: output `$example_output`, inputs $example_inputs.
 
 $example_desc
 
-## 下游任务是什么
+## What the downstream task is
 
-为每道题给出输出变量关于输入变量的表达式。评测在留出的测试点（LSR-Synth 另有分布外的点）上进行，
-看数值误差（NMSE）与最大相对误差是否不超过 10%（Acc₀.₁）。
+For each question, give an expression for the output variable in terms of the input variables. Evaluation is done on held-out test points (LSR-Synth also has out-of-distribution points),
+looking at the numeric error (NMSE) and whether the maximum relative error stays within 10% (Acc₀.₁).
 
-交付 JSONL 每行 `{"id": 题目 id, "answer": 表达式字符串}`。表达式是一行 Python/numpy 代码：
-只能用输入变量名、数字常数和 `np.` 下的函数（如 `np.exp(-0.5*t) * P + 2.1*np.sqrt(P)`），
-不要写成 `P(t)` 这种函数调用形式；常数需要你自己估计成具体数值。
+Deliver JSONL, one line `{"id": question id, "answer": expression string}` each. The expression is one line of Python/numpy code:
+it may only use input variable names, numeric constants and functions under `np.` (e.g. `np.exp(-0.5*t) * P + 2.1*np.sqrt(P)`);
+do not write function-call forms like `P(t)`; you must estimate constants as concrete numbers yourself.
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-关于各领域方程形式、变量关系、常数取值与成立条件的知识，能帮助你在同类题上更快、更准地写出方程。
-不要把具体测试题的答案提前缓存为知识。
+Knowledge about equation forms in each domain, relationships between variables, constant values and conditions of validity helps you write equations faster and more accurately on questions of the same kind.
+Do not cache answers to specific test questions as knowledge in advance.
 
-某道题上发现的方程写成 `form=formula` 的 κ，`meta` 里给出 `{"task": 题目 id, "expression": 与交付相同写法的表达式}`，
-`condition` 写观测到的变量范围。被否定的候选方程也保留（标 retracted 并记反驳证据），这样发现过程可追溯。
-带 `meta.expression` 的方程会在留出点上重新计算，用来评估知识本身是否成立（与交付的答案分开统计）。
+An equation discovered on a question is written as a κ with `form=formula`, with `{"task": question id, "expression": expression written the same way as in the delivery}` in `meta`,
+and `condition` stating the observed variable ranges. Keep rejected candidate equations too (mark them retracted and record the refuting evidence), so the discovery process is traceable.
+Equations with `meta.expression` are recomputed on the held-out points to assess whether the knowledge itself holds (scored separately from the delivered answers).

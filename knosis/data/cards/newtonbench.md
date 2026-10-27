@@ -1,94 +1,94 @@
-# NewtonBench —— 从数据发现物理定律（方程类知识）
+# NewtonBench — discovering physical laws from data (equation-type knowledge)
 
-## 来源
+## Source
 
-HKUST + NVIDIA。**NewtonBench: Benchmarking Generalizable Scientific Law Discovery in
-LLM Agents**，arXiv **2510.07172**（v1 2025-10-08，v3 2026-02-24），ICLR 2026。
-作者：Tianshi Zheng, Kelvin Kiu-Wai Tam, Newt Hue-Nam K. Nguyen … Yangqiu Song, Ginny Y. Wong。
-仓库 https://github.com/HKUST-KnowComp/NewtonBench
+HKUST + NVIDIA. **NewtonBench: Benchmarking Generalizable Scientific Law Discovery in
+LLM Agents**, arXiv **2510.07172** (v1 2025-10-08, v3 2026-02-24), ICLR 2026.
+Authors: Tianshi Zheng, Kelvin Kiu-Wai Tam, Newt Hue-Nam K. Nguyen … Yangqiu Song, Ginny Y. Wong.
+Repository https://github.com/HKUST-KnowComp/NewtonBench
 
-**没有 HuggingFace 数据集，没有 PyPI 包，没有任何可下载的数据产物。**
-只有源码：`knosis download newtonbench` 会 `git clone`。
-仿真环境用 numpy，**跑起来不需要 API key**（但上游默认的评测用 LLM 当裁判，那一环要 key）。
+**No HuggingFace dataset, no PyPI package, no downloadable data artifact of any kind.**
+Only source code: `knosis download newtonbench` does a `git clone`.
+The simulation environment uses numpy and **needs no API key to run** (but upstream's default evaluation uses an LLM as judge, and that step needs a key).
 
-**许可：** 代码 **MIT**（仓库根有 LICENSE）；**论文 CC BY-NC-SA 4.0**（非商用）。
-两者不一致，代码复用按 MIT，引用论文注意 NC 条款。
+**License:** code **MIT** (LICENSE at the repository root); **paper CC BY-NC-SA 4.0** (non-commercial).
+The two differ: reuse code under MIT, and mind the NC terms when citing the paper.
 
-**⚠️ 这个基准没有「数据集」可加载。** 任务在运行时由 harness 生成：
-agent 通过 `<run_experiment>` 工具主动探测模拟器（给一组输入参数，拿回输出），
-真值方程在 `modules/m*/laws.py` 里以 Python 函数形式存在。
-所以本 adapter 读的是**源码**，产出的是「变量 + 取值分布」的物理 schema 与方程任务。
+**⚠️ This benchmark has no "dataset" to load.** Tasks are generated at runtime by the harness:
+the agent actively probes the simulator via the `<run_experiment>` tool (give a set of input parameters, get the output back),
+and the ground-truth equations exist as Python functions in `modules/m*/laws.py`.
+So this adapter reads **source code** and produces a physical schema of "variables + value distributions" and equation tasks.
 
-规模：12 个物理域 × 3 个难度 × 3 个版本 = **108 条反事实定律**，
-再乘 3 个 system complexity = **324 个任务**。
+Scale: 12 physical domains × 3 difficulties × 3 versions = **108 counterfactual laws**,
+times 3 system complexities = **324 tasks**.
 
-获取：`knosis download newtonbench`
+Get it: `knosis download newtonbench`
 
-## 说明
+## Description
 
-NewtonBench 考的是：**让 agent 主动做实验、从观测数据里反推出背后的物理定律。**
+What NewtonBench tests: **having the agent actively run experiments and infer the underlying physical law from observed data.**
 
-它和常见的符号回归基准（Feynman / SRBench 那类）有个根本区别：
-**它不给你输入数据点。** agent 必须自己设计实验 —— 选一组输入参数、
-调用模拟器、拿到输出、再决定下一组问什么。这是「主动实验设计」而不是「给定数据拟合」。
+It differs fundamentally from common symbolic regression benchmarks (the Feynman / SRBench kind):
+**it does not give you input data points.** The agent must design the experiments itself: choose a set of input parameters,
+call the simulator, get the output, then decide what to ask next. This is "active experimental design", not "fitting given data".
 
-**12 个物理域**（目录名 → 物理内容）：
-`m0_gravity` 万有引力、`m1_coulomb_force` 库仑力、`m2_magnetic_force` 安培力、
-`m3_fourier_law` 傅里叶热传导、`m4_snell_law` 斯涅尔折射、`m5_radioactive_decay` 放射性衰变、
-`m6_underdamped_harmonic` 欠阻尼谐振、`m7_malus_law` 马吕斯定律、`m8_sound_speed` 声速、
-`m9_hooke_law` 胡克定律、`m10_be_distribution` 玻色-爱因斯坦分布、`m11_heat_transfer` 传热。
+**12 physical domains** (directory name → physics content):
+`m0_gravity` universal gravitation, `m1_coulomb_force` Coulomb force, `m2_magnetic_force` Ampère force,
+`m3_fourier_law` Fourier heat conduction, `m4_snell_law` Snell refraction, `m5_radioactive_decay` radioactive decay,
+`m6_underdamped_harmonic` underdamped harmonic oscillation, `m7_malus_law` Malus's law, `m8_sound_speed` speed of sound,
+`m9_hooke_law` Hooke's law, `m10_be_distribution` Bose-Einstein distribution, `m11_heat_transfer` heat transfer.
 
-**两个正交的维度，容易只数一个：**
-- **难度** `easy` / `medium` / `hard` —— 由**对表达式的变异次数**决定（从范式定律出发累计变异）。
-- **版本** `v0` / `v1` / `v2` —— 同一个难度下的不同变异。`evaluation_results/` 里
-  `{难度}/{版本}` 是两层嵌套目录。**"12 域 × 3 难度 = 36" 这种读法少算了 3 倍。**
+**Two orthogonal dimensions; it is easy to count only one:**
+- **Difficulty** `easy` / `medium` / `hard`: determined by **the number of mutations applied to the expression** (mutations accumulated starting from the canonical law).
+- **Version** `v0` / `v1` / `v2`: different mutations at the same difficulty. In `evaluation_results/`,
+  `{difficulty}/{version}` are two nested directory levels. **Reading it as "12 domains × 3 difficulties = 36" undercounts by a factor of 3.**
 
-变异是**累积**的：easy = 从范式做 1–2 次变异；medium = easy 再加 1–2 次；hard 继续加。
-变异操作是表达式树上的操作（交换运算符，比如 `+` → `×`；改常数/指数，比如平方 → 立方）。
-策展规则有四条：不引入新变量、复杂度不降低、变异不能是上一步的逆、连续两次变异不能等价于单次变异。
+Mutations are **cumulative**: easy = 1–2 mutations from the canonical law; medium = easy plus 1–2 more; hard adds further.
+Mutation operations act on the expression tree (swapping operators, e.g. `+` → `×`; changing constants / exponents, e.g. square → cube).
+There are four curation rules: no new variables are introduced, complexity does not decrease, a mutation cannot be the inverse of the previous one, and two consecutive mutations cannot be equivalent to a single mutation.
 
-**⚠️ 每条目标定律里都嵌了至少一个「被重新缩放的物理常数」**，用来补回变异破坏掉的量纲一致性。
-源码里以 `HIDDEN_CONSTANT` 出现，比如 `m0_gravity` 是 `6.674e-5`。
-**这不是真实的重力常数，别去"改正"它。** 提示里以 `HIDDEN_CONSTANT_C` 暴露，
-且禁止把它当函数参数（要求定义成函数体内部的局部变量）。
+**⚠️ Every target law embeds at least one "rescaled physical constant"**, to restore the dimensional consistency broken by mutation.
+It appears in the source as `HIDDEN_CONSTANT`, e.g. `6.674e-5` for `m0_gravity`.
+**This is not the real gravitational constant; do not "correct" it.** It is exposed in the prompt as `HIDDEN_CONSTANT_C`,
+and it must not be used as a function parameter (it is required to be defined as a local variable inside the function body).
 
-**⚠️ system complexity 三档**：`vanilla_equation`（纯方程）/ `simple_system` / `complex_system`。
-后两档会加「辅助方程」—— 辅助方程会告诉 agent，目标定律不会。
-Simple 平均 1.75 条辅助方程 / 5.17 个操作，Complex 平均 2.42 / 8.17 个。
+**⚠️ Three system complexity levels**: `vanilla_equation` (pure equation) / `simple_system` / `complex_system`.
+The latter two add "auxiliary equations": the auxiliary equations are told to the agent, the target law is not.
+Simple averages 1.75 auxiliary equations / 5.17 operations; Complex averages 2.42 / 8.17.
 
-**变量与取值域**：变量名与含义是**散文描述**（`PARAM_DESCRIPTION` 字符串），
-取值域是**对数均匀采样**的约定，比如 `m0_gravity` 的两个质量是 `U_log(10^0, 10^3)`、
-距离是 `U_log(1, 10^1)`。源码里就是 `np.exp(np.random.uniform(np.log(1), np.log(1e3)))`。
+**Variables and value domains**: variable names and meanings are **prose descriptions** (`PARAM_DESCRIPTION` strings),
+and value domains follow a **log-uniform sampling** convention, e.g. the two masses of `m0_gravity` are `U_log(10^0, 10^3)`,
+and the distance is `U_log(1, 10^1)`. In the source it is literally `np.exp(np.random.uniform(np.log(1), np.log(1e3)))`.
 
-**⚠️ 没有 units / 量纲的元数据。** 整个仓库里没有结构化的单位或量纲表 ——
-单位只在**容差常数的注释**里出现过（`1e-9  # meters` 这种）。
-所以 plan 里设想的「物理 schema + 量纲」在本基准上**需要我们自己补**，
-Knosis 这里只如实给出「变量名 + 含义 + 采样分布」，并标明量纲缺失。
+**⚠️ No units / dimension metadata.** There is no structured table of units or dimensions anywhere in the repository;
+units appear only in **comments on tolerance constants** (like `1e-9  # meters`).
+So the "physical schema + dimensions" envisioned in the plan **has to be supplied by us** for this benchmark;
+Knosis here faithfully gives only "variable name + meaning + sampling distribution", and marks dimensions as missing.
 
-评分（两路，别混）：
-- **Symbolic Accuracy（SA）** —— 二分，用 **LLM 当裁判**判断符号等价，
-  **刻意忽略物理常数**。裁判默认 `nemotron-ultra`（论文报与人类 98.3% 一致）。
-  裁判容忍变量改名与常数改写法，但**不容忍改指数**（"指数 4 和 4.03 算不同"）。
-  **离线环境跑不了 —— 这一环需要 API。**
-- **RMSLE** —— 数据保真度，在 **5000 个留出样本**上算，带 Modified Z-Score 去极值。
-  上游**明确拒绝了 NMSE**，改用 RMSLE。
+Scoring (two tracks, do not mix them up):
+- **Symbolic Accuracy (SA)**: binary, using **an LLM as judge** of symbolic equivalence,
+  **deliberately ignoring physical constants**. The judge defaults to `nemotron-ultra` (the paper reports 98.3% agreement with humans).
+  The judge tolerates variable renaming and rewritten constants, but **not changed exponents** ("exponents 4 and 4.03 count as different").
+  **It cannot run offline; this step needs an API.**
+- **RMSLE**: data fidelity, computed on **5000 held-out samples**, with Modified Z-Score outlier removal.
+  Upstream **explicitly rejected NMSE** in favor of RMSLE.
 
-适合：主动实验设计、符号回归、反事实推理、量纲分析。
-不适合：当作普通的 x/y 表格数据集读 —— **磁盘上没有这样的表**。
+Good for: active experimental design, symbolic regression, counterfactual reasoning, dimensional analysis.
+Not good for: reading it as an ordinary x/y tabular dataset; **there is no such table on disk**.
 
-陷阱：
-- **真值在代码里**：`modules/m*/laws.py` 的 `LAW_REGISTRY`，是 `{'easy': {'v0','v1','v2'}, ...}` 结构。
-  **没有导出格式**（没有 JSON manifest），想做成数据产物得自己导。
-- **真值函数签名和给 LLM 看的签名不一样**：内部是
-  `_ground_truth_law_easy_v0(mass1, mass2, distance)`，提交的必须是
-  `def discovered_law(...)`，靠 `parameter_mapping` 桥接。
-- **有物理上不合理的定律**（上游论文明确承认）：变异保证量纲自洽，但有些形式在我们的宇宙里
-  不成立。比如 `m8`、`m10` 的部分 hard 变体 ——
-  **某些输入会产生 NaN / inf**，代码里有 guard clause 和 `float('nan')` 分支，
-  指标代码会显式过滤掉。别把这些当成加载失败。
-- **随机性**：`core.py` 用裸的 `np.random.uniform`，没有可见的全局种子；
-  论文的数字是**四次运行**的均值与标准差。默认不保证可复现。
-- 上游报告：噪声即使只有 0.0001 也会让 SA 掉 12–16%；
-  **给强模型加代码辅助反而降低表现**（探索→利用的偏移），弱模型则有提升。
+Pitfalls:
+- **The ground truth is in the code**: `LAW_REGISTRY` in `modules/m*/laws.py`, with the structure `{'easy': {'v0','v1','v2'}, ...}`.
+  **There is no export format** (no JSON manifest); to turn it into a data artifact you have to export it yourself.
+- **The ground-truth function signature differs from the one shown to the LLM**: internally it is
+  `_ground_truth_law_easy_v0(mass1, mass2, distance)`, while submissions must be
+  `def discovered_law(...)`, bridged by `parameter_mapping`.
+- **Some laws are physically implausible** (explicitly acknowledged in the upstream paper): mutations guarantee dimensional self-consistency, but some forms
+  do not hold in our universe. For example, some hard variants of `m8` and `m10`:
+  **certain inputs produce NaN / inf**; the code has guard clauses and `float('nan')` branches,
+  and the metrics code filters them out explicitly. Do not treat these as load failures.
+- **Randomness**: `core.py` uses bare `np.random.uniform` with no visible global seed;
+  the paper's numbers are the mean and standard deviation of **four runs**. Reproducibility is not guaranteed by default.
+- Upstream reports: noise of even 0.0001 lowers SA by 12–16%;
+  **giving strong models code assistance actually lowers performance** (a shift from exploration to exploitation), while weak models improve.
 
-术语：这里 "law" 指一条可写成等式的物理定律；"counterfactual" 指对范式定律做过变异的版本。
+Terminology: "law" here means a physical law that can be written as an equation; "counterfactual" means a version of a canonical law that has been mutated.

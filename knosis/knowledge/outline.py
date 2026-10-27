@@ -26,17 +26,22 @@ from pathlib import Path
 
 import yaml
 
+from ..lang import t
 from .layout import layout
 from .units import INACTIVE, SCOPES, load_units, scope_of
 
 FILE = "outline.yaml"
-LAYERS = {
-    "usage": ("scene", "场景：哪些知识对哪类任务有用"),
-    "method": ("method", "方法：如何发现与验证知识"),
-    "relation": ("relation", "数据间关系"),
-    "dataset": ("dataset", "数据整体规律"),
-    "instance": ("instance", "具体对象"),
-}
+
+
+def layers() -> dict[str, tuple[str, str]]:
+    """scope -> (section id, section title) of the draft outline."""
+    return {
+        "usage": ("scene", t("Scenarios: which knowledge helps which kind of task", "场景：哪些知识对哪类任务有用")),
+        "method": ("method", t("Methods: how knowledge is found and verified", "方法：如何发现与验证知识")),
+        "relation": ("relation", t("Relations between data", "数据间关系")),
+        "dataset": ("dataset", t("Dataset-level patterns", "数据整体规律")),
+        "instance": ("instance", t("Specific objects", "具体对象")),
+    }
 
 
 def load_outline(base) -> dict | None:
@@ -91,24 +96,24 @@ def draft(base, title=None) -> dict:
             archived.append(uid)
             continue
         if uid.startswith("ontology/"):
-            groups["relation"].setdefault("本体", []).append(uid)
+            groups["relation"].setdefault(t("Ontology", "本体"), []).append(uid)
             continue
         scope = item.get("scope") or scope_of(item)
         key = "" if scope in ("usage", "method") else anchor_file(item)
         groups[scope].setdefault(key, []).append(uid)
     sections = []
-    for scope, (sid, name) in LAYERS.items():
+    for scope, (sid, name) in layers().items():
         by_file = groups[scope]
         if not by_file:
             continue
         section = {"id": sid, "title": name, "summary": "", "units": by_file.pop("", [])}
-        children = [{"id": f"{sid}/{i + 1}", "title": key or "未锚定到数据文件", "summary": "", "units": ids}
+        children = [{"id": f"{sid}/{i + 1}", "title": key or t("Not anchored to a data file", "未锚定到数据文件"), "summary": "", "units": ids}
                     for i, (key, ids) in enumerate(sorted(by_file.items()))]
         if children:
             section["sections"] = children
         sections.append(section)
     if archived:
-        sections.append({"id": "archive", "title": "已撤回或失效", "archive": True, "units": sorted(archived)})
+        sections.append({"id": "archive", "title": t("Retracted or inactive", "已撤回或失效"), "archive": True, "units": sorted(archived)})
     return {"title": title or Path(base).resolve().name, "summary": "", "sections": sections}
 
 
@@ -154,19 +159,20 @@ def render(outline, items: dict, evidence=None) -> str:
         if section.get("summary"):
             lines += [section["summary"], ""]
         for uid in section.get("units") or []:
-            item = items.get(uid, {"content": "（未知单元）", "status": "?"})
+            item = items.get(uid, {"content": t("(unknown unit)", "（未知单元）"), "status": "?"})
             counts = {}
             for entry in evidence.get(uid, []):
                 counts[entry["verdict"]] = counts.get(entry["verdict"], 0) + 1
             text = item.get("content", "")
             text = text if len(text) <= 120 else text[:120] + " …"
-            ev = "，".join(f"{k} {v}" for k, v in counts.items())
-            lines.append(f"- `{uid}` [{item.get('scope') or scope_of(item)}/{item.get('status')}] {text}" + (f"（{ev}）" if ev else ""))
+            ev = t(", ", "，").join(f"{k} {v}" for k, v in counts.items())
+            lines.append(f"- `{uid}` [{item.get('scope') or scope_of(item)}/{item.get('status')}] {text}"
+                         + (t(f" ({ev})", f"（{ev}）") if ev else ""))
         notes = section.get("notes")
         if notes:
             lines += ["", *[f"> {note}" for note in (notes if isinstance(notes, list) else str(notes).splitlines())]]
         lines.append("")
     left = unplaced(outline, items)
     if left:
-        lines += [f"## 未归类（{len(left)}）", "", *[f"- `{uid}` {items[uid].get('content', '')[:80]}" for uid in left], ""]
+        lines += [t(f"## Unclassified ({len(left)})", f"## 未归类（{len(left)}）"), "", *[f"- `{uid}` {items[uid].get('content', '')[:80]}" for uid in left], ""]
     return "\n".join(lines)

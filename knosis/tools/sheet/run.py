@@ -12,6 +12,7 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 
 from knosis.decision.spreadsheetbench import cells, recalc, regions
+from knosis import lang
 from knosis.tools import write_result
 
 
@@ -70,7 +71,8 @@ def main(argv=None):
         result = inspect(args.file, args.range)
         for s in result["sheets"]:
             units.append({"id": f"sheet/{Path(args.file).stem}/{s['sheet']}", "form": "schema", "status": "observed",
-                          "content": f"{s['sheet']}：已用范围 {s['dimensions']}，合并单元格 {len(s['merged'])} 处，公式 {s['formulas']} 个",
+                          "content": lang.t(f"{s['sheet']}: used range {s['dimensions']}, {len(s['merged'])} merged cells, {s['formulas']} formulas",
+                                            f"{s['sheet']}：已用范围 {s['dimensions']}，合并单元格 {len(s['merged'])} 处，公式 {s['formulas']} 个"),
                           "provenance": f"tool:sheet@0.1(inspect,file={args.file})", "meta": s})
     else:
         with tempfile.TemporaryDirectory() as tmp:

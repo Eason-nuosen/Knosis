@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from string import Template
 
+from ..lang import t
 from .layout import ACTIONS, data_root, layout
 from .units import INACTIVE, load_units, resolve
 
@@ -56,16 +57,29 @@ def multi_note(base, step) -> str:
     names = st.namespaces(base)
     if len(names) < 2:
         return ""
-    listing = "、".join(f"`{k}/`（{v.get('benchmark')}）" for k, v in names.items())
+    listing = t(", ".join(f"`{k}/` ({v.get('benchmark')})" for k, v in names.items()),
+                "、".join(f"`{k}/`（{v.get('benchmark')}）" for k, v in names.items()))
     if step == "organize":
-        return (f"\n## 跨数据集\n\n这个知识库由 {len(names)} 个数据集的知识合成，id 前缀是数据集：{listing}。除了各数据集自己的脉络，"
-                "在顶层加一节「跨数据集的共通知识」：找出在多个数据集中都成立的方法、常见的坑与验证原则（例如判断粒度、防止泄漏、"
-                "验证覆盖的边界），能归纳的写成归纳单元（`derived_from` 来自至少两个数据集），这一节至少引用三个数据集的单元。\n")
-    return (f"\n## 跨数据集\n\n这个知识库由 {len(names)} 个数据集的知识合成，id 前缀是数据集：{listing}。知识图谱除了各数据集的对象，"
-            f"还要建**跨数据集的共享实体**（type 用 concept / method / tool 等）：多个数据集里都出现的对象类型、做法、坑或验证原则，"
-            f"实体的 `units` 同时引用这些数据集里说了这件事的单元，并用关系（如 applies_to、instance_of、generalizes）连到各数据集的实体。"
-            f"至少 {min_bridges(len(names))} 个这样的实体；跨数据集的归纳单元（{', '.join(st.cross_induced(base)) or '目前没有'}）"
-            "都要被图谱或流程图引用。\n")
+        return t(f"\n## Across datasets\n\nThis knowledge base combines knowledge from {len(names)} datasets; the id prefix is the dataset: {listing}. "
+                 "Besides each dataset's own hierarchy, add a top-level section \"Knowledge shared across datasets\": find methods, common pitfalls and "
+                 "verification principles that hold in several datasets (e.g. judging granularity, preventing leakage, the limits of verification coverage), "
+                 "write those that can be induced as induced units (`derived_from` from at least two datasets); this section cites units from at least "
+                 "three datasets.\n",
+                 f"\n## 跨数据集\n\n这个知识库由 {len(names)} 个数据集的知识合成，id 前缀是数据集：{listing}。除了各数据集自己的脉络，"
+                 "在顶层加一节「跨数据集的共通知识」：找出在多个数据集中都成立的方法、常见的坑与验证原则（例如判断粒度、防止泄漏、"
+                 "验证覆盖的边界），能归纳的写成归纳单元（`derived_from` 来自至少两个数据集），这一节至少引用三个数据集的单元。\n")
+    induced = ', '.join(st.cross_induced(base))
+    return t(f"\n## Across datasets\n\nThis knowledge base combines knowledge from {len(names)} datasets; the id prefix is the dataset: {listing}. "
+             f"Besides each dataset's objects, the knowledge graph must also contain **entities shared across datasets** (type concept / method / tool etc.): "
+             f"object types, practices, pitfalls or verification principles that appear in several datasets; the entity's `units` cite the units in each of "
+             f"these datasets that say this, and relations (e.g. applies_to, instance_of, generalizes) connect it to each dataset's entities. "
+             f"At least {min_bridges(len(names))} such entities; the cross-dataset induced units ({induced or 'none yet'}) "
+             "must all be cited by the graph or a flowchart.\n",
+             f"\n## 跨数据集\n\n这个知识库由 {len(names)} 个数据集的知识合成，id 前缀是数据集：{listing}。知识图谱除了各数据集的对象，"
+             f"还要建**跨数据集的共享实体**（type 用 concept / method / tool 等）：多个数据集里都出现的对象类型、做法、坑或验证原则，"
+             f"实体的 `units` 同时引用这些数据集里说了这件事的单元，并用关系（如 applies_to、instance_of、generalizes）连到各数据集的实体。"
+             f"至少 {min_bridges(len(names))} 个这样的实体；跨数据集的归纳单元（{induced or '目前没有'}）"
+             "都要被图谱或流程图引用。\n")
 
 
 # ------------------------------------------------------------------ candidates
@@ -141,23 +155,35 @@ def compact_values(base, topic=None) -> dict:
     units = [u for u in load_units(layout(base).units) if u.get("status") not in INACTIVE]
     if topic:
         found = topic_units(base, topic)
-        listing = "\n".join(render_unit(u) for u in found[:80]) or "（主题词没有直接命中的单元；用 select 换几个说法再找）"
-        return {"goal": f"把与主题「{topic}」有关的知识压缩成更少、更概括的单元，其余知识不动。",
-                "scope": (f"主题：**{topic}**。主题词（{'、'.join(topic_terms(topic))}）直接命中的活跃单元 {len(found)} 条"
-                          f"{'（只列前 80 条）' if len(found) > 80 else ''}：\n\n{listing}\n\n"
-                          "主题词只是字面匹配：先判断哪些真与主题有关（同义说法、相关对象也算），去掉无关的，再补上漏掉的。"),
-                "topic_rule": "\n6. 只动与主题有关的单元；与主题无关的单元即使能压缩也不要动。"}
+        listing = "\n".join(render_unit(u) for u in found[:80]) or t(
+            "(no unit directly matches the topic terms; use select with a few other phrasings)",
+            "（主题词没有直接命中的单元；用 select 换几个说法再找）")
+        return {"goal": t(f"Compact the knowledge related to the topic \"{topic}\" into fewer, more general units; leave other knowledge untouched.",
+                          f"把与主题「{topic}」有关的知识压缩成更少、更概括的单元，其余知识不动。"),
+                "scope": t(f"Topic: **{topic}**. {len(found)} active units directly match the topic terms ({', '.join(topic_terms(topic))})"
+                           f"{' (only the first 80 listed)' if len(found) > 80 else ''}:\n\n{listing}\n\n"
+                           "The topic terms are only a literal match: first judge which units are really related to the topic (synonymous phrasings and "
+                           "related objects count too), drop the unrelated ones, then add the ones that were missed.",
+                           f"主题：**{topic}**。主题词（{'、'.join(topic_terms(topic))}）直接命中的活跃单元 {len(found)} 条"
+                           f"{'（只列前 80 条）' if len(found) > 80 else ''}：\n\n{listing}\n\n"
+                           "主题词只是字面匹配：先判断哪些真与主题有关（同义说法、相关对象也算），去掉无关的，再补上漏掉的。"),
+                "topic_rule": t("\n6. Only touch units related to the topic; leave unrelated units alone even if they could be compacted.",
+                                "\n6. 只动与主题有关的单元；与主题无关的单元即使能压缩也不要动。")}
     pairs = candidates(base, limit=40)
-    lines = [f"- 相似度 {p['similarity']}：`{p['a']}` / `{p['b']}`" + (f"，共同对象 {', '.join(p['shared'])}" if p["shared"] else "")
+    lines = [t(f"- similarity {p['similarity']}: `{p['a']}` / `{p['b']}`" + (f", shared objects {', '.join(p['shared'])}" if p["shared"] else ""),
+               f"- 相似度 {p['similarity']}：`{p['a']}` / `{p['b']}`" + (f"，共同对象 {', '.join(p['shared'])}" if p["shared"] else ""))
              for p in pairs["duplicates"] + pairs["conflicts"]]
     by_kind = {}
     for u in units:
         by_kind.setdefault(f"{u.get('scope', '?')}/{u.get('form')}", []).append(u)
-    groups = "\n".join(f"- {k}：{len(v)} 条" for k, v in sorted(by_kind.items(), key=lambda kv: -len(kv[1])))
+    groups = "\n".join(t(f"- {k}: {len(v)}", f"- {k}：{len(v)} 条") for k, v in sorted(by_kind.items(), key=lambda kv: -len(kv[1])))
     listing = "\n".join(render_unit(u) for u in units[:200])
-    return {"goal": "让知识库在不丢信息的前提下变小，由你判断压缩哪些、怎么压缩。",
-            "scope": (f"全部活跃单元，按粒度 / 形式：\n\n{groups}\n\n内容相近或锚定同一对象的单元对（只是提示）：\n\n"
-                      f"{chr(10).join(lines) or '（没有）'}\n\n活跃单元{'（只列前 200 条）' if len(units) > 200 else ''}：\n\n{listing}"),
+    return {"goal": t("Make the knowledge base smaller without losing information; you decide what to compact and how.",
+                      "让知识库在不丢信息的前提下变小，由你判断压缩哪些、怎么压缩。"),
+            "scope": t(f"All active units, by scope / form:\n\n{groups}\n\nUnit pairs with similar content or anchored to the same object (hints only):\n\n"
+                       f"{chr(10).join(lines) or '(none)'}\n\nActive units{' (only the first 200 listed)' if len(units) > 200 else ''}:\n\n{listing}",
+                       f"全部活跃单元，按粒度 / 形式：\n\n{groups}\n\n内容相近或锚定同一对象的单元对（只是提示）：\n\n"
+                       f"{chr(10).join(lines) or '（没有）'}\n\n活跃单元{'（只列前 200 条）' if len(units) > 200 else ''}：\n\n{listing}"),
             "topic_rule": ""}
 
 
@@ -167,11 +193,13 @@ def render_candidates(base, step) -> str:
     show = lambda uid: f"`{uid}` [{units[uid].get('form')}/{units[uid].get('status')}] {units[uid]['content'][:160]}"  # noqa: E731
     lines = []
     for p in found["duplicates" if step == "dedup" else "conflicts"]:
-        lines += [f"- 相似度 {p['similarity']}" + (f"，共同对象 {', '.join(p['shared'])}" if p["shared"] else ""),
+        lines += [t(f"- similarity {p['similarity']}" + (f", shared objects {', '.join(p['shared'])}" if p["shared"] else ""),
+                    f"- 相似度 {p['similarity']}" + (f"，共同对象 {', '.join(p['shared'])}" if p["shared"] else "")),
                   f"  - {show(p['a'])}", f"  - {show(p['b'])}"]
     if step == "conflict" and found["contested"]:
-        lines += ["", "有争议或最近一条证据为反驳的单元：", *[f"- {show(uid)}" for uid in found["contested"]]]
-    return "\n".join(lines) or "（没有找到候选；仍可自己浏览知识库）"
+        lines += ["", t("Units that are contested or whose latest evidence refutes them:", "有争议或最近一条证据为反驳的单元："),
+                  *[f"- {show(uid)}" for uid in found["contested"]]]
+    return "\n".join(lines) or t("(no candidates found; you can still browse the knowledge base yourself)", "（没有找到候选；仍可自己浏览知识库）")
 
 
 # ------------------------------------------------------------------ prompts and acceptance
@@ -192,41 +220,53 @@ def history_ids(base) -> set[str]:
 def prompt(path, step, topic=None) -> str:
     from . import check_knowledge
     from . import outline as ol
-    from ..workspace import TEMPLATES
+    from ..workspace import templates
 
     base, root = resolve_base(path)
     lay = layout(base)
     before = [i for i in check_knowledge(base, history_ids(base), root=root) if not i.startswith(LAYERED)]
-    note = ("（以下是整理前就有的问题，与本任务无关，可以保留：" + "；".join(before[:10]) + "）") if before else ""
+    note = t("(the following issues existed before this step and are unrelated to this task; they may stay: " + "; ".join(before[:10]) + ")",
+             "（以下是整理前就有的问题，与本任务无关，可以保留：" + "；".join(before[:10]) + "）") if before else ""
     units = load_units(lay.units)
     values = {"base": base, "check_note": note, "n_units": sum(u.get("status") not in INACTIVE for u in units),
               "n_inactive": sum(u.get("status") in INACTIVE for u in units),
-              "verify": ("可以查 `data/`、用工具或 `knosis knowledge verify` 取得新证据。" if root else
-                         "知识库没有数据，只能依据已有证据与 `evidence/traces/` 里的轨迹判断；判断不了就标 contested。")}
+              "verify": (t("You can query `data/`, use tools or `knosis knowledge verify` to get new evidence.",
+                           "可以查 `data/`、用工具或 `knosis knowledge verify` 取得新证据。") if root else
+                         t("The knowledge base has no data: judge only from existing evidence and the traces in `evidence/traces/`; "
+                           "if you cannot decide, mark it contested.",
+                           "知识库没有数据，只能依据已有证据与 `evidence/traces/` 里的轨迹判断；判断不了就标 contested。"))}
     if step == "organize":
         items = ol.members(base)
         draft = ol.write_outline(base, ol.draft(base), "outline.draft.yaml")
         values |= {"draft": draft, "n_skills": sum(1 for i in items.values() if i.get("form") == "skill"),
-                   "existing": ("已有大纲 `kb/outline.yaml`：在它的基础上更新，保留合理的结构，把「未归类」的新知识放进去，"
-                                f"必要时拆分或合并节（`knosis knowledge outline --ws {base}` 看当前大纲与未归类单元）。"
-                                if ol.load_outline(base) is not None else "还没有大纲，从草稿出发。")}
+                   "existing": (t("An outline `kb/outline.yaml` already exists: update it, keep the sensible structure, put the new \"unclassified\" "
+                                  f"knowledge into it, and split or merge sections where needed (`knosis knowledge outline --ws {base}` shows the "
+                                  "current outline and the unclassified units).",
+                                  "已有大纲 `kb/outline.yaml`：在它的基础上更新，保留合理的结构，把「未归类」的新知识放进去，"
+                                  f"必要时拆分或合并节（`knosis knowledge outline --ws {base}` 看当前大纲与未归类单元）。")
+                                if ol.load_outline(base) is not None else t("There is no outline yet; start from the draft.", "还没有大纲，从草稿出发。"))}
     elif step == "structure":
         from . import structure as st
 
         cov = st.coverage(base)
         values |= {"summary": st.summary(base), "graph_cov": f"{GRAPH_COVERAGE:.0%}", "flow_cov": f"{FLOW_COVERAGE:.0%}",
                    "n_objects": cov["objects"], "n_procedural": cov["procedural"],
-                   "existing": ("已有知识图谱 / 流程图：在它们的基础上更新（补上新单元，去掉对已失效单元的引用），保留合理的结构。"
-                                if st.graph_path(base).exists() else "还没有知识图谱与流程图，从头建。")}
+                   "existing": (t("A knowledge graph / flowcharts already exist: update them (add the new units, remove references to inactive units), "
+                                  "keeping the sensible structure.",
+                                  "已有知识图谱 / 流程图：在它们的基础上更新（补上新单元，去掉对已失效单元的引用），保留合理的结构。")
+                                if st.graph_path(base).exists() else
+                                t("There is no knowledge graph or flowchart yet; build them from scratch.", "还没有知识图谱与流程图，从头建。"))}
     elif step == "compact":
         values |= compact_values(base, topic)
     else:
         values["candidates"] = render_candidates(base, step)
-    text = Template((TEMPLATES / "consolidate" / f"{step}.md").read_text(encoding="utf-8")).substitute(values)
+    text = Template((templates() / "consolidate" / f"{step}.md").read_text(encoding="utf-8")).substitute(values)
     text += multi_note(base, step) if step in ("organize", "structure") else ""
     if root:
-        text += ("\n内化由运行器验收并保存知识版本：不要运行 `knosis ws check`、`knosis ws goto`，不要切换阶段，"
-                 "也不要写阶段目录里的 changelog。\n")
+        text += t("\nThe runner accepts the consolidation and saves the knowledge version: do not run `knosis ws check` or `knosis ws goto`, "
+                  "do not switch stages, and do not write the changelog in the stage directory.\n",
+                  "\n内化由运行器验收并保存知识版本：不要运行 `knosis ws check`、`knosis ws goto`，不要切换阶段，"
+                  "也不要写阶段目录里的 changelog。\n")
     return text
 
 
@@ -371,7 +411,7 @@ def run_step(path, step, agent="codex", model=None, effort=None, topic=None) -> 
                 step_issues(base, step, before, before_issues)
             if not issues:
                 break
-            text += "\n验收未通过，请修正：\n" + "\n".join(issues)
+            text += t("\nAcceptance failed, please fix:\n", "\n验收未通过，请修正：\n") + "\n".join(issues)
         if issues:
             restore(base, tmp)
             return {"step": step, "issues": issues, "restored": True, "seconds": round(time.monotonic() - started)}

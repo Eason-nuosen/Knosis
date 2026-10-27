@@ -1,26 +1,26 @@
-# 内化 1/3：去重
+# Consolidation 1/3: dedup
 
-知识层根目录：`$base`（$n_units 条活跃 κ，$n_inactive 条已失效）。目标：把说同一件事的单元合并成一条，让以后检索到的知识不重复。
+Knowledge layer root: `$base` ($n_units active κ, $n_inactive inactive). Goal: merge units that say the same thing into one, so that knowledge retrieved later has no duplicates.
 
-## 候选
+## Candidates
 
-Knosis 按内容相似度与共同锚定对象找出的疑似重复（只是提示，未必都是重复）：
+Suspected duplicates found by Knosis via content similarity and shared anchored objects (only hints; not all are necessarily duplicates):
 
 $candidates
 
-也可以用 `knosis knowledge select --ws $base --text <关键词>` 自己再找。
+You may also search further yourself with `knosis knowledge select --ws $base --text <keywords>`.
 
-## 做法
+## Procedure
 
-1. 逐对判断是不是同一件事：同一对象、同一断言、条件兼容。只是相关、条件不同、粒度不同（一条讲具体对象、一条讲整体规律）的不算重复。
-2. 是重复：保留更准确、条件更完整、证据更多的一条作为主单元；需要时改写它的 `content` / `condition`，把两条的信息合起来，
-   不丢成立条件与例外；`provenance` 合并两条的来源（用 ` ; ` 连接）。
-3. 另一条改为 `"status": "merged"`，加 `"merged_into": "<主单元 id>"`，其余字段原样保留（它成为别名，引用它的派生单元、skill、
-   大纲都会按别名解析到主单元）。被并单元的证据不用搬。
-4. 不删除任何单元；只改 `kb/knowledge/units.jsonl`。需要补证据时用
-   `knosis knowledge evidence add --ws $base --unit <主单元> --verdict support --method derivation --source merge:<被并单元> --note "<依据>"`。
+1. Judge pair by pair whether they are the same thing: same object, same assertion, compatible conditions. Units that are merely related, have different conditions, or have different scope (one about a specific object, one about an overall regularity) are not duplicates.
+2. If duplicate: keep the one that is more accurate, has more complete conditions and more evidence as the primary unit; when needed, rewrite its `content` / `condition` to combine the information of both,
+   without losing conditions and exceptions; `provenance` merges the sources of both (joined with ` ; `).
+3. Change the other to `"status": "merged"`, add `"merged_into": "<primary unit id>"`, and keep all other fields as they are (it becomes an alias; derived units, skills
+   and the outline that reference it are resolved through the alias to the primary unit). The evidence of the merged unit need not be moved.
+4. Do not delete any unit; only modify `kb/knowledge/units.jsonl`. When you need to add evidence, use
+   `knosis knowledge evidence add --ws $base --unit <primary unit> --verdict support --method derivation --source merge:<merged unit> --note "<basis>"`.
 
-## 验收
+## Acceptance check
 
-`knosis knowledge check --ws $base` 不新增问题$check_note；没有单元被删除。
-最后用两三句话说明合并了哪些，哪些候选不是重复、为什么。
+`knosis knowledge check --ws $base` introduces no new problems$check_note; no unit was deleted.
+Finally, explain in two or three sentences which ones you merged, and which candidates are not duplicates and why.

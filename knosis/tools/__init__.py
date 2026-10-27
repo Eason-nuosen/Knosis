@@ -17,6 +17,8 @@ from pathlib import Path
 
 import yaml
 
+from ..lang import t
+
 TOOLS_DIR = Path(__file__).parent
 
 
@@ -30,7 +32,11 @@ def list_tools(modality=None) -> list[dict]:
 
 
 def card(name) -> str:
-    return (TOOLS_DIR / name / "TOOL.md").read_text(encoding="utf-8")
+    """The tool card: `TOOL.md` (English), or `TOOL_cn.md` with KNOSIS_LANG=zh."""
+    from ..lang import zh
+
+    path = TOOLS_DIR / name / "TOOL_cn.md"
+    return (path if zh() and path.exists() else TOOLS_DIR / name / "TOOL.md").read_text(encoding="utf-8")
 
 
 def run_tool(name, args: list[str]) -> int:
@@ -47,9 +53,12 @@ def available(info) -> bool:
 
 
 def tools_markdown(modalities) -> str:
-    sections = ["# 可用工具\n\n用 `knosis tool run <name> -- <参数>` 调用。工具只输出注解，不改数据；"
-                "输出的 κ 是 inferred / observed，采纳前要在数据上验证。\n"
-                "模型类工具标明了在本机能否做真实推断；不能时 `--prepare-only` 只检查输入，不产生推断。"]
+    sections = [t("# Available tools\n\nCall with `knosis tool run <name> -- <args>`. Tools only output annotations and never modify data;"
+                  " the κ they output are inferred / observed and must be verified on the data before adoption.\n"
+                  "Model tools state whether they can do real inference on this machine; when they cannot, `--prepare-only` only checks the inputs and produces no inference.",
+                  "# 可用工具\n\n用 `knosis tool run <name> -- <参数>` 调用。工具只输出注解，不改数据；"
+                  "输出的 κ 是 inferred / observed，采纳前要在数据上验证。\n"
+                  "模型类工具标明了在本机能否做真实推断；不能时 `--prepare-only` 只检查输入，不产生推断。")]
     seen = set()
     for modality in modalities:
         for tool in list_tools(modality):
@@ -59,9 +68,13 @@ def tools_markdown(modalities) -> str:
             body = card(tool["name"]).split("---", 2)[2].strip()
             state = ""
             if tool["kind"] == "model":
-                state = ("本机状态：依赖已安装，可以直接做真实推断。\n\n" if available(tool)
-                         else f"本机状态：缺少依赖（{', '.join(tool.get('requires', []))}），只能 `--prepare-only`。\n\n")
-            sections.append(f"## {tool['name']} @{tool['version']}（{tool['kind']}）\n\n许可：{tool['license']}\n\n{state}{body}")
+                requires = ', '.join(tool.get('requires', []))
+                state = (t("Status on this machine: dependencies installed, real inference available.\n\n",
+                           "本机状态：依赖已安装，可以直接做真实推断。\n\n") if available(tool)
+                         else t(f"Status on this machine: missing dependencies ({requires}), only `--prepare-only`.\n\n",
+                                f"本机状态：缺少依赖（{requires}），只能 `--prepare-only`。\n\n"))
+            sections.append(t(f"## {tool['name']} @{tool['version']} ({tool['kind']})\n\nLicense: {tool['license']}\n\n{state}{body}",
+                              f"## {tool['name']} @{tool['version']}（{tool['kind']}）\n\n许可：{tool['license']}\n\n{state}{body}"))
     return "\n\n".join(sections) + "\n"
 
 

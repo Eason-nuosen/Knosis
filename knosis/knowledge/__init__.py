@@ -1,11 +1,11 @@
-"""Knowledge layer (v0.5): two parts, see `layout`.
+"""Knowledge layer: two parts, see `layout`.
 
     kb/        knowledge body: knowledge/{units.jsonl, ontology/}, skills/, outline.yaml
     evidence/  sources and verification: ledger.jsonl, consolidate.jsonl, checks/, feedback/, traces/
 
 κ units: `units`; evidence: `evidence`; ontology (OSI three layers, elements are also κ): `ontology`; skills: `skills`;
 outline: `outline`; knowledge graph, flowcharts, derivation graph and rule cards: `structure`; consolidation (dedup, conflict handling,
-organizing, structuring): `consolidate`; the old v0.4 layout is converted with `migrate`.
+organizing, structuring): `consolidate`; older layouts are converted with `migrate`.
 All functions here take `root` (root of a workspace, knowledge base or knowledge version snapshot).
 """
 

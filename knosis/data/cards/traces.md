@@ -1,34 +1,34 @@
-# agent 轨迹（Codex / Claude Code / 普通 agent → 可验证知识的来源）
+# Agent traces (Codex / Claude Code / generic agents → a source of verifiable knowledge)
 
-## 来源
+## Source
 
-无固定出处，由使用者指向自己的轨迹文件：`knosis ws init traces <名字> -o paths=<文件或 glob，逗号分隔> [-o env=<轨迹当时的数据目录>]`。
-Knosis 只读不写原文件。
+No fixed origin; the user points to their own trace files: `knosis ws init traces <name> -o paths=<files or globs, comma-separated> [-o env=<the data directory at the time of the traces>]`.
+Knosis only reads the original files, never writes them.
 
-## 说明
+## Description
 
-支持的格式（自动识别，见 `knosis.data.traces`）：
+Supported formats (auto-detected, see `knosis.data.traces`):
 
-- Codex：`~/.codex/sessions/**/rollout-*.jsonl`（已测 CLI 0.147 / 0.149 / 0.160 / 0.163）
-- Claude Code：会话 JSONL（`~/.claude/projects/<项目>/<会话>.jsonl`，已测 2.1.x），同名目录下 `subagents/agent-*.jsonl` 作为子 agent
-- 逐步记录：`{instruction, steps: [{reasoning, response, code, env_feedback}], success}`，如 agent-rsi 的 AppWorld ReAct 轨迹
-- OpenAI 风格 messages（JSON 列表、JSONL，或 `{"messages": [...]}`）
-- Who&When 的一条日志（GT 字段不进轨迹）；已经是 ATIF v1.7 的轨迹
+- Codex: `~/.codex/sessions/**/rollout-*.jsonl` (tested with CLI 0.147 / 0.149 / 0.160 / 0.163)
+- Claude Code: session JSONL (`~/.claude/projects/<project>/<session>.jsonl`, tested with 2.1.x), with `subagents/agent-*.jsonl` in the same-named directory as sub-agents
+- Step-by-step records: `{instruction, steps: [{reasoning, response, code, env_feedback}], success}`, such as agent-rsi's AppWorld ReAct traces
+- OpenAI-style messages (a JSON list, JSONL, or `{"messages": [...]}`)
+- One Who&When log (GT fields do not go into the trace); traces already in ATIF v1.7
 
-统一成 **ATIF v1.7**（Harbor 的 Agent Trajectory Interchange Format），写进工作区 `data/traces/<id>.json`（另有 `.md` 便于阅读）：
-一步是一条用户 / 系统消息，或 agent 的一次输出（文本、思考、工具调用），调用结果挂在发出调用的那一步；
-Knosis 的补充信息在 `extra.knosis`：来源格式与版本（`tested` 为 false 表示该版本没测过）、每类来源记录映射或跳过的计数、
-截断（单段文本超过 4000 字符）、按位置推断的配对（`paired_by`）、多 agent 轨迹里说话的 agent。
-知识引用轨迹写 `data/traces/<id>.json#step/<n>`，子 agent 的步骤写 `#agent/<子 agent id>/step/<n>`。
-v0.5 之前的步骤序列（`<id>.jsonl`）用 `knosis migrate` 转换，引用的步号一并改写。
+Normalized to **ATIF v1.7** (Harbor's Agent Trajectory Interchange Format) and written to the workspace as `data/traces/<id>.json` (plus a `.md` for reading):
+a step is one user / system message, or one agent output (text, thinking, tool call); a call's result is attached to the step that issued the call.
+Knosis's supplementary information is in `extra.knosis`: source format and version (`tested` false means that version has not been tested), counts of records mapped or skipped per source record type,
+truncation (a single text segment over 4000 characters), pairings inferred by position (`paired_by`), and the speaking agent in multi-agent traces.
+Knowledge cites traces as `data/traces/<id>.json#step/<n>`, and sub-agent steps as `#agent/<sub-agent id>/step/<n>`.
+Step sequences in the older format (`<id>.jsonl`) are converted with `knosis migrate`, which also rewrites the cited step numbers.
 
-**关键约定**
+**Key conventions**
 
-- 轨迹里的话是那个 agent 的说法，不等于事实。只引用轨迹的知识保持 inferred；
-  给了 `env` 时可以在 `data/env/` 上复核，复核后记证据（`method` 为 data / check / tool）。
-- 不把轨迹里具体题目的答案存成知识；可复用的做法分成 method（如何发现 / 验证）和 skill（如何运用知识解题）。
+- What a trace says is that agent's claim, not fact. Knowledge that cites only traces stays inferred;
+  when `env` is given, it can be re-verified on `data/env/`, and evidence is recorded after re-verification (`method` is data / check / tool).
+- Do not store answers to specific questions in the traces as knowledge; reusable practices are split into method (how to discover / verify) and skill (how to use knowledge to solve tasks).
 
-## 评测
+## Evaluation
 
-没有任务指标；打分器报告：引用了真实存在步骤的知识占比（`cites_trace`），以及有非轨迹证据支持的占比（`env_verified`）。
-迁移收益另做：把提取出的知识合进知识库，再在同一环境的新题上对比 none / K_inherit。
+There is no task metric; the scorer reports the fraction of knowledge that cites steps that actually exist (`cites_trace`), and the fraction supported by non-trace evidence (`env_verified`).
+Transfer gains are measured separately: merge the extracted knowledge into the knowledge base, then compare none / K_inherit on new questions in the same environment.

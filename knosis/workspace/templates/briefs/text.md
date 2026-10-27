@@ -1,21 +1,21 @@
-# 文本语料 — $name
+# Text corpus — $name
 
-## 数据是什么
+## What the data is
 
-`data/` 下是语料原文，共 $n_files 个文件、$n_chars 个字符（相对路径保持原样）：
+`data/` holds the raw corpus: $n_files files, $n_chars characters (relative paths kept as in the original):
 
 $listing
 
-语料可能含噪声（重复、矛盾、错误或过时的内容）；哪些是噪声、如何处理，由你判断。
+The corpus may contain noise (duplicate, contradictory, wrong or outdated content); what counts as noise and how to handle it is up to you.
 
-## 下游任务是什么
+## What the downstream task is
 
-本工作区没有下游题目，目标是从语料中构造可审计的知识层（κ 单元，结构性的内容也可以写成本体）。
-decide 阶段不需要交付预测，直接运行 `knosis ws check .` 即可结束。
+This workspace has no downstream questions; the goal is to build an auditable knowledge layer from the corpus (κ units; structural content may also be written as an ontology).
+The decide stage does not require delivering predictions; just run `knosis ws check .` to finish.
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让之后基于这份语料的问答与分析更可靠：实体、关系、事件、数值、规则与它们成立的条件都可以提取。
-每条知识的来源必须定位回原文：`provenance` 写 `data/<文件>#<start>-<end>`（字符偏移，左闭右开，按 UTF-8 解码后的字符串计），
-多处来源用 ` ; ` 连接；可在 `meta.quote` 写一段原文引文，它必须出现在所引片段里。
-评测只看知识层本身：来源能否定位、引文是否属实，以及单元的构成。
+Make later QA and analysis based on this corpus more reliable: entities, relations, events, numbers, rules and the conditions under which they hold can all be extracted.
+The source of every piece of knowledge must be locatable in the original text: write `provenance` as `data/<file>#<start>-<end>` (character offsets, half-open interval, counted on the string after UTF-8 decoding);
+join multiple sources with ` ; `. You may put a quotation from the original in `meta.quote`; it must appear in the cited span.
+Evaluation looks only at the knowledge layer itself: whether sources can be located, whether quotations are accurate, and the composition of the units.

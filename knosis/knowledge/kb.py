@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from ..lang import t
 from .evidence import data_inputs, load_evidence, run_check
 from .layout import CHECKS, FEEDBACK, ONTOLOGY, SKILLS, TRACES, ensure, layout
 from .units import load_units, scope_of, write_units
@@ -42,7 +43,7 @@ def init_kb(kb) -> Path:
     kb.mkdir(parents=True, exist_ok=False)
     ensure(kb)
     # agent logs and outline drafts from collect / consolidate are not versioned
-    (kb / ".gitignore").write_text("*.log\nkb/outline.draft.yaml\n__pycache__/\n", encoding="utf-8")
+    (kb / ".gitignore").write_text("*.log\nkb/outline.draft.yaml\n__pycache__/\nview/\n", encoding="utf-8")
     git(kb, "init", "--quiet")
     commit(kb, "init")
     return kb
@@ -144,7 +145,8 @@ def merge(ws, kb, namespace=None) -> str:
             if not ok:
                 extra.append({"unit": unit["id"], "verdict": "undetermined", "method": "check",
                               "source": f"check:{unit['id']}(portable)", "inputs": data_inputs(ws),
-                              "note": f"检查脚本离开原工作区（只保留 data/、kb/ 与 evidence/）运行不通：{note[-200:]}"})
+                              "note": t(f"the check script does not run outside the original workspace (keeping only data/, kb/ and evidence/): {note[-200:]}",
+                                        f"检查脚本离开原工作区（只保留 data/、kb/ 与 evidence/）运行不通：{note[-200:]}")})
     if extra:
         from .evidence import add_evidence
 
@@ -236,6 +238,7 @@ def import_ontology(source, kb, strip=False) -> dict:
     kb = Path(kb).resolve()
     report = import_annotation(source, layout(kb).ontology, strip=strip)
     with (kb / "IMPORT.md").open("a", encoding="utf-8") as fh:
-        fh.write(f"- {Path(source).name}（strip_gt={strip}）：{json.dumps(report, ensure_ascii=False)}\n")
+        fh.write(t(f"- {Path(source).name} (strip_gt={strip}): {json.dumps(report, ensure_ascii=False)}\n",
+                   f"- {Path(source).name}（strip_gt={strip}）：{json.dumps(report, ensure_ascii=False)}\n"))
     commit(kb, f"import ontology {Path(source).name} (strip={strip})")
     return report

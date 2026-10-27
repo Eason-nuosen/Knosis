@@ -1,40 +1,40 @@
-# 文本语料（任意文档集合 → schema-free KG）
+# Text corpus (any document collection → schema-free KG)
 
-## 来源
+## Source
 
-无固定出处 —— 由使用者指向自己的语料目录：`load_dataset("text", path="./corpus")`。
-语料本身不受 Knosis 许可约束；Knosis 只读不写。
-抽取器可插拔：默认只切块；AutoSchemaKG 等真实抽取器以函数形式传入
-`load_dataset("text", path=..., extractor=fn)`，`fn(doc_id, text) -> Iterable[Unit]`。
+No fixed origin: the user points to their own corpus directory: `load_dataset("text", path="./corpus")`.
+The corpus itself is not bound by the Knosis license; Knosis only reads, never writes.
+The extractor is pluggable: by default it only chunks; real extractors such as AutoSchemaKG are passed in as a function:
+`load_dataset("text", path=..., extractor=fn)`, `fn(doc_id, text) -> Iterable[Unit]`.
 
-## 说明
+## Description
 
-把一堆文档变成一张 schema-free 的知识图。这是 Knosis 里唯一"load 即产出知识单元"
-的入口 —— 文本没有 schema 可以先接着，抽取本身就是建图。
+Turns a pile of documents into a schema-free knowledge graph. This is the only entry in Knosis where "load directly produces knowledge units":
+text has no schema to attach to first, so extraction itself is graph construction.
 
-**产出什么**（都在 `ds.units` 里）
+**What it produces** (all in `ds.units`)
 
-- `doc` 单元：每篇文档一个，`π` 指向文件路径。`dedup=True`（默认）时，
-  归一化后内容相同的转载稿会被折叠，记录在 `ds.schema["duplicates"]` 里 ——
-  不去重会让 L2 的支持度计数和聚合失真。
-- `chunk` 单元：按 `chunk_chars` 切的块，`π` 定位到 `doc_id#start-end`。
-  L2 接地时要靠这个回到原文。
-- 传了 `extractor` 时：额外产出抽取器返回的单元（如 `entity` / `triple`），
-  关系短语保持**开放词汇**。
+- `doc` units: one per document, with `π` pointing to the file path. With `dedup=True` (the default),
+  reposted copies whose normalized content is identical are collapsed and recorded in `ds.schema["duplicates"]`;
+  without deduplication, L2 support counts and aggregation would be distorted.
+- `chunk` units: chunks cut by `chunk_chars`, with `π` locating `doc_id#start-end`.
+  L2 grounding relies on this to get back to the original text.
+- When `extractor` is given: additionally the units returned by the extractor (e.g. `entity` / `triple`),
+  with relation phrases kept as **open vocabulary**.
 
-**关键约定**
+**Key conventions**
 
-- 关系词表是开放词汇，**不要假设有固定关系类型**。规范化是 L2 的事，
-  在这里做会把原始短语丢掉，接不回原文。
-- 抽取配置与模型版本应写进每个单元的 `provenance` —— 换了模型就该知道知识变了。
-- `condition` 默认为空。文本知识往往带条件（时间、地域、适用对象），
-  但现在没人标 —— 别假装它是无条件的。
+- The relation vocabulary is open; **do not assume fixed relation types**. Normalization is L2's job;
+  doing it here would discard the original phrases, which then cannot be traced back to the original text.
+- The extraction configuration and model version should be written into every unit's `provenance`: when the model changes, you should know the knowledge changed.
+- `condition` is empty by default. Knowledge from text often carries conditions (time, region, applicable subjects),
+  but currently nobody annotates them; do not pretend it is unconditional.
 
-**坑**
+**Pitfalls**
 
-- 单元 id 来自相对路径，删改文件后重跑 id 会变。
-- 体量：先跑子目录。抽取时间与语料线性相关。
-- 非 UTF-8 文件会被跳过。
+- Unit ids come from relative paths; after deleting or modifying files, rerunning changes the ids.
+- Size: run on a subdirectory first. Extraction time is linear in corpus size.
+- Non-UTF-8 files are skipped.
 
-**适合**：给 agent 提供一份可追溯、可分块定位的背景知识底图。
-**不适合**：当作事实核验的来源 —— 这里没有 GT，抽取出来的东西一律是 `observed`。
+**Good for**: giving an agent a traceable, chunk-locatable base map of background knowledge.
+**Not good for**: serving as a source for fact verification; there is no GT here, and everything extracted is `observed`.

@@ -1,41 +1,41 @@
 ---
 name: knosis
-description: 在 Knosis 工作区或用户希望用 Knosis 分析数据、发现噪声、提取并验证可复用知识（含本体）时使用；不替代普通数据分析。
+description: Use in a Knosis workspace, or when the user wants to use Knosis to analyze data, find noise, and extract and verify reusable knowledge (including ontologies); it does not replace ordinary data analysis.
 ---
 
-Knosis 提供可追溯的显式知识层，本会话的 agent 是执行者，不必启动另一个 agent。
+Knosis provides a traceable, explicit knowledge layer; the agent in this session is the executor and does not need to launch another agent.
 
-**有名为 knosis 的 MCP 服务时**（`knosis install --kb` 装好的个人知识库）：开始一个不简单的任务前，调用一次
-`knowledge_outline` 看知识体系，再用 `knowledge_select`（几个关键词，空格分隔）找与任务相关的知识；
-inferred / contested 的知识是提示，用之前要核实。确实验证过、以后用得上的发现可以用 `knowledge_add` 记下；
-其余不用手动记，会话结束后由 `knosis kb collect` 统一收集。
+**When there is an MCP server named knosis** (a personal knowledge base installed with `knosis install --kb`): before starting a non-trivial task, call
+`knowledge_outline` once to see the knowledge system, then use `knowledge_select` (a few keywords, space-separated) to find knowledge relevant to the task;
+inferred / contested knowledge is a hint, verify it before using it. Findings that are truly verified and useful later can be recorded with `knowledge_add`;
+the rest need not be recorded manually; `knosis kb collect` collects them uniformly after the session ends.
 
-在含 `BRIEF.md` 与 `.knosis/state.json` 的工作区，读 BRIEF 与 AGENTS.md，
-用 `knosis ws next .` 取得当前阶段的目标、输入、交付物和验收标准。
-完成交付后运行 `knosis ws check .`；失败时依据问题修正。
-阶段为 explore → extract → refine，refine 每轮验收保存快照；
-用户决定结束改进时，用 `knosis ws goto . decide` 进入下游任务。
+In a workspace containing `BRIEF.md` and `.knosis/state.json`, read BRIEF and AGENTS.md,
+and use `knosis ws next .` to get the current stage's goal, inputs, deliverables and acceptance criteria.
+After finishing the deliverables, run `knosis ws check .`; on failure, fix according to the reported problems.
+The stages are explore → extract → refine; each refine round saves a snapshot upon passing the acceptance check;
+when the user decides to stop improving, use `knosis ws goto . decide` to enter the downstream task.
 
-工作区外，用户需要这种流程时可运行
-`knosis ws init <dataset> <scenario> --out <目录> [--kb <知识库>]`（`knosis list` 看支持的数据集）。
-`knosis tool list` 与工作区的 `TOOLS.md` 提供可用工具（SQL、表画像、join 发现、方程拟合、ULTRA、TabPFN 等）。
+Outside a workspace, when the user needs this workflow, you can run
+`knosis ws init <dataset> <scenario> --out <directory> [--kb <knowledge base>]` (`knosis list` shows supported datasets).
+`knosis tool list` and the workspace's `TOOLS.md` provide available tools (SQL, table profiling, join discovery, equation fitting, ULTRA, TabPFN, etc.).
 
-知识层分两块：`kb/` 放知识（`kb/knowledge/units.jsonl`、`kb/knowledge/ontology/`、`kb/skills/`、`kb/outline.yaml`），
-`evidence/` 放来源与验证（`evidence/ledger.jsonl`、`evidence/checks/`、`evidence/feedback/`）。
-每条 κ 必有唯一 id、content、form、provenance、status。
-form 为 finding/fact/rule/formula/schema/tool/procedure；status 为 observed/inferred/verified/contested/retracted/stale/merged。
-粒度分两层：对象知识 instance / relation / dataset；元知识 method（怎么得到知识）/ usage（怎么用好知识，由反馈或消融支持）。
-每次验证记一条证据（support/refute/undetermined/not_applicable）：可执行检查写进 `check` 后运行
-`knosis knowledge verify`，其他用 `knosis knowledge evidence add`；verified 需要支持证据，被反驳要改状态。
-用 `knosis knowledge select` 按任务挑知识（contested 默认不给），`knosis knowledge trace <id>` 看证据链；
-有 `kb/outline.yaml` 时先用 `knosis knowledge outline` 看知识体系。
-「如何运用知识解某类题」写成 `kb/skills/<名字>/SKILL.md`（讲怎么做）；它有没有效写成 usage 单元。
-内化：重复的改为 merged + merged_into，矛盾的收窄条件 / 撤回 / superseded_by / conflicts_with + contested，
-`knosis knowledge consolidate` 依次做去重、矛盾处理、构建知识体系；知识太多时 `knosis knowledge compact [--topic 主题]` 压缩。
-记录 condition、derived_from 和验证支持数与反例数；来源定位到 data 文件的行、列、节点或边，
-工具来源为 `tool:<name>@<version>(...)`，多来源用 ` ; ` 连接。
-结构性知识可写成 `kb/knowledge/ontology/` 下的本体（OSI 标准三层），κ 用 `about` 引用本体元素。
-工具输出 inferred 不是事实；撤回单元后将派生知识置为 stale 或 retracted。
+The knowledge layer has two parts: `kb/` holds knowledge (`kb/knowledge/units.jsonl`, `kb/knowledge/ontology/`, `kb/skills/`, `kb/outline.yaml`),
+`evidence/` holds sources and verification (`evidence/ledger.jsonl`, `evidence/checks/`, `evidence/feedback/`).
+Every κ must have a unique id, content, form, provenance, status.
+form is finding/fact/rule/formula/schema/tool/procedure; status is observed/inferred/verified/contested/retracted/stale/merged.
+scope has two layers: object knowledge instance / relation / dataset; meta-knowledge method (how to obtain knowledge) / usage (how to make good use of knowledge, supported by feedback or ablation).
+Record one piece of evidence per verification (support/refute/undetermined/not_applicable): put executable checks into `check` and then run
+`knosis knowledge verify`; for others use `knosis knowledge evidence add`; verified requires supporting evidence, and a refuted unit must change status.
+Use `knosis knowledge select` to pick knowledge per task (contested is not returned by default), and `knosis knowledge trace <id>` to see the evidence chain;
+when `kb/outline.yaml` exists, first use `knosis knowledge outline` to see the knowledge system.
+Write "how to apply knowledge to solve a kind of question" as `kb/skills/<name>/SKILL.md` (it says how to do it); whether it is effective is written as a usage unit.
+Consolidation: duplicates become merged + merged_into; contradictions get narrow the condition / retract / superseded_by / conflicts_with + contested;
+`knosis knowledge consolidate` does dedup, contradiction handling and building the knowledge system in order; when there is too much knowledge, compress with `knosis knowledge compact [--topic <topic>]`.
+Record condition, derived_from, and the number of verification supports and counterexamples; locate sources to rows, columns, nodes or edges of data files;
+tool sources are `tool:<name>@<version>(...)`; join multiple sources with ` ; `.
+Structural knowledge can be written as an ontology under `kb/knowledge/ontology/` (three OSI layers); a κ references ontology elements with `about`.
+Tool output inferred is not fact; after retracting a unit, set derived knowledge to stale or retracted.
 
-不修改 `data/`；代码与笔记写入当前阶段目录。测试题只在 decide 出现，
-不得寻找工作区外的测试 GT、不得运行 `knosis eval`，也不得把具体题目的答案提前缓存为知识。
+Do not modify `data/`; write code and notes into the current stage directory. Test questions appear only in decide;
+do not search for test GT outside the workspace, do not run `knosis eval`, and do not cache answers to specific questions as knowledge in advance.

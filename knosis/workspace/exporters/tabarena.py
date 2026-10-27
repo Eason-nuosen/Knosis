@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ...lang import t
 from . import register, render, split
 
 
@@ -25,8 +26,8 @@ def export(ds, ws: Path, repeat=0, fold=0, dev=0, seed=0, write_data=True, **opt
                 frame.to_parquet(Path(ws) / f"data/{name}.parquet", index=False)
     categorical = ds.schema["categorical"]
     columns = "\n".join(
-        f"- `{name}`: {dtype}" + ("（类别）" if name in categorical else "")
-        + (" ← 目标" if name == target else "")
+        f"- `{name}`: {dtype}" + (t(" (categorical)", "（类别）") if name in categorical else "")
+        + (t(" ← target", " ← 目标") if name == target else "")
         for name, dtype in data.dtypes.items()
     )
     return {

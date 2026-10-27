@@ -1,74 +1,74 @@
-# AlphaBench —— 量化因子的生成 / 评估 / 搜索
+# AlphaBench — generating / evaluating / searching quantitative factors
 
-## 来源
+## Source
 
-City University of Hong Kong（CityU-MLO / Chen Liu 组）。
-**AlphaBench: Benchmarking Large Language Models in Formulaic Alpha Factor Mining**，
-ICLR 2026。**没有 arXiv 预印本。** OpenReview `d97Q8r7ZKZ`。
-仓库 https://github.com/CityU-MLO/AlphaBench ；网站 https://alphabench.cc/
+City University of Hong Kong (CityU-MLO / Chen Liu's group).
+**AlphaBench: Benchmarking Large Language Models in Formulaic Alpha Factor Mining**,
+ICLR 2026. **There is no arXiv preprint.** OpenReview `d97Q8r7ZKZ`.
+Repository https://github.com/CityU-MLO/AlphaBench ; website https://alphabench.cc/
 
-获取：`knosis download alphabench`（`git clone`）。
-安装：仓库内 `pip install -e .`，会装出一个 `ppo` 命令；`ppo start backend` 起本地 API（127.0.0.1:19777）。
+Get it: `knosis download alphabench` (`git clone`).
+Install: `pip install -e .` inside the repository, which installs a `ppo` command; `ppo start backend` starts the local API (127.0.0.1:19777).
 
-**⚠️ 本基准不附带行情数据。** 仓库里 `benchmark/data/` 只有 `evaluate/` 和 `generate/`
-两个子目录（原始 IC 表、因子池），外加一个 `factor_cache.sqlite`。
-**没有 Qlib 格式的 `.bin` 数据包**，也没有 OHLCV 的 CSV。
-行情要你自己下：
+**⚠️ This benchmark ships without market data.** The repository's `benchmark/data/` has only two subdirectories, `evaluate/` and `generate/`
+(raw IC tables, factor pools), plus a `factor_cache.sqlite`.
+**There is no Qlib-format `.bin` data package**, and no OHLCV CSV either.
+You have to download market data yourself:
 ```bash
 pip install pyqlib
 python -m qlib.run.get_data qlib_data --target_dir data/alphabench/qlib_data/cn_data --region cn
 ```
 
-**许可：代码 MIT**（仓库根有 LICENSE）。
-**⚠️ 行情数据本身的许可上游从未声明** —— MIT 只覆盖代码与协议。
+**License: code is MIT** (LICENSE at the repository root).
+**⚠️ Upstream has never declared a license for the market data itself**: MIT covers only the code and the protocol.
 
-体量：任务数与题量在不同二手资料里说法不一（有 687 / 1170 / 27 条指令等口径），
-**以仓库 README 为准**。市场覆盖 CSI300 / CSI500 / CSI1000 / SP500（另有 NASDAQ100 走 Assay 引擎）。
-日期范围：日频，CSI300 约 2020–2025（论文口径）。
+Size: the number of tasks and questions differs across secondary sources (687 / 1170 / 27 instructions and other counts);
+**the repository README is authoritative**. Market coverage: CSI300 / CSI500 / CSI1000 / SP500 (plus NASDAQ100 via the Assay engine).
+Date range: daily, CSI300 roughly 2020–2025 (per the paper).
 
-LLM 访问需要 `DEEPSEEK_API_KEY` 和/或 `OPENAI_API_KEY`（环境变量或 `config/api_keys.yaml`）。
+LLM access needs `DEEPSEEK_API_KEY` and/or `OPENAI_API_KEY` (environment variables or `config/api_keys.yaml`).
 
-## 说明
+## Description
 
-AlphaBench 考的是：**LLM 能不能做量化因子的挖掘。**
+What AlphaBench tests: **whether an LLM can mine quantitative factors.**
 
-四个任务类型：
-- **generation** 因子生成 —— 给市场与一段语义描述，产出因子表达式。
-- **evaluation** 因子评估 —— 给一个因子，预测它的表现。
-- **search** 因子搜索 —— 迭代地找出一组好因子（多轮）。
-- **atomic** 原子评估 —— 对单个算子的效果做原子级评估。**这个是后于论文加的**，
-  所以论文的数字与仓库的能力已经不完全对应。
+Four task types:
+- **generation** factor generation: given a market and a semantic description, produce a factor expression.
+- **evaluation** factor evaluation: given a factor, predict its performance.
+- **search** factor search: iteratively find a set of good factors (multi-round).
+- **atomic** atomic evaluation: atomic-level evaluation of the effect of a single operator. **This was added after the paper**,
+  so the paper's numbers no longer fully match the repository's capabilities.
 
-**因子表达式用的是 DSL**，变量形如 `$open` / `$high` / `$low` / `$close` / `$volume`。
-（`amount` 字段的存在与否**未能从上游确认**，别假设有。）
-预置基线因子在 `factors/lib/alpha158/`（Alpha158，158 个现成因子）与 `factors/registry/`。
+**Factor expressions use a DSL**, with variables such as `$open` / `$high` / `$low` / `$close` / `$volume`.
+(Whether an `amount` field exists **could not be confirmed from upstream**; do not assume it does.)
+Preset baseline factors are in `factors/lib/alpha158/` (Alpha158, 158 ready-made factors) and `factors/registry/`.
 
-**⚠️ 这个基准没有自带数据集。** 它的"数据"是两样东西：
-1. 任务定义与因子池（在仓库里）；
-2. 行情 —— **要你自己用 Qlib 下载**，Knosis 默认读 `data/alphabench/qlib_data/{cn,us}_data`（`ds.files["qlib"]`）。
-所以 Knosis 只读仓库里的任务数据，行情目录通过 `qlib_dir=` 传入。**别指望 `knosis download` 帮你把行情下下来。**
+**⚠️ This benchmark has no bundled dataset.** Its "data" is two things:
+1. task definitions and factor pools (in the repository);
+2. market data, **which you must download yourself with Qlib**; Knosis reads `data/alphabench/qlib_data/{cn,us}_data` by default (`ds.files["qlib"]`).
+So Knosis reads only the task data in the repository, and the market data directory is passed in via `qlib_dir=`. **Do not expect `knosis download` to download market data for you.**
 
-回测引擎可切换：默认 **Qlib**（进程内），设 `FFO_ENGINE=assay` +
-`FFO_ASSAY_URL` 可换成 **Assay**（上游宣称 point-in-time 正确）。
+The backtest engine is switchable: **Qlib** by default (in-process); set `FFO_ENGINE=assay` +
+`FFO_ASSAY_URL` to switch to **Assay** (which upstream claims is point-in-time correct).
 
-指标：IC、RankIC、ICIR、胜率、偏度、年化收益。
-评估任务另用 NDCG@K、Precision@K、MAE、RMSE。
+Metrics: IC, RankIC, ICIR, win rate, skewness, annualized return.
+The evaluation task additionally uses NDCG@K, Precision@K, MAE, RMSE.
 
-适合：因子挖掘、时序/面板数据的知识注入、LLM 的数值直觉评测。
-不适合：当作现成的行情数据集 —— 它不提供行情。
+Good for: factor mining, knowledge injection for time-series / panel data, evaluating LLMs' numeric intuition.
+Not good for: use as a ready-made market dataset; it does not provide market data.
 
-陷阱：
-- **行情要自己下**，而且 **Qlib 的价格是复权后的**（每只股票首个交易日归一化为 1）。
-- **`region cn` 与 `region us` 会静默改变回测口径**：交易单位（100 股 vs 1 股）
-  和涨跌停阈值（0.099 vs 无）都不同。这是回测结果出错最常见的来源。
-- **停牌 / 涨跌停的处理与前视偏差是 Qlib 固有的风险**，上游 README 里没有讨论。
-- 仓库的覆盖面已经超出 ICLR 论文（多了市场、多了 atomic 任务、多了 Assay 引擎），
-  所以**论文的数字与仓库跑出来的数字未必对应**。
-- 二手资料里的题量数字互相矛盾，**不要引用它们**，以仓库为准。
+Pitfalls:
+- **Market data must be downloaded yourself**, and **Qlib prices are adjusted** (each stock's first trading day is normalized to 1).
+- **`region cn` and `region us` silently change the backtest conventions**: the trading unit (100 shares vs 1 share)
+  and the price-limit threshold (0.099 vs none) both differ. This is the most common source of wrong backtest results.
+- **Handling of trading halts / price limits and look-ahead bias are risks inherent to Qlib**, not discussed in the upstream README.
+- The repository's coverage already goes beyond the ICLR paper (more markets, the atomic task, the Assay engine),
+  so **the paper's numbers do not necessarily match numbers produced by the repository**.
+- Question counts in secondary sources contradict each other; **do not cite them**; the repository is authoritative.
 
-## Knosis 工作区
+## Knosis workspace
 
-只支持 `evaluate` 场景（上游 T2）：`knosis ws init alphabench evaluate [-o start=2021-01-01 -o end=2025-06-30]`。
-题目是因子池里的表达式，交付预测的 signal / mean_ic / mean_rankic / 1–5 维度分，GT 由本地 IC / RankIC 真值表按上游口径现算；
-工作区只给评估窗口开始之前的行情面板（来自本地 Qlib cn_data）。
-`generate`（T1）要用 Qlib 现算新因子的 IC，本地未安装 Qlib，暂不支持；目前只有 CSI300（cn_data）。
+Only the `evaluate` scenario (upstream T2) is supported: `knosis ws init alphabench evaluate [-o start=2021-01-01 -o end=2025-06-30]`.
+Questions are expressions from the factor pool; you deliver predicted signal / mean_ic / mean_rankic / 1–5 dimension scores, and the GT is computed on the fly from the local IC / RankIC ground-truth tables following the upstream convention;
+the workspace provides only the market panel before the start of the evaluation window (from the local Qlib cn_data).
+`generate` (T1) needs Qlib to compute the IC of new factors on the fly; Qlib is not installed locally, so it is not supported for now; currently only CSI300 (cn_data) is available.

@@ -1,26 +1,26 @@
-# agent 轨迹：$name
+# Agent traces: $name
 
-## 数据是什么
+## What the data is
 
-$n_traces 条 agent 轨迹，已统一成 ATIF 轨迹（`.md` 便于阅读，`## step <n>` 是步号；`.json` 是结构化原件）。
-一步是一条用户消息，或 agent 的一次输出（文本、思考、工具调用），调用的结果挂在发出调用的那一步；
-多 agent 轨迹里说话的 agent 标在步骤标题上，子 agent 的步骤在 `.md` 末尾：
+$n_traces agent traces, normalized to ATIF traces (`.md` for reading, where `## step <n>` is the step number; `.json` is the structured original).
+A step is one user message, or one agent output (text, thinking, tool call); a call's result is attached to the step that issued the call.
+In multi-agent traces the speaking agent is marked in the step heading, and sub-agent steps are at the end of the `.md`:
 
 $listing
 
 $env
 
-## 任务
+## Task
 
-从轨迹里提取**关于环境的知识**：轨迹里 agent 看到了什么、试过什么、哪些做法成功或失败、结果说明环境是怎样的。
-轨迹里的话是那个 agent 的说法，不等于事实：它可能看错、猜错，或者最后答错了。
-能在环境数据上复核的，复核后再记证据；复核不了的保持 inferred，并写清依据的是哪几步。
-失败的尝试同样是信息来源（例如某个查询结果与后来的反馈不符，说明数据里有问题）。
+Extract **knowledge about the environment** from the traces: what the agent saw in the trace, what it tried, which approaches succeeded or failed, and what the results say about the environment.
+What a trace says is that agent's claim, not fact: it may have misread, guessed wrong, or ended up with a wrong answer.
+Whatever can be re-verified on the environment data, re-verify before recording evidence; whatever cannot be re-verified stays inferred, with a clear note of which steps it is based on.
+Failed attempts are also a source of information (for example, a query result that disagrees with later feedback indicates a problem in the data).
 
-知识的来源写到轨迹步骤：`data/traces/<轨迹 id>.json#step/<n>`（子 agent 的步骤写 `#agent/<子 agent id>/step/<n>`），多步用 ` ; ` 连接；在环境上复核时另记证据。
-轨迹里可复用的做法，按性质分开写：关于环境的结论写成普通 κ，「如何发现 / 验证某类知识」写成 `scope=method`，
-「遇到这类任务怎样用这些知识去解」写成 skill（`kb/skills/`）。不要把轨迹里具体题目的答案存成知识。
+Write knowledge sources as trace steps: `data/traces/<trace id>.json#step/<n>` (for sub-agent steps, `#agent/<sub-agent id>/step/<n>`), joining multiple steps with ` ; `; record evidence separately when re-verifying on the environment.
+Write reusable practices from the traces separately according to their nature: conclusions about the environment as ordinary κ, "how to discover / verify a kind of knowledge" as `scope=method`,
+and "how to use this knowledge to solve this kind of task" as a skill (`kb/skills/`). Do not store answers to specific questions in the traces as knowledge.
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让之后在同一环境上做**别的**任务的 agent（可能是另一个模型）少走弯路、少犯同样的错。
+Help agents (possibly a different model) doing **other** tasks on the same environment later avoid detours and avoid repeating the same mistakes.

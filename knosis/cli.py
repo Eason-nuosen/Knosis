@@ -4,14 +4,14 @@
     knosis ws init|next|check|status|goto|fork|run ...
     knosis tool list|card|run ...
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
-    knosis knowledge check|verify|select|skills|index|trace|outline|candidates|consolidate|organize|compact|evidence add|evidence import ... [--ws <ws>]
+    knosis knowledge check|verify|select|skills|index|trace|outline|graph|view|candidates|consolidate|organize|compact|evidence add|evidence import ... [--ws <ws>]
     knosis kb init <dir> | merge <ws> --kb <dir> | import-ontology <src> --kb <dir> [--strip-gt]
     knosis kb collect --kb <dir> [--since 1d] [--source codex|claude] [--dry-run]
     knosis feedback submit <dev predictions file> [--ws <ws>] | list [--ws <ws>]
     knosis eval <ws>
     knosis install [--codex] [--claude] [--kb <dir>]
     knosis mcp [--ws <workspace or knowledge base>]
-    knosis migrate <v0.4 workspace or knowledge base> ...
+    knosis migrate <workspace or knowledge base in an older layout> ...
 """
 
 from __future__ import annotations
@@ -144,6 +144,16 @@ def knowledge_parser(sub):
     graph.add_argument("--entity", help="only the subgraph around one entity (id or name)")
     graph.add_argument("--depth", type=int, default=1)
     graph.add_argument("--view", choices=["summary", "graph", "flows", "derivation", "cards"], default="summary")
+    view = kn.add_parser("view", help="visualize: the agent writes a self-contained HTML page (view/index.html) and it opens in the browser")
+    view.add_argument("--ws", default=".", help="workspace or knowledge base")
+    view.add_argument("--request", help="what the page should focus on, in your own words (regenerates the page)")
+    view.add_argument("--refresh", action="store_true", help="regenerate the page even if it exists")
+    view.add_argument("--no-open", action="store_true", help="do not open the browser")
+    view.add_argument("--agent", choices=["codex", "claude"], default="codex")
+    view.add_argument("--model")
+    view.add_argument("--effort")
+    view.add_argument("--prompt-only", action="store_true", help="only print the prompt, for the agent in this session to do it")
+    view.add_argument("--check", action="store_true", help="only check the existing page (offline, no JavaScript errors on load)")
     for name, text in (("consolidate", "consolidation: dedup → conflict resolution → organize → structure; each step done by the agent, accepted and logged by Knosis"),
                        ("organize", "run only the organize step of consolidation (writes kb/outline.yaml)"),
                        ("compact", "compaction: the agent merges units that can be stated together into a primary unit (kept as aliases), reducing active units; --topic limits it to one topic")):
@@ -222,6 +232,20 @@ def knowledge_command(args):
     history = [u for d in snapshots(ws) for u in knowledge.load_units(knowledge.layout(d).units)] if root else []
     if args.kn_cmd in {"outline", "organize", "consolidate", "compact"}:
         outline_command(args)
+    elif args.kn_cmd == "view":
+        from .knowledge import view
+
+        if args.prompt_only:
+            print(view.prompt(args.ws, args.request))
+            return
+        if args.check:
+            if view.browser() is None:
+                print("no headless Chrome / Chromium found (set KNOSIS_BROWSER); JavaScript errors not checked")
+            report(view.issues(args.ws, None))
+            return
+        result = view.run(args.ws, args.request, args.refresh, not args.no_open, args.agent, args.model, args.effort)
+        print(json.dumps(result, ensure_ascii=False))
+        report(result["issues"])
     elif args.kn_cmd == "graph":
         from .knowledge import structure
 
@@ -334,7 +358,7 @@ def install_codex_mcp(config: Path, kb) -> Path:
 
 
 def install_skill(codex=False, claude=False, home=None, kb=None):
-    from .workspace import TEMPLATES
+    from .workspace import templates
 
     home = Path(home or Path.home())
     both = not codex and not claude
@@ -346,7 +370,7 @@ def install_skill(codex=False, claude=False, home=None, kb=None):
     for root in roots:
         target = root / "skills/knosis/SKILL.md"
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(TEMPLATES / "SKILL.md", target)
+        shutil.copyfile(templates() / "SKILL.md", target)
         print(target)
     if kb and (codex or both):
         print(install_codex_mcp(Path(os.environ.get("CODEX_HOME", home / ".codex")) / "config.toml", kb))
@@ -390,7 +414,7 @@ def main(argv: list[str] | None = None) -> None:
     install.add_argument("--claude", action="store_true")
     install.add_argument("--kb", help="also install an MCP server for this knowledge base into Codex (writes config.toml) and print the Claude Code command")
     sub.add_parser("mcp", help="expose the knowledge and tool layers over MCP (stdio)").add_argument("--ws", default=".", help="workspace or knowledge base")
-    sub.add_parser("migrate", help="convert a v0.4-layout workspace or knowledge base to v0.5 (kb/ + evidence/)").add_argument("dirs", nargs="+")
+    sub.add_parser("migrate", help="convert a workspace or knowledge base in an older layout to the current one (kb/ + evidence/)").add_argument("dirs", nargs="+")
     args = p.parse_args(argv)
 
     if args.cmd == "list":

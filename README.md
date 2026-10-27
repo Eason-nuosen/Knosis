@@ -42,6 +42,9 @@ pip install 'knosis[all]'        # plus the dependencies some datasets need (net
 You also need a coding agent: [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://claude.com/claude-code);
 both are tested. From source: `git clone`, then `pip install -e '.[all]'`; run the tests with `pytest -q`.
 
+Prompts, task briefs and data cards given to the agent are in English, so the agent writes knowledge in English.
+Set `KNOSIS_LANG=zh` to use the Chinese versions (`knosis/workspace/templates_cn/`, `knosis/data/cards_cn/`) instead.
+
 ## Quick start: personal knowledge base
 
 No dataset required.
@@ -124,6 +127,7 @@ This is soft isolation, not a security boundary: for formal evaluations keep the
 knosis knowledge check       --ws <dir>                    # structure, sources, status vs. evidence
 knosis knowledge consolidate --ws <dir>                    # deduplicate → resolve contradictions → organize → structure
 knosis knowledge compact     --ws <dir> [--topic <topic>]  # shrink a large base: agent decides what to merge, or only one topic
+knosis knowledge view        --ws <dir>                    # browse the knowledge base in your browser (page written by the agent)
 knosis mcp --ws <dir>                                      # expose the knowledge layer and tools over MCP (16 tools)
 ```
 
@@ -155,12 +159,16 @@ knosis knowledge outline --ws <dir>                       # outline rendered as 
 knosis knowledge graph   --ws <dir>                       # summary of the knowledge graph and flows
 knosis knowledge graph   --ws <dir> --entity <entity> --depth 2   # subgraph around one entity, edges with their units
 knosis knowledge graph   --ws <dir> --view flows|derivation|cards
+knosis knowledge view    --ws <dir>                       # the agent writes a self-contained page (view/index.html), opened in your browser
+knosis knowledge view    --ws <dir> --request "only knowledge about orders"   # regenerate with your own focus
 ```
 
+`knowledge view` has the agent read the knowledge base and write an offline HTML page (outline, knowledge graph, flows,
+derivation graph; click any unit to see its content and evidence). Knosis checks that the page loads nothing from the
+network and that the knowledge was not changed, then opens it; later runs just open it, `--refresh` regenerates it.
 Agents read the same content through the MCP tools `knowledge_outline` and `knowledge_graph`.
 The [live demo](https://eason-nuosen.github.io/Knosis/) renders the knowledge graphs, flows, derivation graphs, cards and
-outlines of each dataset as interactive pages, plus an atlas merged from several datasets; the site is generated from the
-demo workspaces by `site/build.py`.
+outlines of each dataset as interactive pages, plus an atlas merged from several datasets.
 
 ## Supported data
 
@@ -187,8 +195,6 @@ to be verified; they never modify the data.
 
 ## Documentation
 
-The documents below are currently in Chinese.
-
 | Document | Contents |
 | --- | --- |
 | [docs/knowledge.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/knowledge.md) | knowledge format, status and evidence, rules for consolidation and compaction |
@@ -197,7 +203,7 @@ The documents below are currently in Chinese.
 | [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | demos and results on each dataset (web version: [live demo](https://eason-nuosen.github.io/Knosis/)) |
 | [docs/scope.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/scope.md) | scope and positioning |
 | [docs/extending.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/extending.md) | adding datasets, evaluations or tools |
-| [docs/design.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/design.md) | design background (four layers: data / knowledge / tools / decision) |
+| [docs/architecture.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/architecture.md) | architecture: four layers (data / knowledge / tools / decision) and workspaces |
 
 ## License
 

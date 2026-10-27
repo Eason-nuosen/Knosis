@@ -1,49 +1,49 @@
-# 内化 4/4：结构化（知识图谱 + 流程图）
+# Consolidation 4/4: structuring (knowledge graph + flows)
 
-知识层根目录：`$base`（$n_units 条活跃 κ，$n_inactive 条已失效）。大纲 `kb/outline.yaml` 已在上一步整理好。
-目标：把同一批知识再组织成两种结构，让人和 agent 能按「对象之间的关系」和「做事的步骤」来查：
+Knowledge layer root: `$base` ($n_units active κ, $n_inactive inactive). The outline `kb/outline.yaml` was organized in the previous step.
+Goal: organize the same knowledge into two more structures, so that people and agents can look it up by "relations between objects" and by "steps for doing things":
 
-- **知识图谱** `$base/kb/graph.json`：环境里有哪些对象（表、列、实体类型、变量、概念、指标、工具、任务……），
-  它们之间是什么关系。每条边就是某几条单元说的那件事。
-- **流程图** `$base/kb/flows/<名字>.json`：某类任务按什么步骤做、在哪里检查、在哪里分支，每一步用到哪条知识。
-  来源是 procedure 单元、method 元知识与 skill。
+- **Knowledge graph** `$base/kb/graph.json`: which objects exist in the environment (tables, columns, entity types, variables, concepts, metrics, tools, tasks...),
+  and what relations hold between them. Each edge is the thing that some units say.
+- **Flows** `$base/kb/flows/<name>.json`: which steps a kind of task follows, where it checks, where it branches, and which knowledge each step uses.
+  Sources are procedure units, method meta-knowledge and skills.
 
-现状：
+Current state:
 $summary
 
 $existing
 
-## 输入
+## Inputs
 
-- `$base/kb/knowledge/units.jsonl`、`$base/kb/skills/*/SKILL.md`、`$base/kb/outline.yaml`、`$base/kb/knowledge/ontology/`；
-  可用 `knosis knowledge select --ws $base`、`knosis knowledge outline --ws $base`、`knosis knowledge trace <id> --ws $base` 查看。
+- `$base/kb/knowledge/units.jsonl`, `$base/kb/skills/*/SKILL.md`, `$base/kb/outline.yaml`, `$base/kb/knowledge/ontology/`;
+  you can inspect them with `knosis knowledge select --ws $base`, `knosis knowledge outline --ws $base`, `knosis knowledge trace <id> --ws $base`.
 
-## 知识图谱的要求
+## Knowledge graph requirements
 
-1. 实体：`{"id", "type", "label", "units": [...], "description"}`。`id` 全图唯一，用 `类型:名字` 的形式（如 `table:orders`、
-   `column:orders.amount`、`variable:mass1`、`concept:Customer`、`tool:tabpfn`、`task:driver-top3`）。`type` 优先取
-   dataset / table / column / entity_type / variable / concept / metric / tool / task / file。`units` 列出描述这个对象本身的单元
-   （如它的粒度、取值范围、分布、坑）。
-2. 关系：`{"src", "rel", "dst", "label", "units": [...]}`。`rel` 用简短的英文动词短语（has_column、references、joins、
-   derived_from、predicts、depends_on、measured_by、maps_to、contains、constrains……），`label` 写一句中文说明
-   （如「cust_id，多对一」）。**每条关系至少引用一条活跃单元**，引用的单元必须真的说了这件事。
-3. 只组织、不新增断言：图谱里出现的关系都要能在引用的单元里找到；单元没说过的关系不要画。不修改 `units.jsonl`、证据与 skill。
-4. 覆盖：活跃的对象知识（$n_objects 条，instance / relation / dataset）至少 $graph_cov 要被某个实体或关系引用。
-   规则（rule）与公式（formula）尽量挂到它们约束的对象上，网页会据此生成「规则 / 公式卡片」。
-5. 本体（ontology）已经是结构化的，图谱里可以用相同的实体名，并在 `units` 里引用 `ontology/...` 单元。
+1. Entities: `{"id", "type", "label", "units": [...], "description"}`. `id` is unique across the graph, in the form `type:name` (e.g. `table:orders`,
+   `column:orders.amount`, `variable:mass1`, `concept:Customer`, `tool:tabpfn`, `task:driver-top3`). `type` preferably takes
+   dataset / table / column / entity_type / variable / concept / metric / tool / task / file. `units` lists the units describing this object itself
+   (e.g. its granularity, value range, distribution, pitfalls).
+2. Relations: `{"src", "rel", "dst", "label", "units": [...]}`. `rel` is a short English verb phrase (has_column, references, joins,
+   derived_from, predicts, depends_on, measured_by, maps_to, contains, constrains...), `label` is a one-sentence plain-language description
+   (e.g. "cust_id, many-to-one"). **Every relation references at least one active unit**, and the referenced units must really say this thing.
+3. Only organize, add no assertions: every relation in the graph must be found in the units it references; do not draw relations the units never stated. Do not modify `units.jsonl`, evidence or skills.
+4. Coverage: of the active object knowledge ($n_objects units, instance / relation / dataset), at least $graph_cov must be referenced by some entity or relation.
+   Attach rules (rule) and formulas (formula) to the objects they constrain as much as possible; the web page uses this to generate "rule / formula cards".
+5. The ontology is already structured; the graph may use the same entity names and reference `ontology/...` units in `units`.
 
-## 流程图的要求
+## Flow requirements
 
-1. 每张流程图一个文件 `kb/flows/<名字>.json`：`{"name", "title", "goal", "nodes": [...], "edges": [...]}`。
-2. 节点 `{"id", "kind", "text", "units": [...]}`，`kind` 取 start / step / check / decision / end；恰有一个 start、
-   至少一个 end，所有节点从 start 可达；decision 至少两条出边，出边写 `label`（如「是」「否」「> 10%」）。
-   step / check / decision 至少引用一条活跃单元或 `skill:<名字>`。
-3. 边 `{"src", "dst", "label"}`。
-4. 一张图讲一类任务或一个方法（例如「判断表的粒度」「从受控实验发现定律」「提交前自检」），一般 4 到 12 个节点；
-   skill 的步骤、method 元知识、procedure 单元应当出现在某张流程图里。procedure / method / skill 共 $n_procedural 条，
-   至少 $flow_cov 要被流程图引用。
+1. One file per flow `kb/flows/<name>.json`: `{"name", "title", "goal", "nodes": [...], "edges": [...]}`.
+2. Nodes `{"id", "kind", "text", "units": [...]}`, `kind` is one of start / step / check / decision / end; exactly one start,
+   at least one end, all nodes reachable from start; a decision has at least two outgoing edges, and outgoing edges have a `label` (e.g. "yes", "no", "> 10%").
+   step / check / decision reference at least one active unit or `skill:<name>`.
+3. Edges `{"src", "dst", "label"}`.
+4. One flow covers one kind of task or one method (e.g. "determine the granularity of a table", "discover a law from controlled experiments", "self-check before submission"), usually 4 to 12 nodes;
+   the steps of skills, method meta-knowledge and procedure units should appear in some flow. There are $n_procedural procedure / method / skill items in total,
+   and at least $flow_cov must be referenced by flows.
 
-## 验收
+## Acceptance check
 
-`knosis knowledge check --ws $base` 没有以 `structure` 开头的问题，且不新增其他问题$check_note；覆盖率达到上面的要求；
-`knosis knowledge graph --ws $base` 可以看到摘要。最后用两三句话说明图谱的主干是什么、画了哪几张流程图。
+`knosis knowledge check --ws $base` has no problems starting with `structure` and introduces no other new problems$check_note; coverage meets the requirements above;
+`knosis knowledge graph --ws $base` shows the summary. Finally, explain in two or three sentences what the backbone of the graph is and which flows you drew.

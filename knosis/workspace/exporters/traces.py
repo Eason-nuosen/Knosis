@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from ...data.traces import calls, dump, normalize, render as render_trace, warning
+from ... import lang
 from . import place, register, render
 
 
@@ -13,13 +14,18 @@ def describe(name, t) -> str:
     """The BRIEF line describing one trace."""
     subs = len(t.get("subagent_trajectories", []))
     fmt = t.get("extra", {}).get("knosis", {}).get("format", "")
-    return (f"- `data/traces/{name}.json`（`.md` 便于阅读）：{fmt} 轨迹，{len(t['steps'])} 步，工具调用 {calls(t)} 次"
-            + (f"，子 agent {subs} 个" if subs else ""))
+    return lang.t(f"- `data/traces/{name}.json` (`.md` for reading): {fmt} trace, {len(t['steps'])} steps, {calls(t)} tool calls"
+                  + (f", {subs} subagents" if subs else ""),
+                  f"- `data/traces/{name}.json`（`.md` 便于阅读）：{fmt} 轨迹，{len(t['steps'])} 步，工具调用 {calls(t)} 次"
+                  + (f"，子 agent {subs} 个" if subs else ""))
 
 
 def brief(scenario, lines, n_env=None) -> str:
-    env_note = (f"`data/env/` 是这些轨迹当时面对的环境数据（{n_env} 个文件，只读）：可以在上面重新检查轨迹里的说法。"
-                if n_env is not None else "没有提供轨迹当时的环境，只能依据轨迹本身；无法复核的说法保持 inferred。")
+    env_note = (lang.t(f"`data/env/` is the environment data these traces faced at the time ({n_env} files, read-only): you can re-check the traces' claims against it.",
+                       f"`data/env/` 是这些轨迹当时面对的环境数据（{n_env} 个文件，只读）：可以在上面重新检查轨迹里的说法。")
+                if n_env is not None else
+                lang.t("The traces' environment at the time is not provided: rely on the traces alone; claims that cannot be re-checked stay inferred.",
+                       "没有提供轨迹当时的环境，只能依据轨迹本身；无法复核的说法保持 inferred。"))
     return render("traces.md", name=scenario, n_traces=len(lines), listing="\n".join(lines), env=env_note)
 
 

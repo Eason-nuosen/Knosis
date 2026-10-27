@@ -1,40 +1,40 @@
-# AlphaBench — 因子评估（$universe）
+# AlphaBench — factor evaluation ($universe)
 
-## 数据是什么
+## What the data is
 
-`data/market.parquet`：$universe 历史成分股的日频行情面板（列 `datetime`、`instrument` 及 Qlib 字段，
-如 open / high / low / close / volume / vwap / amount / factor / change），只到 **$start 之前**。
-价格是 Qlib 复权价。`data/${universe}_members.csv`：每只股票进出该指数的区间（截断在 $start 之前）。
-行情可能含噪声（停牌、缺失、异常值等）；哪些是噪声、如何处理，由你判断。
+`data/market.parquet`: a daily market panel of the historical constituents of $universe (columns `datetime`, `instrument` and Qlib fields
+such as open / high / low / close / volume / vwap / amount / factor / change), covering only the period **before $start**.
+Prices are Qlib adjusted prices. `data/${universe}_members.csv`: the intervals during which each stock entered and left the index (truncated before $start).
+The market data may contain noise (trading halts, missing values, outliers, etc.); what counts as noise and how to handle it is up to you.
 
-## 下游任务是什么
+## What the downstream task is
 
-每道题给一个因子（`factor` 名与 `expression`，Qlib 风格 DSL），预测它在 **$start 至 $end**
-（不提供该区间的行情）的表现。上游口径：每日在成分股截面上计算因子值与次日收益
-`Ref($$close, -1)/$$close - 1` 的 Pearson 相关为 IC、Spearman 相关为 RankIC；
-窗口内平均 |IC| < 0.01 为 `Noise`，否则按平均 IC 的符号为 `Positive` / `Negative`。
-测试题 $n_test 道（decide 阶段给出），开发题 $n_dev 道在 `tasks/dev.jsonl`。
+Each question gives a factor (`factor` name and `expression`, in a Qlib-style DSL) and asks you to predict its performance over **$start to $end**
+(market data for that period is not provided). Upstream convention: each day, over the constituent cross-section, the Pearson correlation between the factor value and the next-day return
+`Ref($$close, -1)/$$close - 1` is the IC, and the Spearman correlation is the RankIC;
+if the mean |IC| over the window is < 0.01 the factor is `Noise`, otherwise it is `Positive` / `Negative` according to the sign of the mean IC.
+There are $n_test test questions (given in the decide stage); $n_dev dev questions are in `tasks/dev.jsonl`.
 
-表达式里出现的算子：$operators
+Operators that appear in the expressions: $operators
 
-字段：$fields
+Fields: $fields
 
-不在题目里的表达式示例：
+Example expressions not among the questions:
 
 $examples
 
-交付 `predictions.jsonl`，每行：
+Deliver `predictions.jsonl`, one line per question:
 
 ```json
-{"id": "factor/<名字>", "answer": {"signal": "Positive", "mean_ic": 0.021, "mean_rankic": 0.03,
+{"id": "factor/<name>", "answer": {"signal": "Positive", "mean_ic": 0.021, "mean_rankic": 0.03,
  "scores": {"Performance": 4, "Stability": 3, "WinRate": 5, "Skewness": 2}}}
 ```
 
-`signal` 必填；`mean_ic`、`mean_rankic` 与 `scores`（四个维度在同类因子内的 1–5 分位：
-Performance=|ICIR|、Stability=1−IC 符号翻转率、WinRate=IC 与均值同号的天数比例、Skewness=IC 偏度；Noise 全为 1）可选，给了就计分。
-评测：signal 准确率、mean_ic / mean_rankic 的 MAE 与 Spearman、按预测 mean_ic 取前 10% 的 Precision、各维度准确率。
+`signal` is required; `mean_ic`, `mean_rankic` and `scores` (1–5 quantile scores within the same factor class on four dimensions:
+Performance=|ICIR|, Stability=1−IC sign-flip rate, WinRate=fraction of days on which IC has the same sign as its mean, Skewness=IC skewness; all 1 for Noise) are optional and are scored if given.
+Evaluation: signal accuracy, MAE and Spearman of mean_ic / mean_rankic, Precision of the top 10% by predicted mean_ic, and per-dimension accuracy.
 
-## 知识应该服务什么
+## What the knowledge should serve
 
-让未见过的因子也能估得准：算子与字段组合的规律、市场在历史上的特性、因子表现随时间的稳定性等，都可以提取。
-知识应当可复用，不应缓存具体题目的答案。
+Make estimates accurate for unseen factors as well: patterns of operator and field combinations, historical characteristics of the market, stability of factor performance over time, and so on can all be extracted.
+Knowledge should be reusable; it should not cache answers to specific questions.

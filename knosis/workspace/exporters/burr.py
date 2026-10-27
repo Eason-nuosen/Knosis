@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ...lang import t
 from . import place, register, render, split
 
 
@@ -21,6 +22,7 @@ def export(ds, ws: Path, write_data=True, dev=None, seed=0, **opts) -> dict:
     dev_tasks, tests = split(tasks, (max(1, len(tasks) // 4) if group else 0) if dev is None else dev, seed=seed)
     return {
         "brief": render("burr.md", scenario=ds.scenario, n_dev=len(dev_tasks), n_test=len(tests),
-                        layout="每个场景一个子目录 `data/<场景>/`" if group else "所有文件直接在 `data/` 下"),
+                        layout=t("one subdirectory per scenario, `data/<scenario>/`", "每个场景一个子目录 `data/<场景>/`") if group
+                        else t("all files directly under `data/`", "所有文件直接在 `data/` 下")),
         "tasks": tests, "dev": dev_tasks, "holdout": [], "output": "predictions.jsonl", "modalities": ["tables"],
     }

@@ -29,7 +29,7 @@ Supported formats (`detect`):
 - messages: OpenAI-style messages, a JSON list or JSONL, each `{role, content[, tool_calls]}`; `{"messages": [...]}` wrappers are accepted too
 - whoandwhen: one Who&When failure log (`{question, history: [...], mistake_*}`), one step per history entry (step = index + 1)
 - atif: traces already in ATIF v1.7
-- legacy: pre-v0.5 Knosis step sequences (one `{step, role, kind, text}` per line), only for `knosis migrate`
+- legacy: older Knosis step sequences (one `{step, role, kind, text}` per line), only for `knosis migrate`
 """
 
 from __future__ import annotations
@@ -38,6 +38,8 @@ import json
 import re
 from collections import Counter
 from pathlib import Path
+
+from .. import lang
 
 SCHEMA = "ATIF-v1.7"
 READER = "knosis-traces/1"
@@ -453,7 +455,7 @@ def whoandwhen(rows, path=None) -> dict:
 
 
 def legacy(rows, path=None) -> tuple[dict, dict[int, int]]:
-    """Pre-v0.5 step sequence → ATIF; returns the trace and old step → new step. The old format has no call ids, so results are paired by position."""
+    """Older step sequence → ATIF; returns the trace and old step → new step. The old format has no call ids, so results are paired by position."""
     items = [item(r["role"], r["kind"], r.get("text", ""), name=r.get("name"),
                   arguments=r.get("text", "") if r["kind"] == "call" else None) for r in rows]
     steps, members = assemble(items)
@@ -571,13 +573,14 @@ def render(t, title="") -> str:
     lines = [f"# {title or t.get('session_id', '')}\n"]
     task = info.get("task") or {}
     if task.get("question"):
-        lines.append(f"**任务**：{task['question']}\n")
+        lines.append(lang.t(f"**Task**: {task['question']}\n", f"**任务**：{task['question']}\n"))
     if info.get("agents"):
-        lines.append("**agent**：" + "、".join(f"`{a}`" for a in info["agents"]) + "\n")
+        lines.append(lang.t("**agent**: ", "**agent**：") + lang.t(", ", "、").join(f"`{a}`" for a in info["agents"]) + "\n")
     lines += render_steps(t["steps"])
     for sub in t.get("subagent_trajectories", []):
         sid = sub.get("trajectory_id")
-        lines.append(f"\n# 子 agent `{sid}`（引用写 `#agent/{sid}/step/<n>`）\n")
+        lines.append(lang.t(f"\n# Subagent `{sid}` (cite as `#agent/{sid}/step/<n>`)\n",
+                            f"\n# 子 agent `{sid}`（引用写 `#agent/{sid}/step/<n>`）\n"))
         lines += render_steps(sub["steps"])
     return "\n".join(lines)
 
@@ -587,10 +590,11 @@ def render_steps(steps) -> list[str]:
     for s in steps:
         note = s.get("extra", {}).get("knosis", {})
         who = f" `{note['agent']}`" if note.get("agent") else ""
-        cut_note = f"（截断：{', '.join(f'{k} 原 {v} 字符' for k, v in note['truncated'].items())}）" if note.get("truncated") else ""
+        cut_note = lang.t(f" (truncated: {', '.join(f'{k} originally {v} characters' for k, v in note['truncated'].items())})",
+                          f"（截断：{', '.join(f'{k} 原 {v} 字符' for k, v in note['truncated'].items())}）") if note.get("truncated") else ""
         lines.append(f"## step {s['step_id']} · {s['source']}{who}{cut_note}\n")
         if s.get("reasoning_content"):
-            lines.append(f"*思考*：{s['reasoning_content']}\n")
+            lines.append(lang.t(f"*Reasoning*: {s['reasoning_content']}\n", f"*思考*：{s['reasoning_content']}\n"))
         if s.get("message"):
             lines.append(f"{as_text(s['message'])}\n")
         results = {}
@@ -599,9 +603,10 @@ def render_steps(steps) -> list[str]:
         for c in s.get("tool_calls", []):
             args = c["arguments"]
             body = args["input"] if set(args) == {"input"} and isinstance(args["input"], str) else json.dumps(args, ensure_ascii=False, indent=1)
-            lines.append(f"**调用** `{c['function_name']}`（{c['tool_call_id']}）：\n\n```\n{body}\n```\n")
+            lines.append(lang.t(f"**Call** `{c['function_name']}` ({c['tool_call_id']}):\n\n```\n{body}\n```\n",
+                                f"**调用** `{c['function_name']}`（{c['tool_call_id']}）：\n\n```\n{body}\n```\n"))
             for out in results.pop(c["tool_call_id"], []):
-                lines.append(f"**结果**：\n\n```\n{out}\n```\n")
+                lines.append(lang.t(f"**Result**:\n\n```\n{out}\n```\n", f"**结果**：\n\n```\n{out}\n```\n"))
         for out in [o for v in results.values() for o in v]:
-            lines.append(f"**结果**（未配对）：\n\n```\n{out}\n```\n")
+            lines.append(lang.t(f"**Result** (unpaired):\n\n```\n{out}\n```\n", f"**结果**（未配对）：\n\n```\n{out}\n```\n"))
     return lines

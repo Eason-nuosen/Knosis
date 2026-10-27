@@ -7,15 +7,17 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from ... import lang
 from . import register, render, split
 
 
 def graph_summary(graph):
-    nodes = Counter(attrs.get("label", "(无 label)") for _, attrs in graph.nodes(data=True))
-    edges = Counter(attrs.get("label", "(无 label)") for *_, attrs in graph.edges(data=True))
+    unlabeled = lang.t("(no label)", "(无 label)")
+    nodes = Counter(attrs.get("label", unlabeled) for _, attrs in graph.nodes(data=True))
+    edges = Counter(attrs.get("label", unlabeled) for *_, attrs in graph.edges(data=True))
     attributes = {}
     for _, attrs in graph.nodes(data=True):
-        attributes.setdefault(attrs.get("label", "(无 label)"), set()).update(attrs)
+        attributes.setdefault(attrs.get("label", unlabeled), set()).update(attrs)
     return {
         "graph_type": type(graph).__name__, "n_nodes": graph.number_of_nodes(),
         "n_edges": graph.number_of_edges(),
@@ -73,22 +75,36 @@ def nl_complete(question: str, cypher: str) -> bool:
             and (not words or any(w in squash(question) for w in words)))
 
 
-NOISE_SECTION = {
-    False: "## 可选交付：噪声断言\n\ndecide 阶段除答案外，还可以交 `stages/4_decide/noise.jsonl`：",
-    True: "## 必交：噪声断言与识别方法\n\n识别噪声的方法本身也是知识：把它写成 `form=method` 的单元（步骤、适用条件、已知局限），"
-          "附一个可执行检查 `evidence/checks/<id>.py`（读 `data/graph.gpickle`，输出噪声断言），"
-          "使换一张同类图的人也能照做。\n\ndecide 阶段除答案外，必须交 `stages/4_decide/noise.jsonl`：",
-}
+def noise_section(required: bool) -> str:
+    if required:
+        return lang.t("## Required: noise assertions and detection method\n\nThe noise-detection method is itself knowledge: write it as a `form=method` unit (steps, applicability conditions, known limitations),"
+                      " attach an executable check `evidence/checks/<id>.py` (reads `data/graph.gpickle`, outputs noise assertions),"
+                      " so that someone with another graph of the same kind can follow it.\n\nAt decide, besides the answers, you must deliver `stages/4_decide/noise.jsonl`:",
+                      "## 必交：噪声断言与识别方法\n\n识别噪声的方法本身也是知识：把它写成 `form=method` 的单元（步骤、适用条件、已知局限），"
+                      "附一个可执行检查 `evidence/checks/<id>.py`（读 `data/graph.gpickle`，输出噪声断言），"
+                      "使换一张同类图的人也能照做。\n\ndecide 阶段除答案外，必须交 `stages/4_decide/noise.jsonl`：")
+    return lang.t("## Optional deliverable: noise assertions\n\nAt decide, besides the answers, you may also deliver `stages/4_decide/noise.jsonl`:",
+                  "## 可选交付：噪声断言\n\ndecide 阶段除答案外，还可以交 `stages/4_decide/noise.jsonl`：")
 
-QUERY_HELP = {
-    "cypher": """每题提供自然语言问题与 Cypher；答案以真实图为准，不一定等于在观测图上执行 Cypher 的结果。
+
+def query_help(question: str) -> str:
+    if question == "cypher":
+        return lang.t("""Each task provides a natural-language question and Cypher; the answer follows the true graph and need not equal the result of running the Cypher on the observed graph.
+The answer's shape matches the Cypher `RETURN`: for multiple columns write a list of objects (keys are the return aliases, e.g. `[{"a": "Account:1", "cnt": 2}]`);
+for a single column write a list of values; for a single aggregate value write a scalar.""",
+                      """每题提供自然语言问题与 Cypher；答案以真实图为准，不一定等于在观测图上执行 Cypher 的结果。
 答案的形状与 Cypher 的 `RETURN` 一致：返回多列时写成对象列表（键为返回别名，如 `[{"a": "Account:1", "cnt": 2}]`）；
-返回单列时写成值的列表；只返回一个聚合值时写成标量。""",
-    "nl": """每题只提供自然语言问题，不提供 Cypher：需要你自己把问题转成对 `data/graph.gpickle` 的查询。
+返回单列时写成值的列表；只返回一个聚合值时写成标量。""")
+    if question == "nl":
+        return lang.t("""Each task provides only a natural-language question, no Cypher: you need to turn the question into a query over `data/graph.gpickle` yourself.
+The answer follows the true graph and need not equal the result of querying the observed graph directly.
+Shape the answer as the question asks: when each result has multiple values write a list of objects (any key names, e.g. `[{"a": "Account:1", "cnt": 2}]`);
+when each result has one value write a list of values; when only a single aggregate value is asked write a scalar.""",
+                      """每题只提供自然语言问题，不提供 Cypher：需要你自己把问题转成对 `data/graph.gpickle` 的查询。
 答案以真实图为准，不一定等于在观测图上直接查询的结果。
 答案的形状按问题所问：每个结果含多个值时写成对象列表（键名不限，如 `[{"a": "Account:1", "cnt": 2}]`）；
-每个结果只有一个值时写成值的列表；只问一个聚合值时写成标量。""",
-}
+每个结果只有一个值时写成值的列表；只问一个聚合值时写成标量。""")
+    raise KeyError(question)
 
 
 @register("ngdbench")
@@ -138,7 +154,7 @@ def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="
         "brief": render(
             f"ngdbench-{ds.scenario}.md", **graph_summary(graph),
             examples="\n".join(f"- [{t['kind']}] {t['question']}" for t in examples),
-            query_help=QUERY_HELP[question], noise_section=NOISE_SECTION[bool(noise_report)],
+            query_help=query_help(question), noise_section=noise_section(bool(noise_report)),
         ),
         "extras": ["noise.jsonl"] if noise_report else [],
         "tasks": tests, "dev": dev_tasks, "holdout": [task["id"] for task in examples],

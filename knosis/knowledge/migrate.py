@@ -1,8 +1,8 @@
-"""Convert a v0.4-layout workspace or knowledge base to v0.5 (`kb/` + `evidence/`), see `layout`.
+"""Convert a workspace or knowledge base in an older layout to the current one (`kb/` + `evidence/`), see `layout`.
 
     knosis migrate <workspace or knowledge base> [...]
 
-v0.4: a workspace's knowledge layer is in `knowledge/`; a knowledge base is itself the knowledge layer directory (`units.jsonl`, `evidence.jsonl` ... at the root).
+Older layout: a workspace's knowledge layer is in `knowledge/`; a knowledge base is itself the knowledge layer directory (`units.jsonl`, `evidence.jsonl` ... at the root).
 What is converted:
 - Moves: units.jsonl / ontology/ -> kb/knowledge/, skills/, outline.yaml -> kb/, evidence.jsonl -> evidence/ledger.jsonl,
   checks/, feedback/, traces/ -> evidence/; per-stage knowledge snapshots of a workspace (`stages/**/knowledge/`) are converted too.
@@ -11,9 +11,9 @@ What is converted:
 - Evidence on skills (unit `skill:<name>`) becomes a usage unit (`usage/skill:<name>/migrated`, `meta.of` pointing to the skill) and is reattached to it.
 Workspaces get `AGENTS.md` rewritten from the new template, and each commits a git version.
 
-Traces (after v0.5): old step sequences `<id>.jsonl` under `traces/` (one `{step, role, kind, text}` per line) become ATIF traces `<id>.json` + `.md`
+Traces: old step sequences `<id>.jsonl` under `traces/` (one `{step, role, kind, text}` per line) become ATIF traces `<id>.json` + `.md`
 (see `knosis.data.traces`); references `traces/<id>.jsonl#step/<n>` are rewritten to the new step numbers (old steps merged into one ATIF step point to it);
-`BRIEF.md` of trace workspaces is rewritten in the new format. Workspaces or knowledge bases already on the v0.5 layout get only this step.
+`BRIEF.md` of trace workspaces is rewritten in the new format. Workspaces or knowledge bases already on the current layout get only this step.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 from ..data.traces import detect, dump, legacy, read, render
+from ..lang import t
 from .layout import CHECKS, FEEDBACK, LEDGER, ONTOLOGY, OUTLINE, SKILLS, TRACES, UNITS, ensure
 from .units import load_units, write_units
 
@@ -78,10 +79,13 @@ def convert(old: Path, root: Path) -> dict:
         verified = any(e["method"] in {"feedback", "ablation"} for e in supports)
         status = "contested" if decisive and decisive[-1]["verdict"] == "refute" else ("verified" if verified else "inferred")
         sources = list(dict.fromkeys(e["source"] for e in entries))
-        units.append({"id": uid, "content": f"{sid} 的效果记录（迁移自 v0.4 记在 skill 上的 {len(entries)} 条证据："
-                                            f"支持 {len(supports)}，反驳 {len(decisive) - len(supports)}）。",
+        units.append({"id": uid, "content": t(f"Effect record of {sid} (migrated from the {len(entries)} evidence entries kept on the skill: "
+                                              f"{len(supports)} support, {len(decisive) - len(supports)} refute).",
+                                              f"{sid} 的效果记录（迁移自旧布局记在 skill 上的 {len(entries)} 条证据："
+                                              f"支持 {len(supports)}，反驳 {len(decisive) - len(supports)}）。"),
                       "form": "fact", "scope": "usage", "provenance": " ; ".join(sources), "status": status,
-                      "condition": "由 v0.4 迁移；具体题型与样本见各条证据", "meta": {"of": sid, "migrated": True}})
+                      "condition": t("migrated from an older layout; see each evidence entry for question types and samples",
+                                     "由旧布局迁移；具体题型与样本见各条证据"), "meta": {"of": sid, "migrated": True}})
         for e in entries:
             e["unit"] = uid
     write_units(root / UNITS, units)
@@ -207,20 +211,20 @@ def migrate(path) -> dict:
                 report["snapshots"] += 1
         for used in path.glob("stages/**/*used_units.jsonl"):
             used.write_text(rewrite_text(used.read_text(encoding="utf-8")), encoding="utf-8")
-        from ..workspace import TEMPLATES
+        from ..workspace import templates
 
-        (path / "AGENTS.md").write_text(Template((TEMPLATES / "AGENTS.md").read_text(encoding="utf-8")).substitute(
+        (path / "AGENTS.md").write_text(Template((templates() / "AGENTS.md").read_text(encoding="utf-8")).substitute(
             python=sys.executable), encoding="utf-8")
-        messages.append("migrate to v0.5 layout (kb/ + evidence/)")
+        messages.append("migrate to the current layout (kb/ + evidence/)")
     elif (path / "units.jsonl").exists():
         report = {"path": str(path), "kind": "kb", "current": convert(path, path)}
         gitignore = path / ".gitignore"
         if gitignore.exists():
             gitignore.write_text(gitignore.read_text(encoding="utf-8").replace("outline.draft.yaml", "kb/outline.draft.yaml"),
                                  encoding="utf-8")
-        messages.append("migrate to v0.5 layout (kb/ + evidence/)")
+        messages.append("migrate to the current layout (kb/ + evidence/)")
     else:
-        raise ValueError(f"{path}: not a v0.4 workspace or knowledge base")
+        raise ValueError(f"{path}: not a workspace or knowledge base in an older layout")
     traces = upgrade_traces(path)
     if traces["traces"]:
         messages.append(f"convert {traces['traces']} traces to ATIF v1.7")

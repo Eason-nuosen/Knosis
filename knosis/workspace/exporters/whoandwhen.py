@@ -10,6 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 from ...data.traces import dump, normalize, render as render_trace
+from ... import lang
 from . import register, render, split
 
 
@@ -20,7 +21,8 @@ def export(ds, ws: Path, write_data=True, dev=10, limit=30, seed=0, answer=False
     tasks = []
     for t in ds.tasks:
         task = {"id": t.id, "question": t.input, "trace": f"data/traces/{t.id}.json", "agents": t.meta["agents"],
-                "n_steps": t.meta["n_steps"], "system": "Magentic-One（人工搭建）" if t.kind == "hand" else "CaptainAgent（自动生成）"}
+                "n_steps": t.meta["n_steps"], "system": lang.t("Magentic-One (hand-crafted)", "Magentic-One（人工搭建）") if t.kind == "hand"
+                else lang.t("CaptainAgent (automatically generated)", "CaptainAgent（自动生成）")}
         if answer:
             task["reference_answer"] = t.meta["reference_answer"]
         tasks.append(task)
@@ -34,7 +36,9 @@ def export(ds, ws: Path, write_data=True, dev=10, limit=30, seed=0, answer=False
     return {
         "brief": render("whoandwhen.md", scenario=ds.scenario, n_dev=len(dev_tasks), n_test=len(tests),
                         n_hand=kinds.get("hc", 0), n_algorithm=kinds.get("ag", 0),
-                        answer_note="题目里给出了任务的标准答案（`reference_answer`）。" if answer
-                        else "不提供任务的标准答案：只能从日志本身判断哪里出了错。"),
+                        answer_note=lang.t("Each question includes the task's reference answer (`reference_answer`).",
+                                           "题目里给出了任务的标准答案（`reference_answer`）。") if answer
+                        else lang.t("The task's reference answer is not provided: judge what went wrong from the log alone.",
+                                    "不提供任务的标准答案：只能从日志本身判断哪里出了错。")),
         "tasks": tests, "dev": dev_tasks, "holdout": [], "output": "predictions.jsonl", "modalities": ["trace"],
     }

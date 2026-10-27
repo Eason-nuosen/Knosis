@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from knosis import lang
 from knosis.tools import write_result
 
 
@@ -78,8 +79,9 @@ def findings(result, args):
     for i, row in enumerate(result.sort_values(column, ascending=False).head(args.topk).to_dict("records")):
         units.append({
             "id": f"tabpfn/{args.command}/{i}", "form": "finding", "status": "inferred",
-            "content": f"row {row['row_id']}: {'可疑标签' if args.command == 'oof' else '预测不确定性较高'}",
-            "condition": "模型注解，需在训练数据上验证；不使用测试 GT",
+            "content": f"row {row['row_id']}: " + (lang.t("suspicious label", "可疑标签") if args.command == 'oof'
+                                                    else lang.t("high prediction uncertainty", "预测不确定性较高")),
+            "condition": lang.t("model annotation, verify on the training data; test GT not used", "模型注解，需在训练数据上验证；不使用测试 GT"),
             "provenance": f"tool:tabpfn@0.2(command={args.command},model={args.model}) ; {source}#row/{row['row_id']}",
             "meta": {"score": row[column], **row},
         })
@@ -173,15 +175,21 @@ def cv_units(records, args):
     targets = dict(u.split("=", 1) for u in args.unit)
     for r in records[1:]:
         metric = r["metric"].upper() if r["metric"] == "rmse" else "log loss"
-        scope = "" if r["n_rows"] == records[0]["n_rows"] else f"在 {r['n_rows']} 行子集上"
-        note = (f"{metric} {r['base_mean']:.4g} → {r['mean']:.4g}，Δ={r['delta']:+.4g}±{r['delta_std']:.4g}"
-                f"（{args.folds} 折配对）" + (f"；accuracy {r['base_accuracy']:.3f} → {r['accuracy']:.3f}" if "accuracy" in r else ""))
+        scope = "" if r["n_rows"] == records[0]["n_rows"] else lang.t(f" on a {r['n_rows']}-row subset", f"在 {r['n_rows']} 行子集上")
+        accuracy = f"accuracy {r['base_accuracy']:.3f} → {r['accuracy']:.3f}" if "accuracy" in r else ""
+        note = lang.t(f"{metric} {r['base_mean']:.4g} → {r['mean']:.4g}, Δ={r['delta']:+.4g}±{r['delta_std']:.4g}"
+                      f" ({args.folds}-fold paired)" + (f"; {accuracy}" if accuracy else ""),
+                      f"{metric} {r['base_mean']:.4g} → {r['mean']:.4g}，Δ={r['delta']:+.4g}±{r['delta_std']:.4g}"
+                      f"（{args.folds} 折配对）" + (f"；{accuracy}" if accuracy else ""))
         source = f"tool:tabpfn@0.2(cv,variant={r['variant']},metric={r['metric']},folds={args.folds},seed={args.seed})"
         units.append({
             "id": f"tabpfn/cv/{r['variant']}", "form": "finding", "status": "inferred",
-            "content": f"变体 {r['variant']}（{r['spec']}）{scope}使 {metric} 从 {r['base_mean']:.4g} 变为 {r['mean']:.4g}"
-                       f"（Δ={r['delta']:+.4g}±{r['delta_std']:.4g}，{args.folds} 折）",
-            "condition": f"TabPFN 交叉验证，目标 {args.target}，基线在同一批行上评估；模型注解，需在数据上验证",
+            "content": lang.t(f"Variant {r['variant']} ({r['spec']}){scope} changes {metric} from {r['base_mean']:.4g} to {r['mean']:.4g}"
+                              f" (Δ={r['delta']:+.4g}±{r['delta_std']:.4g}, {args.folds} folds)",
+                              f"变体 {r['variant']}（{r['spec']}）{scope}使 {metric} 从 {r['base_mean']:.4g} 变为 {r['mean']:.4g}"
+                              f"（Δ={r['delta']:+.4g}±{r['delta_std']:.4g}，{args.folds} 折）"),
+            "condition": lang.t(f"TabPFN cross-validation, target {args.target}, baseline evaluated on the same rows; model annotation, verify on the data",
+                                f"TabPFN 交叉验证，目标 {args.target}，基线在同一批行上评估；模型注解，需在数据上验证"),
             "provenance": f"{source} ; {args.train}",
             "meta": r,
         })
