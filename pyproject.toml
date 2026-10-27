@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "knosis"
-version = "1.0.0"
+version = "1.0.1"
 description = "Knowledge substrate for coding agents (Codex, Claude Code): collect, verify, organize and reuse explicit knowledge"
 readme = "README.md"
 requires-python = ">=3.10"
