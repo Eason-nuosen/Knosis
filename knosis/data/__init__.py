@@ -1,4 +1,4 @@
-"""数据层：统一入口 `load_dataset`，所有数据集返回同一个 `Dataset`。"""
+"""Data layer: single entry point `load_dataset`; every dataset returns the same `Dataset`."""
 
 from .dataset import DATA_DIR, Dataset, Task, Unit, card, data_dir, read
 from .loaders import LOADERS, register
@@ -10,7 +10,7 @@ __all__ = [
 
 
 def load_dataset(name: str, scenario: str | None = None, **kw) -> Dataset:
-    """`load_dataset("relbench", "rel-f1")`；其余参数原样传给该数据集的 loader。"""
+    """`load_dataset("relbench", "rel-f1")`; other arguments are passed through to the dataset's loader."""
     fn = LOADERS[name]
     return fn(scenario, **kw) if scenario is not None else fn(**kw)
 

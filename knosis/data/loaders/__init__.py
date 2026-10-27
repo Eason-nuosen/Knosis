@@ -1,4 +1,4 @@
-"""loader 注册表。新增一个数据集：在本目录写一个模块，用 `@register` 装饰它的 `load`，再加一张 `cards/<name>.md`。"""
+"""Loader registry. To add a dataset: write a module in this directory, decorate its `load` with `@register`, and add a `cards/<name>.md`."""
 
 from __future__ import annotations
 

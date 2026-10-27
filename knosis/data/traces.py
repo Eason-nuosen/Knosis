@@ -1,6 +1,6 @@
-"""agent 轨迹：把各种来源的轨迹统一成 ATIF v1.7（Harbor 的 Agent Trajectory Interchange Format），供 agent 从中提取知识。
+"""Agent traces: normalize traces from various sources to ATIF v1.7 (Harbor's Agent Trajectory Interchange Format) so agents can extract knowledge from them.
 
-一条轨迹一个 JSON 文件 `<id>.json`：
+One JSON file `<id>.json` per trace:
 
     {"schema_version": "ATIF-v1.7", "session_id": "...", "agent": {"name": "codex", "version": "0.160.0"},
      "steps": [{"step_id": 1, "source": "user", "message": "..."},
@@ -11,25 +11,25 @@
      "extra": {"knosis": {"format": "codex", "file": "...", "reader": "knosis-traces/1", "version": "0.160.0",
                           "tested": true, "accounting": {...}, ...}}}
 
-- 步号 `step_id` 从 1 起连续；`source` 为 user / agent / system。agent 的一步是一次模型输出（文本、思考、调用），
-  调用的结果挂在发出调用的那一步的 `observation` 上。多 agent 轨迹里说话的 agent 记在 `extra.knosis.agent`。
-- 只记来源里有的东西：ATIF 要求但来源没有的值（如没有文本的消息记 ""、非对象的调用参数包成 `{"input": ...}`）
-  在 `extra.knosis` 里注明；按位置推断的配对（没有调用 id 的结果）标 `paired_by`。
-- 文本超过 `LIMIT` 截断，`extra.knosis.truncated` 记字段与原长度。
-- 每个来源行都记账（`accounting`：映射了多少、哪些类型跳过了多少），来源格式版本不在 `TESTED` 里时 `tested=false`，
-  调用方应提示（格式变了可能解析错）。
-- 题目的标准答案、标注等 GT 不进轨迹（由各数据集的加载器另外保存）。
+- `step_id` runs consecutively from 1; `source` is user / agent / system. An agent step is one model output (text, reasoning, calls);
+  call results hang on the `observation` of the step that issued the call. In multi-agent traces the speaking agent is in `extra.knosis.agent`.
+- Only what the source has is recorded: values ATIF requires but the source lacks (e.g. "" for a message without text, non-object call
+  arguments wrapped as `{"input": ...}`) are noted in `extra.knosis`; position-inferred pairings (results without a call id) are marked `paired_by`.
+- Text longer than `LIMIT` is truncated; `extra.knosis.truncated` records the fields and original lengths.
+- Every source line is accounted for (`accounting`: how many mapped, which kinds skipped and how many); if the source format version is not
+  in `TESTED`, `tested=false` and callers should warn (a changed format may parse wrongly).
+- Reference answers, annotations and other GT stay out of traces (kept separately by each dataset's loader).
 
-知识引用轨迹写 `<目录>/<id>.json#step/<n>`；子 agent 的步骤写 `<目录>/<id>.json#agent/<子 agent id>/step/<n>`。
+Knowledge cites trace steps as `<dir>/<id>.json#step/<n>`; subagent steps as `<dir>/<id>.json#agent/<subagent id>/step/<n>`.
 
-支持的格式（`detect`）：
-- codex：`~/.codex/sessions/**/rollout-*.jsonl`（`session_meta` + `response_item`）
-- claude：Claude Code 的会话 JSONL（`~/.claude/projects/<项目>/<会话>.jsonl`），同目录 `<会话>/subagents/agent-*.jsonl` 作为子 agent
-- steps：逐步记录的 agent 轨迹（如 agent-rsi 的 AppWorld ReAct），`{instruction, steps: [{reasoning, response, code, env_feedback}]}`
-- messages：OpenAI 风格消息，JSON 列表或 JSONL，每条 `{role, content[, tool_calls]}`；也接受 `{"messages": [...]}` 包一层
-- whoandwhen：Who&When 的一条失败日志（`{question, history: [...], mistake_*}`），history 一条一步（步号 = 下标 + 1）
-- atif：已经是 ATIF v1.7 的轨迹
-- legacy：Knosis v0.5 之前的步骤序列（每行 `{step, role, kind, text}`），只用于 `knosis migrate`
+Supported formats (`detect`):
+- codex: `~/.codex/sessions/**/rollout-*.jsonl` (`session_meta` + `response_item`)
+- claude: Claude Code session JSONL (`~/.claude/projects/<project>/<session>.jsonl`), with `<session>/subagents/agent-*.jsonl` in the same directory as subagents
+- steps: step-by-step agent traces (e.g. agent-rsi's AppWorld ReAct), `{instruction, steps: [{reasoning, response, code, env_feedback}]}`
+- messages: OpenAI-style messages, a JSON list or JSONL, each `{role, content[, tool_calls]}`; `{"messages": [...]}` wrappers are accepted too
+- whoandwhen: one Who&When failure log (`{question, history: [...], mistake_*}`), one step per history entry (step = index + 1)
+- atif: traces already in ATIF v1.7
+- legacy: pre-v0.5 Knosis step sequences (one `{step, role, kind, text}` per line), only for `knosis migrate`
 """
 
 from __future__ import annotations
@@ -47,10 +47,10 @@ SOURCES = ("system", "user", "agent")
 REF = re.compile(r"#(?:agent/([^/#;\s]+)/)?step/(\d+)$")
 
 
-# ---------- 读文件 ----------
+# ---------- reading files ----------
 
 def read(path):
-    """JSON 文档（列表或对象）或 JSONL 的行列表。"""
+    """A JSON document (list or object) or the list of JSONL lines."""
     text = Path(path).read_text(encoding="utf-8")
     head = text.lstrip()
     if head.startswith(("[", "{")):
@@ -83,12 +83,13 @@ def detect(rows) -> str:
     return "messages"
 
 
-# ---------- 条目 → ATIF 步骤 ----------
-# 各格式先读成条目流，再由 `assemble` 按统一规则组成步骤。条目：
+# ---------- entries → ATIF steps ----------
+# Each format is first read into a stream of entries, which `assemble` turns into steps by shared rules. An entry:
 #   {"role": user|assistant|tool|system, "kind": message|reasoning|call|output, "text", "name", "call_id",
 #    "arguments", "group", "agent", "timestamp", "ref"}
-# 规则：user / system 消息各成一步；assistant 条目并进当前 agent 步，除非中间来过结果或用户消息、换了说话的 agent，
-# 或 `group` 变了（Claude Code 的 message.id、Who&When 的下标）；结果按 call_id 挂到发出调用的步，没有 id 的按位置配对。
+# Rules: each user / system message is its own step; assistant entries join the current agent step unless a result or user message
+# came in between, the speaking agent changed, or `group` changed (Claude Code's message.id, Who&When's index); results attach by
+# call_id to the step that issued the call, and those without an id are paired by position.
 
 def item(role, kind, text="", **extra) -> dict:
     return {"role": role, "kind": kind, "text": text, **{k: v for k, v in extra.items() if v is not None}}
@@ -131,7 +132,7 @@ def cut_args(value, note, field):
 
 
 def arguments(raw, note, cid) -> dict:
-    """ATIF 的调用参数必须是对象：JSON 字符串解析；其他值包成 `{"input": 原值}` 并注明。"""
+    """ATIF call arguments must be objects: JSON strings are parsed; other values are wrapped as `{"input": value}` and noted."""
     if isinstance(raw, dict):
         return raw
     if isinstance(raw, str):
@@ -149,9 +150,9 @@ def arguments(raw, note, cid) -> dict:
 
 
 def assemble(items) -> tuple[list[dict], list[list[int]]]:
-    """条目 → ATIF 步骤；同时返回每步由哪些条目（下标）组成，供迁移旧步号用。"""
+    """Entries → ATIF steps; also returns which entries (indices) make up each step, for migrating old step numbers."""
     steps, members, owner = [], [], {}
-    open_agent = None  # 还能继续并入条目的 agent 步下标
+    open_agent = None  # index of the agent step that can still absorb entries
     n_calls = 0
     for idx, it in enumerate(items):
         role, kind = it["role"], it["kind"]
@@ -166,7 +167,7 @@ def assemble(items) -> tuple[list[dict], list[list[int]]]:
             content = as_text(it.get("text"))
             target, paired = owner.get(it.get("call_id")), None
             if target is None:
-                # 没有 id（或 id 对不上）：挂到最近一个还有未答调用的 agent 步，按位置配对
+                # no id (or no matching id): attach to the latest agent step with unanswered calls, paired by position
                 for j in range(len(steps) - 1, -1, -1):
                     if steps[j]["source"] != "agent":
                         continue
@@ -174,7 +175,7 @@ def assemble(items) -> tuple[list[dict], list[list[int]]]:
                     pending = [c["tool_call_id"] for c in steps[j].get("tool_calls", []) if c["tool_call_id"] not in answered]
                     target, paired = j, (pending[0] if pending else None)
                     break
-            if target is None:  # 前面没有 agent 步：作为环境给的用户消息
+            if target is None:  # no earlier agent step: treat as a user message from the environment
                 note = {"environment": True}
                 steps.append(finish({"source": "user", "message": cut(content, "message", note)}, it, note))
                 members.append([idx])
@@ -190,7 +191,7 @@ def assemble(items) -> tuple[list[dict], list[list[int]]]:
             members[target].append(idx)
             open_agent = None
             continue
-        # assistant 条目
+        # assistant entry
         cur = steps[open_agent] if open_agent is not None else None
         same = (cur is not None and cur.get("extra", {}).get("knosis", {}).get("agent") == it.get("agent")
                 and members[open_agent] and items[members[open_agent][-1]].get("group") == it.get("group"))
@@ -261,7 +262,7 @@ def trajectory(items, *, session, agent, fmt, file=None, version=None, accountin
     return out
 
 
-# ---------- 各格式 ----------
+# ---------- formats ----------
 
 def codex(rows, path=None) -> dict:
     meta = rows[0].get("payload", {}) if rows else {}
@@ -272,15 +273,15 @@ def codex(rows, path=None) -> dict:
             skipped[str(r.get("type"))] += 1
             continue
         kind, ts = p.get("type"), r.get("timestamp")
-        if kind == "message" and p.get("role") == "developer":  # 系统提示与权限说明，每个会话都一样
+        if kind == "message" and p.get("role") == "developer":  # system prompt and permission notes, identical in every session
             skipped["developer"] += 1
             continue
         if kind == "message" and p.get("role") in ("user", "assistant"):
             items.append(item(p["role"], "message", as_text(p.get("content", [])), timestamp=ts, ref=line))
-        elif kind == "agent_message":  # 其他 agent 发来的消息
+        elif kind == "agent_message":  # message from another agent
             items.append(item("user", "message", as_text(p.get("content")), speaker=p.get("author"), timestamp=ts, ref=line))
         elif kind == "reasoning":
-            if not p.get("summary"):  # 只有加密内容
+            if not p.get("summary"):  # encrypted content only
                 skipped["reasoning(encrypted)"] += 1
                 continue
             items.append(item("assistant", "reasoning", as_text(p["summary"]), timestamp=ts, ref=line))
@@ -379,7 +380,7 @@ def claude(rows, path=None) -> dict:
 
 
 def react(rows, path=None) -> dict:
-    """逐步记录：每步的思考、写出的代码（视为一次调用）、环境反馈；`input_messages` 是累积对话，不重复展开。"""
+    """Step-by-step records: each step's reasoning, written code (treated as one call), and environment feedback; `input_messages` is the cumulative conversation and is not expanded again."""
     run = rows[0]
     items = [item("user", "message", run.get("instruction", ""))]
     for i, s in enumerate(run["steps"]):
@@ -421,7 +422,7 @@ WHOANDWHEN_GT = ("is_correct", "is_corrected", "ground_truth", "groundtruth", "m
 
 
 def speaker(entry) -> str | None:
-    """Who&When 里说话的 agent：Algorithm-Generated 用 `name`；Hand-Crafted 用 `role` 去掉括号（`Orchestrator (thought)`）。"""
+    """The speaking agent in Who&When: `name` for Algorithm-Generated; `role` with the parenthetical stripped for Hand-Crafted (`Orchestrator (thought)`)."""
     if entry.get("name"):
         return str(entry["name"])
     role = entry.get("role")
@@ -429,8 +430,8 @@ def speaker(entry) -> str | None:
 
 
 def whoandwhen(rows, path=None) -> dict:
-    """一条日志：history 一条一步（步号 = 下标 + 1，与标注 `mistake_step` 对齐）；题目放在 `extra.knosis.task`，不占步号。
-    标注与标准答案（`WHOANDWHEN_GT`）不进轨迹。"""
+    """One log: one step per history entry (step = index + 1, aligned with the `mistake_step` annotation); the question goes in `extra.knosis.task` and takes no step.
+    Annotations and the reference answer (`WHOANDWHEN_GT`) stay out of the trace."""
     run = rows[0]
     items = []
     for i, entry in enumerate(run["history"]):
@@ -452,7 +453,7 @@ def whoandwhen(rows, path=None) -> dict:
 
 
 def legacy(rows, path=None) -> tuple[dict, dict[int, int]]:
-    """v0.5 之前的步骤序列 → ATIF；返回轨迹与旧步号 → 新步号。旧格式没有调用 id，结果按位置配对。"""
+    """Pre-v0.5 step sequence → ATIF; returns the trace and old step → new step. The old format has no call ids, so results are paired by position."""
     items = [item(r["role"], r["kind"], r.get("text", ""), name=r.get("name"),
                   arguments=r.get("text", "") if r["kind"] == "call" else None) for r in rows]
     steps, members = assemble(items)
@@ -477,7 +478,7 @@ READERS = {"codex": codex, "claude": claude, "steps": react, "messages": message
 
 
 def normalize(path, fmt=None) -> dict:
-    """轨迹文件 → ATIF 轨迹。"""
+    """Trace file → ATIF trace."""
     rows = read(path)
     fmt = fmt or detect(rows)
     if fmt == "legacy":
@@ -485,7 +486,7 @@ def normalize(path, fmt=None) -> dict:
     return READERS[fmt](rows, path)
 
 
-# ---------- 使用 ----------
+# ---------- usage ----------
 
 def load(path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -503,7 +504,7 @@ def calls(t) -> int:
 
 
 def warning(t) -> str | None:
-    """格式版本没测过、或有没认识的来源记录时给一句提示。"""
+    """A one-line warning when the format version is untested or there are unrecognized source records."""
     info = t.get("extra", {}).get("knosis", {})
     notes = []
     if info.get("tested") is False:
@@ -515,7 +516,7 @@ def warning(t) -> str | None:
 
 
 def refs(t) -> set[tuple[str | None, int]]:
-    """可引用的步骤：(子 agent id 或 None, 步号)。"""
+    """Citable steps: (subagent id or None, step number)."""
     out = {(None, s["step_id"]) for s in t["steps"]}
     for sub in t.get("subagent_trajectories", []):
         out |= {(sub.get("trajectory_id"), s["step_id"]) for s in sub["steps"]}
@@ -528,7 +529,7 @@ def parse_ref(fragment) -> tuple[str | None, int] | None:
 
 
 def validate(t, path="$") -> list[str]:
-    """ATIF v1.7 的结构约束（步号连续、来源合法、消息非空值、调用参数是对象、结果指向同一步的调用、agent 专属字段）。"""
+    """ATIF v1.7 structural constraints (consecutive step ids, valid sources, non-null messages, object call arguments, results pointing to calls in the same step, agent-only fields)."""
     errors = []
     if t.get("schema_version") != SCHEMA:
         errors.append(f"{path}.schema_version: expected {SCHEMA!r}")
@@ -565,7 +566,7 @@ def validate(t, path="$") -> list[str]:
 
 
 def render(t, title="") -> str:
-    """给人和 agent 读的 markdown：每步一节，`## step <n>` 即引用里的 `#step/<n>`。"""
+    """Markdown for humans and agents: one section per step; `## step <n>` corresponds to `#step/<n>` in citations."""
     info = t.get("extra", {}).get("knosis", {})
     lines = [f"# {title or t.get('session_id', '')}\n"]
     task = info.get("task") or {}

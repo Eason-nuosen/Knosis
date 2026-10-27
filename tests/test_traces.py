@@ -44,7 +44,7 @@ def test_codex(tmp_path):
 def test_claude_groups_blocks_and_subagents(tmp_path):
     rows = [{"type": "mode"},
             {"type": "user", "version": "2.1.300", "sessionId": "s1", "message": {"role": "user", "content": "hi"}},
-            # 一条 assistant 消息拆成多行写，result 夹在中间
+            # one assistant message split across lines, with a result in between
             {"type": "assistant", "message": {"id": "m1", "role": "assistant", "content": [{"type": "thinking", "thinking": "hm"}]}},
             {"type": "assistant", "message": {"id": "m1", "role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}},
             {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "a.txt"}]}},
@@ -77,7 +77,7 @@ def test_other_formats(tmp_path):
     t = normalize(tmp_path / "r.json")
     assert validate(t) == [] and shape(t) == [("user", 0, 0), ("agent", 1, 1)]
     assert t["extra"]["knosis"]["outcome"] == {"completed": True, "success": False}
-    # 已经是 ATIF 的原样读回
+    # already-ATIF input is read back as is
     (tmp_path / "a.json").write_text(json.dumps(t))
     assert normalize(tmp_path / "a.json") == t
 
@@ -123,7 +123,7 @@ def test_trace_sources_travel_with_kb(tmp_path):
 
 
 def test_migrate_legacy_traces(tmp_path):
-    """v0.5 工作区里的旧步骤序列：转成 ATIF，引用改到新步号，BRIEF 重写。"""
+    """Old step sequences in v0.5 workspaces: converted to ATIF, references renumbered, BRIEF rewritten."""
     from knosis.knowledge.migrate import migrate
 
     write(tmp_path / "run1.jsonl", codex_rows())
@@ -150,5 +150,5 @@ def test_migrate_legacy_traces(tmp_path):
     assert "run1.json" in (ws / "BRIEF.md").read_text() and "jsonl" not in (ws / "BRIEF.md").read_text()
     from knosis.knowledge import check_knowledge
 
-    assert check_knowledge(ws) == []  # 证据的数据指纹随转换更新，不算过期
+    assert check_knowledge(ws) == []  # evidence data fingerprints are updated with the conversion, not stale
     assert migrate(ws)["skipped"] == "already current"

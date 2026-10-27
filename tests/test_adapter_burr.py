@@ -8,7 +8,7 @@ from knosis import workspace as w
 from knosis.decision import burr as scorer
 from knosis.decision import evaluate
 from knosis.knowledge import feedback, load_units, write_units
-from knosis.workspace.exporters import burr  # noqa: F401  注册导出器
+from knosis.workspace.exporters import burr  # noqa: F401  register exporter
 
 
 def mapping(table):
@@ -50,8 +50,8 @@ def test_group_export_and_feedback(root, tmp_path):
     tests = load_units(ws / "tasks/tasks.jsonl")
     assert len(tests) == 3
     preds = [{"id": t["id"], "answer": mapping(t["id"].rsplit("/", 1)[1])} for t in tests]
-    preds[0]["answer"]["classes"][0]["class"] = "Human"          # 名字错，映射对
-    preds[1]["answer"]["data_properties"][0]["column"] = "x.y"   # 映射错，名字对
+    preds[0]["answer"]["classes"][0]["class"] = "Human"          # wrong name, right mapping
+    preds[1]["answer"]["data_properties"][0]["column"] = "x.y"   # wrong mapping, right name
     write_units(ws / "stages/4_decide/predictions.jsonl", preds)
     assert not w.check(ws)
     report = evaluate(ws)
@@ -69,9 +69,9 @@ def test_single_scenario_has_no_dev(root, tmp_path):
 def test_compare_semantics():
     gold = mapping("person")
     pred = copy.deepcopy(gold)
-    pred["object_properties"][0]["join"] = ["addr.id = person.addr_id"]   # join 两侧顺序无关
-    pred["object_properties"][0]["property"] = "has_lives_in"             # 名字清洗
-    pred["classes"][1]["id"] = "town/@@ADDR.CITY@@"                       # 只看模式里的列
+    pred["object_properties"][0]["join"] = ["addr.id = person.addr_id"]   # join side order irrelevant
+    pred["object_properties"][0]["property"] = "has_lives_in"             # name cleaning
+    pred["classes"][1]["id"] = "town/@@ADDR.CITY@@"                       # only pattern columns matter
     m = scorer.compare(gold, pred)
     assert m["mapping_based_rel_f1"] == 1.0 and m["mapping_based_cls_f1"] == 1.0 and m["name_based_rel_f1"] == 1.0
     moved = copy.deepcopy(gold)

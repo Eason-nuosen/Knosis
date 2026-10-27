@@ -22,9 +22,9 @@ classifiers = [
 dependencies = ["pyyaml", "pandas", "pyarrow"]
 
 [project.optional-dependencies]
-graph = ["networkx"]          # NGDBench 的 .gpickle / .graphml
-hdf5 = ["h5py"]               # LLM-SRBench 的数值数据
-sheet = ["openpyxl"]          # SpreadsheetBench 与 sheet 工具
+graph = ["networkx"]          # NGDBench .gpickle / .graphml
+hdf5 = ["h5py"]               # LLM-SRBench numeric data
+sheet = ["openpyxl"]          # SpreadsheetBench and the sheet tool
 download = ["huggingface_hub", "openml"]
 dev = ["pytest"]
 all = ["networkx", "h5py", "openpyxl", "huggingface_hub", "openml", "pytest"]

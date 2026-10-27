@@ -1,35 +1,36 @@
-"""知识体系的组成形式：同一批知识单元（κ / skill / 本体单元）的五种组织方式，都只组织、不新增断言。
+"""Forms of the knowledge structure: five ways to organize the same knowledge units (κ / skills / ontology units); all organize, none add assertions.
 
-| 形式 | 文件 | 由谁产生 | 回答什么 |
+| Form | File | Produced by | Answers |
 | --- | --- | --- | --- |
-| 大纲（树） | `kb/outline.yaml` | agent（organize） | 这些知识分几块、各讲什么（见 `outline`） |
-| 知识图谱 | `kb/graph.json` | agent（structure） | 环境里有哪些对象、它们之间是什么关系 |
-| 流程图 | `kb/flows/<名字>.json` | agent（structure） | 某类任务按什么步骤、在哪里判断、用哪条知识 |
-| 派生图 | （计算） | Knosis | 哪条知识由哪些知识推出、合并或替换 |
-| 规则 / 公式卡片 | （计算） | Knosis | 每个对象上有哪些规则与公式 |
+| Outline (tree) | `kb/outline.yaml` | agent (organize) | what blocks the knowledge falls into and what each covers (see `outline`) |
+| Knowledge graph | `kb/graph.json` | agent (structure) | which objects exist in the environment and how they relate |
+| Flowchart | `kb/flows/<name>.json` | agent (structure) | for a task type: which steps, where to decide, which knowledge to use |
+| Derivation graph | (computed) | Knosis | which knowledge is derived from, merged into or superseded by which |
+| Rule / formula cards | (computed) | Knosis | which rules and formulas hold on each object |
 
-知识图谱：
+Knowledge graph:
 
     {"entities": [{"id": "table:orders", "type": "table", "label": "orders", "units": ["extract/orders-key"]}],
      "relations": [{"src": "table:orders", "rel": "references", "dst": "table:customers",
-                    "label": "cust_id，多对一", "units": ["extract/orders-fk"]}]}
+                    "label": "cust_id, many-to-one", "units": ["extract/orders-fk"]}]}
 
-实体 `id` 全图唯一，`type` 建议取 dataset / table / column / entity_type / variable / concept / metric / tool / task；
-每条关系至少引用一条活跃单元（边就是这些单元说的那件事），端点必须存在；实体引用描述它的单元，没有引用的实体必须是某条边的端点。
+Entity `id`s are unique in the graph; suggested `type`s: dataset / table / column / entity_type / variable / concept / metric / tool / task.
+Every relation cites at least one active unit (the edge is what those units state) and its endpoints must exist; entities cite the units
+describing them, and an entity without citations must be an endpoint of some edge.
 
-流程图：
+Flowchart:
 
-    {"name": "find-grain", "title": "判断表的粒度", "goal": "……",
-     "nodes": [{"id": "start", "kind": "start", "text": "拿到一张新表"},
-               {"id": "count", "kind": "step", "text": "按候选键分组计数", "units": ["method/grain-check"]},
-               {"id": "dup", "kind": "decision", "text": "有重复？", "units": ["..."]},
-               {"id": "end", "kind": "end", "text": "记下粒度"}],
-     "edges": [{"src": "start", "dst": "count"}, {"src": "dup", "dst": "end", "label": "否"}, ...]}
+    {"name": "find-grain", "title": "Determine the grain of a table", "goal": "...",
+     "nodes": [{"id": "start", "kind": "start", "text": "Get a new table"},
+               {"id": "count", "kind": "step", "text": "Group by candidate key and count", "units": ["method/grain-check"]},
+               {"id": "dup", "kind": "decision", "text": "Duplicates?", "units": ["..."]},
+               {"id": "end", "kind": "end", "text": "Record the grain"}],
+     "edges": [{"src": "start", "dst": "count"}, {"src": "dup", "dst": "end", "label": "no"}, ...]}
 
-`kind` 取 start / step / check / decision / end；恰有一个 start、至少一个 end，所有节点从 start 可达，
-decision 至少两条出边；step / check / decision 至少引用一条活跃单元或 `skill:<名字>`。
+`kind` is start / step / check / decision / end; exactly one start, at least one end, every node reachable from start,
+at least two outgoing edges per decision; step / check / decision cite at least one active unit or `skill:<name>`.
 
-引用的单元被撤回、失效或合并后，`check` 会报问题，下次 structure 时更新。
+When a cited unit is retracted, stale or merged, `check` reports it and the next structure step updates it.
 """
 
 from __future__ import annotations
@@ -151,7 +152,7 @@ def check_flow(flow, known) -> list[str]:
 
 
 def check_structure(base) -> list[str]:
-    """知识图谱与流程图的结构问题（文件不存在时不报）。"""
+    """Structural issues of the knowledge graph and flowcharts (missing files are not reported)."""
     known = items(base)
     issues = []
     if graph_path(base).exists():
@@ -168,13 +169,13 @@ def check_structure(base) -> list[str]:
 
 
 def namespaces(base) -> dict:
-    """由 `kb merge --namespace` 合进来的数据集：{前缀: {workspace, benchmark, scenario}}；单一来源的知识层为空。"""
+    """Datasets merged in via `kb merge --namespace`: {prefix: {workspace, benchmark, scenario}}; empty for a single-source knowledge layer."""
     path = layout(base).kb / "sources.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
 def unit_namespaces(base) -> dict[str, set[str]]:
-    """每条单元来自哪些数据集：看 id 前缀；没有前缀的（合并后才产生的归纳单元）顺着 derived_from 找。"""
+    """Which datasets each unit comes from: by id prefix; unprefixed units (induced units created after merging) follow derived_from."""
     names = set(namespaces(base))
     known = items(base)
     out = {}
@@ -198,7 +199,7 @@ def unit_namespaces(base) -> dict[str, set[str]]:
 
 
 def bridges(base) -> list[dict]:
-    """跨数据集的桥：自身或相连关系引用的单元来自至少两个数据集的实体。"""
+    """Cross-dataset bridges: entities whose own or adjacent relations' units come from at least two datasets."""
     graph = load_graph(base) or {"entities": [], "relations": []}
     ns = unit_namespaces(base)
     out = []
@@ -210,7 +211,7 @@ def bridges(base) -> list[dict]:
 
 
 def cross_induced(base) -> list[str]:
-    """合并后归纳出的、来源跨至少两个数据集的活跃单元。"""
+    """Active induced units created after merging whose sources span at least two datasets."""
     ns, known = unit_namespaces(base), items(base)
     names = set(namespaces(base))
     return [uid for uid, u in known.items() if not dead(u) and u.get("derived_from") and len(ns.get(uid, ())) >= 2
@@ -226,7 +227,7 @@ def cited(base) -> set[str]:
 
 
 def coverage(base) -> dict:
-    """活跃的对象知识被图谱引用的比例；procedure / method 单元与 skill 被流程图引用的比例。"""
+    """Share of active object knowledge cited by the graph; share of procedure / method units and skills cited by flowcharts."""
     known = items(base)
     graph = load_graph(base) or {}
     in_graph = {u for x in graph.get("entities", []) + graph.get("relations", []) for u in x.get("units", [])}
@@ -244,7 +245,7 @@ def coverage(base) -> dict:
 
 
 def derivation(base) -> dict:
-    """派生图：节点是单元，边来自 derived_from / merged_into / superseded_by / conflicts_with。"""
+    """Derivation graph: nodes are units, edges come from derived_from / merged_into / superseded_by / conflicts_with."""
     units = {u["id"]: u for u in load_units(layout(base).units)}
     edges = []
     for uid, u in units.items():
@@ -259,7 +260,7 @@ def derivation(base) -> dict:
 
 
 def cards(base) -> list[dict]:
-    """规则 / 公式卡片：活跃的 rule 与 formula 单元，按知识图谱里引用它们的实体分组；不在图谱里的归到「其他」。"""
+    """Rule / formula cards: active rule and formula units grouped by the graph entities citing them; those not in the graph go under "其他"."""
     units = [u for u in load_units(layout(base).units) if u.get("form") in ("rule", "formula") and not dead(u)]
     graph = load_graph(base) or {}
     owner = {}
@@ -279,7 +280,7 @@ def cards(base) -> list[dict]:
 
 
 def summary(base) -> str:
-    """给人与 agent 看的文字摘要。"""
+    """Text summary for humans and agents."""
     graph, cov = load_graph(base), coverage(base)
     lines = [f"知识图谱：{cov['entities']} 个实体、{cov['relations']} 条关系，引用了 {cov['graph']:.0%} 的活跃对象知识（{cov['objects']} 条）"
              if graph else "知识图谱：还没有（kb/graph.json）",
@@ -295,7 +296,7 @@ def summary(base) -> str:
 
 
 def neighbors(base, entity, depth=1) -> dict:
-    """按实体查子图：实体本身、depth 跳内的关系与相邻实体，以及它们引用的单元。"""
+    """Subgraph around an entity: the entity, relations and neighbors within depth hops, and the units they cite."""
     graph = load_graph(base) or {"entities": [], "relations": []}
     ents = {e["id"]: e for e in graph["entities"]}
     hits = [i for i, e in ents.items() if entity in (i, e.get("label"))] or \

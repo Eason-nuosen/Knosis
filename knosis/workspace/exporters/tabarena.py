@@ -1,4 +1,4 @@
-"""TabArena：单表预测。"""
+"""TabArena: single-table prediction."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from . import register, render, split
 
 @register("tabarena")
 def export(ds, ws: Path, repeat=0, fold=0, dev=0, seed=0, write_data=True, **opts) -> dict:
-    """`dev`：从训练行里留出多少行（去掉标签）作为反馈用的开发集。"""
+    """`dev`: number of training rows held out (labels removed) as the dev set for feedback."""
     task = next(t for t in ds.tasks if t.meta["repeat"] == repeat and t.meta["fold"] == fold)
     data = ds.read("data")
     target = ds.schema["target"]

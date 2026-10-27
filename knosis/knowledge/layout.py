@@ -1,22 +1,22 @@
-"""知识层的目录布局（v0.5）：工作区与独立知识库同布局，分成两大块。
+"""Directory layout of the knowledge layer (v0.5): workspaces and standalone knowledge bases share it; two parts.
 
     <root>/
-    ├── kb/                         知识主体：永久保存、可继承、可被选取
+    ├── kb/                         knowledge body: permanent, inheritable, selectable
     │   ├── knowledge/
-    │   │   ├── units.jsonl         κ：对象知识（instance / relation / dataset）+ 元知识（method / usage）
-    │   │   └── ontology/           结构化知识（OSI 标准的三层：语义模型 / 概念 / 映射）
-    │   ├── skills/<名字>/SKILL.md  使用流程
-    │   ├── outline.yaml            知识体系大纲（树）
-│   ├── graph.json              知识图谱：实体与关系，每条边引用单元
-│   └── flows/<名字>.json       流程图：步骤、检查、判断，每个节点引用单元或 skill
-    └── evidence/                   来源与验证的全过程
-        ├── ledger.jsonl            证据账本
-        ├── consolidate.jsonl       内化操作记录（去重、矛盾处理、构建知识体系）
-        ├── checks/                 可执行检查
-        ├── feedback/               dev 反馈记录
-        └── traces/                 来源轨迹（知识库收集来的会话）
+    │   │   ├── units.jsonl         κ: object knowledge (instance / relation / dataset) + meta-knowledge (method / usage)
+    │   │   └── ontology/           structured knowledge (OSI three layers: semantic model / concepts / mapping)
+    │   ├── skills/<name>/SKILL.md   usage procedures
+    │   ├── outline.yaml            knowledge outline (tree)
+│   ├── graph.json              knowledge graph: entities and relations, each edge cites units
+│   └── flows/<name>.json        flowcharts: steps, checks, decisions, each node cites units or skills
+    └── evidence/                   full record of sources and verification
+        ├── ledger.jsonl            evidence ledger
+        ├── consolidate.jsonl       consolidation log (dedup, conflict handling, organizing)
+        ├── checks/                 executable checks
+        ├── feedback/               dev feedback records
+        └── traces/                 source traces (sessions collected into the knowledge base)
 
-`root` 是工作区根、知识库根，或工作区里的一个知识版本快照（`stages/<阶段>/`）。
+`root` is a workspace root, a knowledge base root, or a knowledge version snapshot inside a workspace (`stages/<stage>/`).
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class Layout:
 
 
 def layout(root) -> Layout:
-    """布局对象；遇到 v0.4 的旧布局（`knowledge/units.jsonl` 或根目录下的 `units.jsonl`）时提示迁移。"""
+    """Layout object; hints at migration when it finds the old v0.4 layout (`knowledge/units.jsonl` or `units.jsonl` at the root)."""
     root = Path(root)
     if not (root / "kb").is_dir() and ((root / "knowledge/units.jsonl").exists() or (root / "units.jsonl").exists()):
         raise RuntimeError(f"{root} uses the v0.4 layout; run `knosis migrate {root}` first")
@@ -61,7 +61,7 @@ def is_workspace(root) -> bool:
 
 
 def data_root(root):
-    """检查 `data/` 来源与数据指纹用的根：工作区是自己，知识库与快照没有（返回 None）。"""
+    """Root used to check `data/` sources and data fingerprints: itself for a workspace; none for knowledge bases and snapshots (returns None)."""
     return Path(root).resolve() if is_workspace(root) else None
 
 

@@ -1,10 +1,10 @@
-"""TabArena：51 个精选单表数据集（OpenML suite 457），TabPFN-2.5 等表格基础模型的主榜单。
+"""TabArena: 51 curated single-table datasets (OpenML suite 457), the main leaderboard for tabular foundation models such as TabPFN-2.5.
 
-`knosis download tabarena` 把每个 OpenML task 导出成本地文件：
+`knosis download tabarena` exports each OpenML task to local files:
 
-    data/tabarena/<数据集名>/{data.parquet, splits.parquet, meta.json}
+    data/tabarena/<dataset name>/{data.parquet, splits.parquet, meta.json}
 
-splits.parquet 是官方的 repeat × fold 划分（列：repeat, fold, row, split）。
+splits.parquet holds the official repeat × fold splits (columns: repeat, fold, row, split).
 """
 
 from __future__ import annotations
@@ -16,10 +16,10 @@ from ..dataset import Dataset, Task, data_dir, read
 from . import register
 
 METRICS = {
-    "roc_auc": "二分类 ROC-AUC",
-    "log_loss": "多分类 log loss（越低越好）",
-    "rmse": "回归 RMSE（越低越好）",
-    "elo": "跨数据集聚合的 Elo（TabArena 排行榜口径）",
+    "roc_auc": "binary ROC-AUC",
+    "log_loss": "multiclass log loss (lower is better)",
+    "rmse": "regression RMSE (lower is better)",
+    "elo": "Elo aggregated across datasets (as on the TabArena leaderboard)",
 }
 
 

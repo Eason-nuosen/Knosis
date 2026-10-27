@@ -584,7 +584,7 @@ details.more summary{cursor:pointer;font-weight:600}
   <a class="tab hide-sm" data-page="home" href="#home" data-en="Home">首页</a>
   <a class="tab hide-sm" data-page="personal" href="#personal">Personal Agent</a>
   <a class="tab hide-sm" data-page="enterprise" href="#enterprise">Enterprise Agent</a>
-  <a class="tab hide-sm hide-md" data-page="knowledge" href="#knowledge" data-en="Knowledge &amp;amp; internalization">知识层与内化</a>
+  <a class="tab hide-sm" data-page="knowledge" href="#knowledge" data-en="Knowledge &amp;amp; internalization">知识层与内化</a>
   <a class="tab" data-page="demo" href="#demo" data-en="Demos &amp;amp; results">Demo 与结果</a>
   <div class="sp"></div>
   <a class="gh" href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
@@ -643,6 +643,23 @@ details.more summary{cursor:pointer;font-weight:600}
   </div></section>
 
   <section class="s"><div class="wrap">
+    <div class="eyebrow reveal" data-en="Knowledge system">知识体系</div>
+    <h2 class="reveal" data-en="Not just a list: knowledge as graphs, flows and more">不止一张清单：知识图谱、流程图等多种形式</h2>
+    <p class="lead reveal" data-en="The same knowledge units are organized into an outline, a knowledge graph (KG), flows, a derivation graph and rule / formula cards, stored as files in the knowledge base and viewable from the CLI, MCP and this site. Every node, edge and step cites the units it comes from.">同一批知识单元被组织成知识体系树、知识图谱（KG）、流程图、派生图、规则与公式卡片，以文件形式存进知识库，可以在命令行、MCP 和本网站上查看。每个节点、每条边、每个步骤都引用它来自的知识单元。</p>
+    <div class="forms5">
+      <a class="card f5 reveal" href="#demo/newton/outline"><div class="ico" data-icon="layers"></div><b data-en="Outline">知识体系树</b><code>kb/outline.yaml</code><p data-en="What are the parts, and what is each about? Scenario → relations between data → objects.">分几块、各讲什么？场景 → 数据间关系 → 具体对象。</p><span class="by" data-en="agent · organize">agent · organize</span></a>
+      <a class="card f5 reveal" href="#demo/newton/graph"><div class="ico" data-icon="graph"></div><b data-en="Knowledge graph">知识图谱</b><code>kb/graph.json</code><p data-en="Which objects exist, and how are they related? Every edge cites the units that state it.">有哪些对象、它们是什么关系？每条边引用说了这件事的单元。</p><span class="by" data-en="agent · structure">agent · structure</span></a>
+      <a class="card f5 reveal" href="#demo/newton/flows"><div class="ico" data-icon="steps"></div><b data-en="Flows">流程图</b><code>kb/flows/*.json</code><p data-en="How is a kind of task done, where to check, where to branch? Built from procedures, methods and skills.">某类任务按什么步骤做、在哪检查、在哪分支？由 procedure、method 与 skill 组成。</p><span class="by" data-en="agent · structure">agent · structure</span></a>
+      <a class="card f5 reveal" href="#demo/newton/derivation"><div class="ico" data-icon="merge"></div><b data-en="Derivation graph">派生图</b><code>derived_from · merged_into</code><p data-en="Which unit was derived from, merged into or superseded by which? Retractions propagate along it.">哪条知识由哪些推出、并入或替换？撤回沿它向下游传播。</p><span class="by" data-en="computed by Knosis">Knosis 计算</span></a>
+      <a class="card f5 reveal" href="#demo/newton/cards"><div class="ico" data-icon="sigma"></div><b data-en="Rule &amp;amp; formula cards">规则与公式卡片</b><code>rule · formula</code><p data-en="Which rules and formulas hold on each object? Grouped by the entities of the knowledge graph.">每个对象上有哪些规则和公式？按知识图谱的实体分组。</p><span class="by" data-en="computed by Knosis">Knosis 计算</span></a>
+    </div>
+    <div class="ctas" style="margin-top:20px">
+      <a class="btn primary" href="#demo" data-en="See the knowledge graph across nine datasets →">看九个数据集合成的知识总图 →</a>
+      <a class="btn" href="#knowledge" data-en="How the knowledge system is built">知识体系怎么构建</a>
+    </div>
+  </div></section>
+
+  <section class="s"><div class="wrap">
     <div class="eyebrow reveal" data-en="What makes it different">特点</div>
     <h2 class="reveal" data-en="Knowledge, not memory, not skills">知识，不是记忆，也不是 skill</h2>
     <p class="lead reveal" data-en="One criterion: &lt;b style=&quot;color:var(--ink)&quot;&gt;can evidence from the environment refute it?&lt;/b&gt; Only what can be refuted counts as knowledge. Knosis manages all three, but stores and evaluates them separately.">判别标准只有一条：<b style="color:var(--ink)">能不能被环境中的证据反驳</b>。能被反驳的才算知识。三者 Knosis 都管，但分开存放、分开评价。</p>
@@ -665,7 +682,7 @@ details.more summary{cursor:pointer;font-weight:600}
       <a class="card reveal" href="#demo" style="color:var(--ink)"><h3 data-en="Demos &amp;amp; results →">Demo 与结果 →</h3><p data-en="One full run per benchmark: results, and every extracted unit with its evidence.">每个 benchmark 一次完整运行：结果，以及抽出的每条知识和证据。</p></a>
     </div>
   </div></section>
-  <div class="wrap"><footer><span>Knosis v0.5 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
+  <div class="wrap"><footer><span>Knosis 1.0 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
 </main>
 
 <!-- ======================= Personal ======================= -->
@@ -783,7 +800,7 @@ conda env create -f environment.yml && conda activate knosis
       <div class="ctas"><a class="btn primary" href="#demo/kb" data-en="See a personal knowledge base →">看一个个人知识库 →</a><a class="btn" href="#knowledge" data-en="How the knowledge layer works">知识层如何工作</a></div>
     </div>
   </div></section>
-  <div class="wrap"><footer><span>Knosis v0.5 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
+  <div class="wrap"><footer><span>Knosis 1.0 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
 </main>
 
 <!-- ======================= Enterprise ======================= -->
@@ -876,7 +893,7 @@ conda env create -f environment.yml && conda activate knosis
         <div style="margin-top:18px"><a class="btn" href="#demo" data-en="Results on 11 benchmarks →">11 个 benchmark 上的结果 →</a></div></div>
     </div>
   </div></section>
-  <div class="wrap"><footer><span>Knosis v0.5 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
+  <div class="wrap"><footer><span>Knosis 1.0 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
 </main>
 
 <!-- ======================= 知识层与内化 ======================= -->
@@ -1013,7 +1030,7 @@ conda env create -f environment.yml && conda activate knosis
       <div class="card reveal" style="background:var(--accent-soft);border-color:rgba(122,162,255,.3)"><h3 data-en="Why internalize">为什么要内化</h3><p data-en="Knowledge bases grow: the same fact is recorded twice, new evidence overturns old conclusions, environments change. Without consolidation, retrieval returns duplicated, conflicting, disconnected knowledge.">知识库会越收越多：同一件事被重复记下、新证据推翻旧结论、环境变了旧知识过期。不整理，检索到的就是重复、互相打架、彼此孤立的知识。</p></div>
     </div>
   </div></section>
-  <div class="wrap"><footer><span>Knosis v0.5 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
+  <div class="wrap"><footer><span>Knosis 1.0 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
 </main>
 
 <!-- ======================= Demo 与结果 ======================= -->
@@ -1043,7 +1060,7 @@ conda env create -f environment.yml && conda activate knosis
         <p style="color:var(--faint);font-size:13px;margin-top:12px" data-en="“Narrow” means rewriting conditions during conflict resolution so that both units hold under different conditions.">「收窄」是矛盾处理时改写条件，让两条知识各自在不同条件下成立。</p></details>
       <p class="note" style="margin-top:18px" data-en="Demos were driven by Codex (gpt-6.1-sol, reasoning effort medium). &lt;b&gt;Each setting ran once on a small number of questions; numbers show that the pipeline works and what happens, not statistical conclusions.&lt;/b&gt;">演示由 Codex（gpt-6.1-sol，reasoning effort medium）驱动。<b>每个设置只跑一次、题量很小，数字只说明流程跑通与现象，不构成统计结论。</b></p>
     </div></section>
-    <div class="wrap"><footer><span>Knosis v0.5 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
+    <div class="wrap"><footer><span>Knosis 1.0 · knowledge + gnosis · Apache-2.0</span><span><a href="https://github.com/Eason-nuosen/Knosis" target="_blank" rel="noopener">github.com/Eason-nuosen/Knosis</a></span></footer></div>
   </div>
   <div id="demo-explorer" style="display:none">
     <div class="dlayout">

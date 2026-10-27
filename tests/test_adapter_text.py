@@ -1,7 +1,7 @@
 from knosis import workspace as w
 from knosis.decision import text as scorer
 from knosis.knowledge import check_units, load_units, write_units
-from knosis.workspace.exporters import text  # noqa: F401  注册导出器
+from knosis.workspace.exporters import text  # noqa: F401  register exporter
 
 
 def corpus(tmp_path):
@@ -18,7 +18,7 @@ def test_export_places_corpus(tmp_path):
     ws = w.init("text", str(root), tmp_path / "ws")
     assert sorted(p.relative_to(ws / "data").as_posix() for p in (ws / "data").rglob("*") if p.is_file()) == \
         ["a.md", "copy.txt", "sub/b.txt"]
-    assert (ws / "data/a.md").stat().st_ino == (root / "a.md").stat().st_ino  # 硬链接
+    assert (ws / "data/a.md").stat().st_ino == (root / "a.md").stat().st_ino  # hard link
     assert not (ws / "data/a.md").is_symlink()
     state = w.status(ws)
     assert state["output"] is None and state["feedback"]["mode"] == "none"

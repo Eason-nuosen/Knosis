@@ -1,6 +1,6 @@
-"""agent 轨迹入口：一组 Codex / Claude Code / 普通 agent 的轨迹文件（格式见 `knosis.data.traces`）。
+"""Agent trace entry: a set of Codex / Claude Code / generic agent trace files (formats in `knosis.data.traces`).
 
-scenario 是这组轨迹的名字；`paths` 给文件或 glob（逗号分隔）。没有题目：只做知识提取，评知识层本身。
+scenario names this set of traces; `paths` gives files or globs (comma-separated). No tasks: knowledge extraction only, scoring the knowledge layer itself.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from ..traces import detect, read
 from . import register
 
 METRICS = {
-    "cites_trace": "引用了轨迹步骤（`data/traces/<id>.json#step/<n>`，且步骤存在）的活跃单元比例",
-    "env_verified": "有来自环境（数据检查 / 工具 / 可执行检查）的支持证据、而不只是轨迹转述的活跃单元比例",
+    "cites_trace": "fraction of active units citing a trace step (`data/traces/<id>.json#step/<n>`, step exists)",
+    "env_verified": "fraction of active units with supporting evidence from the environment (data inspection / tool / executable check), not just trace restatement",
 }
 
 

@@ -1,4 +1,4 @@
-"""ULTRA 输入转换与推断；prepare-only 可在无 torch 的环境执行。"""
+"""ULTRA input conversion and inference; prepare-only runs without torch."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def graph_to_triples(graph):
     relations = sorted({attrs["label"] for *_, attrs in edges})
     entity_ids = {entity: i for i, entity in enumerate(entities)}
     relation_ids = {relation: i for i, relation in enumerate(relations)}
-    # 这里用 (h, r, t)；ULTRA 的 batch 要在推断处转成 (h, t, r)。
+    # (h, r, t) here; ULTRA batches must be converted to (h, t, r) at inference.
     direct = [(entity_ids[h], relation_ids[attrs["label"]], entity_ids[t]) for h, t, _, attrs in edges]
     inverse = [(t, r + len(relations), h) for h, r, t in direct]
     return {"entities": entities, "relations": relations, "edges": edges,
@@ -40,7 +40,7 @@ def load_model(encoded, ckpt, device=None, config=None):
     triples = torch.tensor(encoded["triples"], dtype=torch.long).reshape(-1, 3)
     graph = Data(edge_index=triples[:, [0, 2]].T, edge_type=triples[:, 1],
                  num_nodes=len(encoded["entities"]), num_relations=2 * len(encoded["relations"]))
-    # 上游关系图构建包含 CPU 张量，构建完成后再整体迁移设备。
+    # Upstream relation graph construction uses CPU tensors; move to the device after it is built.
     graph = build_relation_graph(graph).to(device)
     base = {"input_dim": 64, "hidden_dims": [64] * 6, "message_func": "distmult",
             "aggregate_func": "sum", "short_cut": True, "layer_norm": True}
@@ -93,7 +93,7 @@ def findings(scores, missing, graph_path, topk):
                        ("missing", missing.sort_values("score", ascending=False).head(topk))):
         for row in rows.to_dict("records"):
             edge = f"{row['src']}|{row['label']}|{row['dst']}"
-            # 缺失边没有实体边定位，来源定位到已观测的头节点。
+            # A missing edge has no edge location, so the provenance points to the observed head node.
             location = f"edge/{edge}" if kind == "suspicious" else f"node/{row['src']}"
             units.append({
                 "id": f"ultra/{kind}/{len(units)}", "form": "finding",

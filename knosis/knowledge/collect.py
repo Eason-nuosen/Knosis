@@ -1,18 +1,20 @@
-"""日常收集：把最近的 Codex / Claude Code 会话交给 agent 提取知识，写回独立知识库。
+"""Routine collection: hand recent Codex / Claude Code sessions to an agent to extract knowledge, written back to a standalone knowledge base.
 
     knosis kb collect --kb ~/kb --since 1d [--source codex] [--limit 10] [--dry-run]
 
-1. 找会话：Codex 在 `$CODEX_HOME/sessions/**/rollout-*.jsonl`，Claude Code 在 `~/.claude/projects/*/*.jsonl`；
-   按修改时间筛选，跳过已收集过的（`collected.jsonl`）、工作目录在知识库内的（收集 / 整理自身的会话）、
-   工作目录是 Knosis 工作区的（那里的知识已由工作区流程记录，`--include-workspaces` 可放开）、工具调用少于 `--min-calls` 的。
-2. 统一成 ATIF 轨迹写进 `<kb>/evidence/traces/<会话 id>.{json,md}`（格式见 `knosis.data.traces`）；知识引用写 `evidence/traces/<id>.json#step/<n>`
-   （与 `kb merge` 一致，继承进工作区后仍能定位）。
-3. 在知识库目录启动 agent 提取（模板 `templates/collect.md`），验收：知识层检查不新增问题、新单元引用了本次的轨迹；
-   不通过带着问题重试一次，仍不通过就把知识库恢复到运行前（要求运行前知识库没有未提交的改动）。
-4. 通过后记入 `collected.jsonl`，再做内化（`consolidate`：去重 → 矛盾处理 → 构建知识体系，可 `--no-consolidate`），
-   最后提交一个 git 版本。
+1. Find sessions: Codex in `$CODEX_HOME/sessions/**/rollout-*.jsonl`, Claude Code in `~/.claude/projects/*/*.jsonl`;
+   filter by modification time, skipping those already collected (`collected.jsonl`), those whose cwd is inside the knowledge base
+   (sessions collecting / organizing the KB itself), those whose cwd is a Knosis workspace (its knowledge is already recorded by the
+   workspace flow; `--include-workspaces` lifts this), and those with fewer than `--min-calls` tool calls.
+2. Normalize to ATIF traces in `<kb>/evidence/traces/<session id>.{json,md}` (format: `knosis.data.traces`); knowledge cites
+   `evidence/traces/<id>.json#step/<n>` (consistent with `kb merge`, so it still resolves after inheritance into a workspace).
+3. Launch the extraction agent in the KB directory (template `templates/collect.md`); acceptance: no new knowledge-layer issues and new
+   units cite this run's traces. On failure retry once with the issues; if it still fails, restore the KB to its pre-run state
+   (requires no uncommitted changes in the KB before the run).
+4. On success record in `collected.jsonl`, then consolidate (`consolidate`: dedup -> conflicts -> organize; `--no-consolidate` skips it),
+   and finally commit a git version.
 
-轨迹原文会复制进知识库（本地 git 仓库），其中可能有路径、内部信息；提示要求 agent 不把密钥、口令写进知识。
+Raw traces are copied into the knowledge base (a local git repository) and may contain paths or internal information; the prompt tells the agent not to put keys or passwords into knowledge.
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ LOG = "collected.jsonl"
 
 
 def parse_since(text) -> datetime:
-    """`30m` / `12h` / `1d` / `2w`，或 ISO 日期（`2026-10-20`）。"""
+    """`30m` / `12h` / `1d` / `2w`, or an ISO date (`2026-10-20`)."""
     match = re.fullmatch(r"(\d+)([mhdw])", text)
     if match:
         unit = {"m": "minutes", "h": "hours", "d": "days", "w": "weeks"}[match[2]]
@@ -67,7 +69,7 @@ def collected(kb) -> set[str]:
 
 
 def find(kb, source="codex", since="1d", include_workspaces=False, min_calls=3, home=None) -> tuple[list[dict], dict]:
-    """候选会话（旧的在前）与被跳过的计数。"""
+    """Candidate sessions (oldest first) and counts of skipped ones."""
     kb, cutoff, done = Path(kb).resolve(), parse_since(since).timestamp(), collected(kb)
     found, skipped = [], {"collected": 0, "inside_kb": 0, "workspace": 0, "few_calls": 0, "unreadable": 0}
     for path in session_files(source, home):
@@ -148,7 +150,7 @@ def run(kb, source="codex", since="1d", limit=10, agent="codex", model=None, eff
     sessions = sessions[:limit]
     summary = {"kb": str(kb), "sessions": [s["session"] for s in sessions], "skipped": skipped}
     warnings = {s["session"]: s["warning"] for s in sessions if s["warning"]}
-    if warnings:  # 会话格式版本没测过或有没认识的记录：解析可能不完整
+    if warnings:  # untested session format version or unknown records: parsing may be incomplete
         summary["warnings"] = warnings
     if dry_run or not sessions:
         return summary | {"cwd": [s["cwd"] for s in sessions]}

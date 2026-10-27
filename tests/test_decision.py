@@ -47,13 +47,13 @@ def tab_ws(tmp_path):
 
 
 def test_evaluate_tabular(tab_ws, capsys):
-    # 测试行 5,6,7 的真值为 b,a,b
+    # test rows 5,6,7 have truth b,a,b
     pd.DataFrame({"row_id": [5, 6, 7], "prediction": ["b", "a", "a"]}).to_csv(tab_ws / "stages/4_decide/predictions.csv", index=False)
     write_units(tab_ws / "kb/knowledge/units.jsonl", [{"id": "k", "content": "c", "form": "fact", "provenance": "tool:x@1()", "status": "stale"}])
     write_units(tab_ws / "stages/4_decide/used_units.jsonl", [{"id": 5, "used_units": ["k"]}, {"id": 6, "used_units": ["ghost"]}])
     report = evaluate(tab_ws)
     assert report["accuracy"] == pytest.approx(2 / 3) and report["n"] == 3
-    assert report["reference"]["train_prior"]["accuracy"] == pytest.approx(1 / 3)  # 训练集多数类 a，测试真值 b,a,b
+    assert report["reference"]["train_prior"]["accuracy"] == pytest.approx(1 / 3)  # training majority class a, test truth b,a,b
     assert report["usage"]["unknown_units"] == ["ghost"] and report["usage"]["inactive_units"] == ["k"]
     assert json.loads((tab_ws / ".knosis/eval.json").read_text())["accuracy"] == report["accuracy"]
     main(["eval", str(tab_ws)])

@@ -1,4 +1,4 @@
-"""NewtonBench 实验：在环境侧用上游模拟器（含 GT 定律）跑实验，只把观测交给 agent。"""
+"""NewtonBench experiments: run the upstream simulator (with the GT law) on the environment side and hand only observations to the agent."""
 
 from __future__ import annotations
 
@@ -21,9 +21,9 @@ def experiment(task: str, inputs: list[dict], noise: float, root=None) -> list:
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", required=True)
-    parser.add_argument("--inputs", required=True, help="JSON 列表，每项一组实验参数")
+    parser.add_argument("--inputs", required=True, help="JSON list, one set of experiment parameters per item")
     parser.add_argument("--out", required=True)
-    parser.add_argument("--ws", default=".", help="工作区；噪声水平与原始数据目录取自其 .knosis/state.json")
+    parser.add_argument("--ws", default=".", help="workspace; noise level and raw data directory come from its .knosis/state.json")
     args = parser.parse_args(argv)
     started = time.monotonic()
     state = json.loads((Path(args.ws) / ".knosis/state.json").read_text(encoding="utf-8"))

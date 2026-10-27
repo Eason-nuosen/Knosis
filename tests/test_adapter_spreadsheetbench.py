@@ -1,4 +1,4 @@
-"""SpreadsheetBench：loader、导出器、打分器（含 LibreOffice 重算）。"""
+"""SpreadsheetBench: loader, exporter, scorer (with LibreOffice recalculation)."""
 
 import json
 import shutil
@@ -26,7 +26,7 @@ def root(tmp_path):
     base = tmp_path / "sb/all_data_912_v0.1"
     items = []
     for i in range(4):
-        sid = f"{i}-1" if i else 7  # 上游有整数 id
+        sid = f"{i}-1" if i else 7  # upstream has integer ids
         folder = base / f"spreadsheet/{sid}"
         folder.mkdir(parents=True)
         for n in (1, 2, 3):
@@ -55,7 +55,7 @@ def test_load_export_and_score(root, tmp_path):
     tid = dev[0]["id"]
     out = ws / "stages/1_explore/outputs" / tid
     out.mkdir(parents=True)
-    for n in (1, 2):  # 用例 1 写公式（需重算），用例 2 写错值，用例 3 不交
+    for n in (1, 2):  # case 1 writes a formula (needs recalc), case 2 a wrong value, case 3 is not delivered
         wb = openpyxl.load_workbook(ws / f"data/{tid}/{n}_input.xlsx")
         wb.active["C2"] = "=A2+B2" if n == 1 else 99
         wb.save(out / f"{n}_output.xlsx")

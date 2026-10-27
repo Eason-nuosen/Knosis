@@ -1,11 +1,12 @@
-"""知识层（v0.5）：两大块，见 `layout`。
+"""Knowledge layer (v0.5): two parts, see `layout`.
 
-    kb/        知识主体：knowledge/{units.jsonl, ontology/}、skills/、outline.yaml
-    evidence/  来源与验证：ledger.jsonl、consolidate.jsonl、checks/、feedback/、traces/
+    kb/        knowledge body: knowledge/{units.jsonl, ontology/}, skills/, outline.yaml
+    evidence/  sources and verification: ledger.jsonl, consolidate.jsonl, checks/, feedback/, traces/
 
-κ 单元见 `units`；证据见 `evidence`；本体（OSI 三层，元素也是 κ）见 `ontology`；skill 见 `skills`；
-大纲见 `outline`，知识图谱、流程图、派生图与规则卡片见 `structure`；内化（去重、矛盾处理、构建知识体系、结构化）见 `consolidate`；v0.4 旧布局用 `migrate` 转换。
-本模块的函数都以 `root`（工作区、知识库或知识版本快照的根目录）为参数。
+κ units: `units`; evidence: `evidence`; ontology (OSI three layers, elements are also κ): `ontology`; skills: `skills`;
+outline: `outline`; knowledge graph, flowcharts, derivation graph and rule cards: `structure`; consolidation (dedup, conflict handling,
+organizing, structuring): `consolidate`; the old v0.4 layout is converted with `migrate`.
+All functions here take `root` (root of a workspace, knowledge base or knowledge version snapshot).
 """
 
 from pathlib import Path
@@ -26,7 +27,7 @@ __all__ = [
 
 
 def ontology_docs(base) -> dict[str, dict]:
-    """知识库里的全部本体：`kb/knowledge/ontology/` 下直接放的三文件记为 ""，每个含三文件的子目录记为子目录名。"""
+    """All ontologies in the knowledge base: the three files directly under `kb/knowledge/ontology/` are keyed "", each subdirectory holding the three files is keyed by its name."""
     root = layout(base).ontology
     if not root.is_dir():
         return {}
@@ -44,9 +45,9 @@ def all_ontology_units(docs: dict[str, dict]) -> list[dict]:
 
 
 def check_knowledge(base, known_ids=frozenset(), root=None) -> list[str]:
-    """检查一份知识层：κ 结构、状态与证据一致、证据账本、本体跨文件引用、κ 的 `about`、skill、大纲。
+    """Check a knowledge layer: κ structure, status/evidence consistency, evidence ledger, ontology cross-file references, κ `about`, skills, outline.
 
-    `base`：工作区、知识库或快照的根目录；`root`：工作区目录，给定时检查 `data/` 来源与证据的数据指纹。
+    `base`: root of a workspace, knowledge base or snapshot; `root`: workspace directory; if given, check `data/` sources and evidence data fingerprints.
     """
     lay = layout(base)
     docs = ontology_docs(base)
@@ -59,11 +60,11 @@ def check_knowledge(base, known_ids=frozenset(), root=None) -> list[str]:
     found = skills.load_skills(base)
     ids = {u["id"] for u in units} | set(known_ids) | {u["id"] for u in onto}
     issues += check_evidence(entries, ids | {skills.skill_id(s) for s in found}, root)
-    # skill 讲怎么做、不讲对错：效果写成 usage 单元（meta.of = skill:<名字>），再由证据支持。
+    # A skill says how, not what is true: its effect is a usage unit (meta.of = skill:<name>) backed by evidence.
     issues += [f"evidence {e['id']}: skill effects are usage units (scope=usage, meta.of={e['unit']}), not evidence on the skill"
                for e in entries if str(e.get("unit", "")).startswith("skill:")]
     records = {p.stem for p in lay.feedback.glob("*.json")}
-    # skill 可以引用 κ、本体单元，以及只在历史版本里出现过的 κ（状态未知，不触发失效检查）。
+    # A skill may reference κ, ontology units, and κ seen only in history (status unknown, no invalidation check).
     known = {i: {} for i in known_ids} | {u["id"]: u for u in [*onto, *units]}
     issues += skills.check_skills(found, known, records)
     from .structure import check_structure

@@ -1,6 +1,6 @@
-"""KramaBench：数据湖 → 洞察的端到端流水线。刻意不列文件清单，找文件是题目的一部分。
+"""KramaBench: end-to-end data lake → insight pipelines. Files are deliberately not listed; finding them is part of the task.
 
-    data/kramabench/{workload/<域>.json, data/<域>/input/, solutions/<域>/<任务 id>.py}
+    data/kramabench/{workload/<domain>.json, data/<domain>/input/, solutions/<domain>/<task id>.py}
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from . import register
 DOMAINS = ("archeology", "astronomy", "biomedical", "environment", "legal", "wildfire")
 
 METRICS = {
-    "answer": "按 answer_type 选指标：exact → success，approximate → MAE/RAE 或 LLM 判同义，list → F1",
-    "pipeline_design": "流水线设计分（llm_code_eval）",
-    "pipeline_implementation": "流水线实现分（llm_code_eval）",
+    "answer": "metric by answer_type: exact → success, approximate → MAE/RAE or LLM-judged equivalence, list → F1",
+    "pipeline_design": "pipeline design score (llm_code_eval)",
+    "pipeline_implementation": "pipeline implementation score (llm_code_eval)",
 }
 
 
@@ -34,7 +34,7 @@ def load(scenario: str = "wildfire", root: str | Path | None = None) -> Dataset:
             input=t.pop("query"),
             answer=t.pop("answer", None),
             kind=t.get("answer_type", ""),
-            meta={**t, "solution": files["solutions"] / f"{t['id']}.py"},  # subtasks 也在这里
+            meta={**t, "solution": files["solutions"] / f"{t['id']}.py"},  # subtasks are here too
         )
         for t in json.loads(files["workload"].read_text())
     ]

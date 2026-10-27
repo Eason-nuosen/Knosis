@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 import yaml
 
-import knosis.decision.relbench as scorer  # noqa: F401  注册
-import knosis.workspace.exporters.relbench  # noqa: F401  注册
+import knosis.decision.relbench as scorer  # noqa: F401  register
+import knosis.workspace.exporters.relbench  # noqa: F401  register
 from knosis import data_dir, load_dataset
 from knosis import workspace as w
 from knosis.decision import evaluate
@@ -54,7 +54,7 @@ def root(tmp_path):
 def test_export_hides_future_and_labels(root, tmp_path):
     ws = w.init("relbench", "rel-x", tmp_path / "ws", root=root)
     events = pd.read_parquet(ws / "data/db/events.parquet")
-    assert events["eid"].tolist() == [1, 2]  # 2021-06-01 在测试时刻之后，不导出
+    assert events["eid"].tolist() == [1, 2]  # 2021-06-01 is after the test cutoff, not exported
     assert pd.read_parquet(ws / "data/db/users.parquet").shape == (3, 1)
     test = pd.read_parquet(ws / "data/test_features.parquet")
     assert list(test.columns) == ["row_id", "date", "uid"]

@@ -1,4 +1,4 @@
-"""KramaBench：数据湖 → 洞察。agent 只拿到数据湖与问题；答案、参考解与子任务都留在原始目录。"""
+"""KramaBench: data lake -> insight. The agent gets only the data lake and questions; answers, reference solutions and subtasks stay in the raw directory."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from pathlib import Path
 
 from . import place, register, render, split
 
-# 上游的 answer_type 去掉 exact / approximate 后告诉 agent，只说明答案的形状。
+# Upstream answer_type minus exact / approximate is shown to the agent; it only describes the answer's shape.
 KINDS = {"numeric": "数值", "string": "字符串", "list": "列表"}
 
 
 @register("kramabench")
 def export(ds, ws: Path, write_data=True, dev=None, seed=0, **opts) -> dict:
-    """`dev`：开发题数，默认约 1/4（至少 1 题）。"""
+    """`dev`: number of dev tasks, about 1/4 by default (at least 1)."""
     lake = ds.files["lake"]
     files = sorted(p for p in lake.rglob("*") if p.is_file())
     if write_data:

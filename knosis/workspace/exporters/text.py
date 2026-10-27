@@ -1,4 +1,4 @@
-"""文本语料：只做知识构造，没有下游题目；评测看知识层能否定位回原文。"""
+"""Text corpus: knowledge construction only, no downstream tasks; evaluation checks whether the knowledge layer locates back to the source text."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from . import place, register, render
 
 @register("text")
 def export(ds, ws: Path, write_data=True, **opts) -> dict:
-    """语料原样放进 `data/`（含重复文档：重复也是数据的一部分，由 agent 判断）。"""
+    """Put the corpus into `data/` as is (including duplicate documents: duplicates are part of the data for the agent to judge)."""
     files = ds.schema["documents"] + [d for dups in ds.schema["duplicates"].values() for d in dups]
     if write_data:
         for doc in files:

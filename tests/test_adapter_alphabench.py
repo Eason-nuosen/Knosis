@@ -8,7 +8,7 @@ from knosis import data_dir, load_dataset
 from knosis import workspace as w
 from knosis.decision import alphabench as scorer
 from knosis.knowledge import feedback, load_units, write_units
-from knosis.workspace.exporters import alphabench  # noqa: F401  注册导出器
+from knosis.workspace.exporters import alphabench  # noqa: F401  register exporter
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def root(tmp_path):
     (base / "benchmark/data/evaluate/pool").mkdir(parents=True)
     rng = np.random.default_rng(0)
     days = pd.bdate_range("2021-01-04", periods=60)
-    # 每类各 10 个：pos 均值 0.05，neg -0.05，noise 0
+    # 10 of each class: pos mean 0.05, neg -0.05, noise 0
     means = {f"pos{i}": 0.05 for i in range(10)} | {f"neg{i}": -0.05 for i in range(10)} | {f"noise{i}": 0.0 for i in range(10)}
     ic = pd.DataFrame({n: m + rng.normal(0, 0.002, len(days)) for n, m in means.items()}, index=days).rename_axis("datetime")
     ic.to_csv(raw / "ic_table_csi300.csv")
@@ -56,7 +56,7 @@ def test_export_hides_window_and_gt(root, tmp_path):
     ws = export(root, tmp_path)
     panel = pd.read_parquet(ws / "data/market.parquet")
     assert panel["datetime"].max() < pd.Timestamp("2021-01-04")
-    assert set(panel["instrument"]) == {"SH600000"}  # 另一只股票只在窗口内进入指数
+    assert set(panel["instrument"]) == {"SH600000"}  # the other stock enters the index only within the window
     members = pd.read_csv(ws / "data/csi300_members.csv")
     assert members["end"].max() < "2021-01-04"
     dev = load_units(ws / "tasks/dev.jsonl")

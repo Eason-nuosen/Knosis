@@ -1,4 +1,4 @@
-"""噪声断言（noise.jsonl）打分与 nl 模式导出。"""
+"""Noise claim (noise.jsonl) scoring and nl-mode export."""
 
 import json
 import pickle
@@ -16,7 +16,7 @@ from knosis.workspace.exporters.ngdbench import export as export_ngdbench
 
 @pytest.fixture
 def noisy_root(tmp_path):
-    """clean / perturbed 配对图：1 个节点标签错、1 个节点属性错、1 条边新增、1 条边改标、1 条边删除。"""
+    """Paired clean / perturbed graphs: 1 wrong node label, 1 wrong node attribute, 1 added edge, 1 relabeled edge, 1 deleted edge."""
     d = tmp_path / "NGDBenchV1_1/NGDFin"
     (d / "graph").mkdir(parents=True)
     (d / "query").mkdir()
@@ -57,7 +57,7 @@ def test_score_knowledge(noisy_root, tmp_path):
     assert graph_qa.score_knowledge(ws, {}, ds) == {"noise": {"reported": False}}
     write_units(ws / "stages/4_decide/noise.jsonl", [
         {"kind": "node_label", "node": "Account:1"},
-        {"kind": "node_label", "node": "Account:2"},  # 错：Account:2 的标签没变
+        {"kind": "node_label", "node": "Account:2"},  # wrong: Account:2's label did not change
         {"kind": "node_attr", "node": "Account:2", "field": "balance"},
         {"kind": "node_attr", "node": "Account:1"},
         {"kind": "edge", "src": "Person:3", "dst": "Account:2", "key": 0, "type": "relabel"},
@@ -96,7 +96,7 @@ def test_noise_split(noisy_root, tmp_path):
     w.goto(ws, "decide")
     w.next_prompt(ws)
     tasks = [task["id"] for task in load_units(ws / "tasks/tasks.jsonl")]
-    assert len(tasks) == 3  # nl 为空的题不进
+    assert len(tasks) == 3  # tasks with empty nl are excluded
     gold = {task.id: task.answer for task in ds.tasks}
     write_units(ws / "stages/4_decide/predictions.jsonl", [{"id": t, "answer": gold[t]} for t in tasks])
     report = evaluate(ws)
@@ -105,20 +105,20 @@ def test_noise_split(noisy_root, tmp_path):
     assert report["reference"]["noisy_graph_answer"]["em_noise_unaffected"] == 1.0
 
 
-@pytest.mark.skipif(not (data_dir("ngdbench") / "NGDBenchV1_1/NGDFin").is_dir(), reason="NGD-Fin 原始数据不在")
+@pytest.mark.skipif(not (data_dir("ngdbench") / "NGDBenchV1_1/NGDFin").is_dir(), reason="NGD-Fin raw data not present")
 def test_score_knowledge_real(tmp_path):
     ds = load_dataset("ngdbench", "ngd-fin")
     truth = graph_qa.noise_truth(ds.files["clean"], ds.files["perturbed"])
     assert [len(truth["added"]), len(truth["relabel"])] == [5497, 5513]
     assert len(truth["node_label"]) == 1008 and len(truth["node_attr"]) == 2803
     added, relabel = sorted(truth["added"])[:2], sorted(truth["relabel"])[:2]
-    deleted = sorted(truth["deleted"])[:2]  # (src, dst, label)，同一条边多个 key 只算一次
+    deleted = sorted(truth["deleted"])[:2]  # (src, dst, label); multiple keys on one edge count once
     ws = tmp_path / "ws"
     (ws / "stages/4_decide").mkdir(parents=True)
     rows = [{"kind": "edge", "src": u, "dst": v, "key": k, "type": "added"} for u, v, k in added]
     rows += [{"kind": "edge", "src": u, "dst": v, "key": k, "type": "relabel"} for u, v, k in relabel]
     rows += [{"kind": "missing_edge", "src": u, "dst": v, "label": label} for u, v, label in deleted]
-    rows += [{"kind": "edge", "src": "nope:1", "dst": "nope:2", "key": 0}]  # 假断言
+    rows += [{"kind": "edge", "src": "nope:1", "dst": "nope:2", "key": 0}]  # false claim
     write_units(ws / "stages/4_decide/noise.jsonl", rows)
     noise = graph_qa.score_knowledge(ws, {}, ds)["noise"]
     assert noise["edge"]["precision"] == pytest.approx(4 / 5) and noise["edge"]["recall"] == pytest.approx(4 / 11010)

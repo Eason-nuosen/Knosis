@@ -4,8 +4,8 @@ import sys
 
 import pytest
 
-import knosis.decision.newtonbench  # noqa: F401  注册打分器
-import knosis.workspace.exporters.newtonbench  # noqa: F401  注册导出器
+import knosis.decision.newtonbench  # noqa: F401  register scorer
+import knosis.workspace.exporters.newtonbench  # noqa: F401  register exporter
 from knosis import data_dir
 from knosis import workspace as w
 from knosis.decision import evaluate

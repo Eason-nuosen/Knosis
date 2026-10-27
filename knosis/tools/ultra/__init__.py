@@ -1,1 +1,1 @@
-"""ULTRA 适配器；导入包不加载模型。"""
+"""ULTRA adapter; importing the package does not load the model."""

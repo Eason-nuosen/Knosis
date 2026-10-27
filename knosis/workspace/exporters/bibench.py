@@ -1,4 +1,4 @@
-"""BI-Bench：真实 Power BI 项目的多表业务问答。scenario 为用例 id，或 `all`（100 个用例一起）。"""
+"""BI-Bench: multi-table business QA over real Power BI projects. scenario is a case id, or `all` (all 100 cases together)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from . import place, register, render, split
 
 
 def merged_ontology(ds) -> dict:
-    """各用例的 core 层合成一份：dataset 名前加用例前缀，避免不同用例的同名表冲突。"""
+    """Merge the core layers of all cases: prefix dataset names with the case id so same-named tables from different cases do not collide."""
     datasets, relationships = [], []
     for task in ds.tasks:
         model = ontology.from_bibench(load_dataset("bibench", task.id, root=ds.root.parent))
@@ -26,8 +26,8 @@ def merged_ontology(ds) -> dict:
 
 @register("bibench")
 def export(ds, ws: Path, write_data=True, dev=None, limit=None, seed=0, metadata=False, **opts) -> dict:
-    """`dev` 默认：all 模式 20 个用例，项目模式（scenario 是项目 id）1 个，单用例 0。
-    `metadata=true` 时把 Power BI 模型元数据转成本体放进初始知识层。"""
+    """`dev` default: 20 cases in all mode, 1 in project mode (scenario is a project id), 0 for a single case.
+    With `metadata=true`, convert the Power BI model metadata into an ontology in the initial knowledge layer."""
     ws = Path(ws)
     single = len(ds.tasks) == 1
     tasks = [{"id": t.id, "question": t.input, "tables": f"data/{t.id}/"} for t in ds.tasks]
@@ -35,7 +35,7 @@ def export(ds, ws: Path, write_data=True, dev=None, limit=None, seed=0, metadata
     dev_tasks, tests = split(tasks, default if dev is None else dev, limit, seed)
     lines = []
     for task in ds.tasks:
-        csvs = sorted(Path(task.meta["dir"]).glob("*.csv"))  # 只放表；oracle、transformation/、join/ 都是提示，不导出
+        csvs = sorted(Path(task.meta["dir"]).glob("*.csv"))  # Tables only; oracle, transformation/ and join/ are hints and are not exported
         if write_data:
             for f in csvs:
                 place(f, ws / "data" / task.id / f.name)

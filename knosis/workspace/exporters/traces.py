@@ -1,4 +1,4 @@
-"""agent 轨迹：统一成 ATIF 轨迹放进 `data/traces/<id>.json`（另有 `.md`）；可选把轨迹所在的环境（数据目录）放进 `data/env/` 供验证。"""
+"""Agent traces: normalized to ATIF in `data/traces/<id>.json` (plus `.md`); optionally put the traces' environment (data directory) in `data/env/` for verification."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from . import place, register, render
 
 
 def describe(name, t) -> str:
-    """BRIEF 里一条轨迹的说明。"""
+    """The BRIEF line describing one trace."""
     subs = len(t.get("subagent_trajectories", []))
     fmt = t.get("extra", {}).get("knosis", {}).get("format", "")
     return (f"- `data/traces/{name}.json`（`.md` 便于阅读）：{fmt} 轨迹，{len(t['steps'])} 步，工具调用 {calls(t)} 次"
@@ -25,7 +25,7 @@ def brief(scenario, lines, n_env=None) -> str:
 
 @register("traces")
 def export(ds, ws: Path, write_data=True, env=None, modalities="trace", **opts) -> dict:
-    """`env`：轨迹当时面对的数据目录，原样放进 `data/env/`（只读，用来验证轨迹里的说法）；不给则只能从轨迹本身提取。"""
+    """`env`: the data directory the traces worked on, copied as is into `data/env/` (read-only, for verifying claims in the traces); without it, extraction relies on the traces alone."""
     ws = Path(ws)
     lines = []
     for name, path in ds.files.items():

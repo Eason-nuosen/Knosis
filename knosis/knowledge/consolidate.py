@@ -1,23 +1,26 @@
-"""内化：让知识库保持正确、不重复、不自相矛盾、成体系。四步，各由 agent 判断内容，Knosis 检查不变式并留痕。
+"""Consolidation: keep the knowledge base correct, non-duplicated, non-contradictory and organized. Four steps; the agent judges content
+in each, Knosis checks invariants and keeps a log.
 
-    knosis knowledge consolidate [--ws <工作区或知识库>] [--steps dedup,conflict,organize,structure]
-    knosis knowledge compact [--ws <工作区或知识库>] [--topic <主题>]
+    knosis knowledge consolidate [--ws <workspace or knowledge base>] [--steps dedup,conflict,organize,structure]
+    knosis knowledge compact [--ws <workspace or knowledge base>] [--topic <topic>]
 
-- dedup 去重：说同一件事的单元合并为一条；被并掉的改为 `status: merged` + `merged_into`，作为别名保留（不删除）。
-- conflict 矛盾处理：同一对象上互斥的断言，① 收窄条件，② 用新证据裁决（一方撤回），③ 环境变了按版本处理
-  （旧的 stale + `superseded_by`）；暂时无法裁决的双方互记 `conflicts_with` 并标 contested（默认不被选取）。
-- organize 构建知识体系：把零散的单跳知识串成「场景 → 数据间关系 → 具体对象」的脉络（`kb/outline.yaml`，只组织、
-  不新增断言）；串联中归纳出的上位规律是新断言：`provenance: derived`，`derived_from` 至少两条，从 inferred 起步。
-- structure 结构化：把同一批知识再组织成知识图谱（`kb/graph.json`，实体与关系）和流程图（`kb/flows/*.json`），
-  每条边、每个步骤都引用单元；只组织、不改单元（格式与检查见 `structure`）。
-- compact 压缩（不在默认步骤里，知识库变大时单独运行）：agent 自己判断哪些单元可以合起来说，组内其余单元并入主单元
-  （merged，作别名保留），活跃单元数必须减少、失效的都要指向活跃单元。给 `topic` 时只压缩与该主题有关的单元：
-  Knosis 先按主题词列出命中的单元，agent 再自己找全。
+- dedup: units saying the same thing are merged into one; the absorbed ones become `status: merged` + `merged_into`, kept as aliases (not deleted).
+- conflict: mutually exclusive assertions on the same object are (1) narrowed by condition, (2) decided by new evidence (one side retracted), or
+  (3) versioned if the environment changed (old one stale + `superseded_by`); pairs that cannot be decided yet record each other in
+  `conflicts_with` and are marked contested (not selected by default).
+- organize: link scattered single-hop knowledge into a "scenario -> relations between data -> specific objects" hierarchy (`kb/outline.yaml`,
+  organizes only, adds no assertions); higher-level patterns induced along the way are new assertions: `provenance: derived`, at least two
+  `derived_from`, starting as inferred.
+- structure: organize the same knowledge into a knowledge graph (`kb/graph.json`, entities and relations) and flowcharts (`kb/flows/*.json`),
+  each edge and step citing units; organizes only, does not change units (format and checks: `structure`).
+- compact (not a default step; run on its own as the knowledge base grows): the agent decides which units can be stated together; the rest of
+  each group merge into the main unit (merged, kept as aliases); the active unit count must drop and every inactive unit must point to an
+  active one. With `topic`, only units related to the topic are compacted: Knosis lists units matching the topic terms, the agent finds the rest.
 
-候选（疑似重复、疑似矛盾）由 `candidates` 按内容相似度与共同锚定对象找出，只是提示。
-每步验收：知识层检查不新增问题、没有单元被删除，以及该步自己的要求；不通过带着问题重试一次，仍不通过把
-`kb/` 与 `evidence/` 恢复到这一步之前。通过后对比前后单元，把操作（合并、撤回、替换、收窄条件、归纳……）
-追加到 `evidence/consolidate.jsonl`。
+Candidates (suspected duplicates and conflicts) come from `candidates` by content similarity and shared anchors; they are only hints.
+Acceptance per step: no new knowledge-layer issues, no units deleted, plus the step's own requirements; on failure retry once with the issues,
+and if it still fails restore `kb/` and `evidence/` to before the step. On success, diff units before and after and append the operations
+(merge, retract, supersede, narrow condition, induce, ...) to `evidence/consolidate.jsonl`.
 """
 
 from __future__ import annotations
@@ -37,8 +40,8 @@ from .layout import ACTIONS, data_root, layout
 from .units import INACTIVE, load_units, resolve
 
 STEPS = ("dedup", "conflict", "organize", "structure")
-EXTRA = ("compact",)  # 不在默认步骤里
-LAYERED = ("outline", "structure")  # 由 organize / structure 维护的部分；其他步骤不为它们的问题负责
+EXTRA = ("compact",)  # not a default step
+LAYERED = ("outline", "structure")  # maintained by organize / structure; other steps are not responsible for their issues
 GRAPH_COVERAGE, FLOW_COVERAGE = 0.6, 0.6
 
 
@@ -47,7 +50,7 @@ def min_bridges(n_datasets) -> int:
 
 
 def multi_note(base, step) -> str:
-    """多个数据集合成的知识库：除了各自的脉络，还要找跨数据集的共通知识。"""
+    """A knowledge base merged from several datasets: besides each one's hierarchy, look for knowledge shared across datasets."""
     from . import structure as st
 
     names = st.namespaces(base)
@@ -65,11 +68,11 @@ def multi_note(base, step) -> str:
             "都要被图谱或流程图引用。\n")
 
 
-# ------------------------------------------------------------------ 候选
+# ------------------------------------------------------------------ candidates
 
 
 def anchors(unit) -> set[str]:
-    """锚定对象：来源里的数据位置与 `about`；只有文件、没有 `#` 位置的锚点太粗，不算。"""
+    """Anchors: data locations in provenance and `about`; file-only anchors without a `#` location are too coarse and do not count."""
     from .select import anchors as all_anchors
 
     return {a for a in all_anchors(unit) if "#" in a or not a.startswith("data/")}
@@ -81,14 +84,14 @@ def similarity(a, b) -> float:
 
 
 def candidates(base, limit=30) -> dict:
-    """{"duplicates": [...], "conflicts": [...], "contested": [...]}，每对附相似度与共同锚点。"""
+    """{"duplicates": [...], "conflicts": [...], "contested": [...]}, each pair with similarity and shared anchors."""
     from .evidence import by_unit, load_evidence
 
     units = [u for u in load_units(layout(base).units) if u.get("status") not in INACTIVE]
     pairs = []
     for i, a in enumerate(units):
         for b in units[i + 1:]:
-            # Knosis 自动生成的 usage 单元文字是同一个模板，评价对象不同就不是重复。
+            # Knosis-generated usage units share one text template; different targets mean they are not duplicates.
             if a.get("scope") == b.get("scope") == "usage" and a.get("meta", {}).get("of") != b.get("meta", {}).get("of"):
                 continue
             shared = sorted(anchors(a) & anchors(b))
@@ -98,7 +101,7 @@ def candidates(base, limit=30) -> dict:
                               "same_kind": (a.get("form"), a.get("scope")) == (b.get("form"), b.get("scope"))})
     dups = [p for p in pairs if p["similarity"] >= 0.6 or (p["similarity"] >= 0.45 and p["shared"] and p["same_kind"])]
     seen = {(p["a"], p["b"]) for p in dups}
-    # 可能矛盾：锚定同一对象，或说的是相近的事（内容相似但没到重复）；来源只写工具的知识没有数据锚点，靠后者。
+    # Possible conflicts: same anchored object, or similar claims (similar content short of duplicate); tool-only provenance has no data anchors and relies on the latter.
     related = [p for p in pairs if (p["shared"] or p["similarity"] >= 0.35) and (p["a"], p["b"]) not in seen]
     evidence = by_unit(load_evidence(base))
     disputed = [u["id"] for u in units if u.get("status") == "contested" or any(
@@ -109,7 +112,7 @@ def candidates(base, limit=30) -> dict:
 
 
 def topic_terms(topic) -> list[str]:
-    """主题词：整句与按空白、逗号切开的各段（中文主题常不带空格，整句也算一个词）。"""
+    """Topic terms: the whole phrase plus the pieces split on whitespace and commas (Chinese topics often lack spaces, so the whole phrase is a term too)."""
     import re
 
     parts = [t for t in re.split(r"[\s,，、;；]+", topic.strip()) if len(t) >= 2]
@@ -117,7 +120,7 @@ def topic_terms(topic) -> list[str]:
 
 
 def topic_units(base, topic) -> list[dict]:
-    """与主题有关的活跃单元，按命中的主题词数排序；只是起点，agent 还要自己找全。"""
+    """Active units related to the topic, sorted by number of matched terms; only a starting point, the agent must find the rest."""
     terms = [t.lower() for t in topic_terms(topic)]
     hits = []
     for u in load_units(layout(base).units):
@@ -171,11 +174,11 @@ def render_candidates(base, step) -> str:
     return "\n".join(lines) or "（没有找到候选；仍可自己浏览知识库）"
 
 
-# ------------------------------------------------------------------ 提示与验收
+# ------------------------------------------------------------------ prompts and acceptance
 
 
 def resolve_base(path) -> tuple[Path, Path | None]:
-    """（知识层根，数据根）：工作区两者相同；知识库没有数据根。"""
+    """(knowledge layer root, data root): the same for a workspace; a knowledge base has no data root."""
     path = Path(path).resolve()
     return path, data_root(path)
 
@@ -278,7 +281,7 @@ def step_issues(path, step, before_units, before_issues) -> list[str]:
 
 
 def compact_issues(before: dict, after: dict) -> list[str]:
-    """活跃单元数减少（什么都没改也算通过）；这一步失效的单元都要指向活跃单元，不能悄悄丢掉。"""
+    """The active unit count drops (no change also passes); units made inactive in this step must point to active units, not silently vanish."""
     if before == after:
         return []
     alive = lambda units: {uid for uid, u in units.items() if u.get("status") not in INACTIVE}  # noqa: E731
@@ -294,11 +297,11 @@ def compact_issues(before: dict, after: dict) -> list[str]:
     return issues
 
 
-# ------------------------------------------------------------------ 留痕
+# ------------------------------------------------------------------ logging
 
 
 def actions(before: dict, after: dict, step) -> list[dict]:
-    """对比内化前后的单元，得出操作记录。"""
+    """Diff units before and after consolidation to derive operation records."""
     out = []
     for uid, unit in after.items():
         old = before.get(uid)
@@ -330,7 +333,7 @@ def log_actions(base, entries) -> None:
             fh.writelines(json.dumps(e, ensure_ascii=False) + "\n" for e in entries)
 
 
-# ------------------------------------------------------------------ 运行
+# ------------------------------------------------------------------ run
 
 
 def backup(base, tmp) -> None:

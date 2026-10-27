@@ -1,10 +1,10 @@
-"""Burr：从关系库 schema 写出到本体的映射。GT 是 mapping 文件，只放在 tasks 里。
+"""Burr: write a mapping from a relational schema to an ontology. GT is the mapping file, kept only in tasks.
 
-    data/burr/micro_benchmark/<类别>/<子类>/<场景>/{schema.sql, mapping.json, *.csv}
-    data/burr/real-world/<库>/{*.sql, mappings/*.json | *.ttl}
+    data/burr/micro_benchmark/<category>/<subcategory>/<scenario>/{schema.sql, mapping.json, *.csv}
+    data/burr/real-world/<database>/{*.sql, mappings/*.json | *.ttl}
 
-scenario 是真实库名、单个 micro 场景（`basic/table/person`），或一组 micro 场景：
-`micro`（全部 54 个）、`micro/<类别>`（如 `micro/basic`）—— 每个场景一题，files 的键为 `<场景>/<文件名>`。
+scenario is a real-world database name, a single micro scenario (`basic/table/person`), or a group of micro scenarios:
+`micro` (all 54) or `micro/<category>` (e.g. `micro/basic`); one task per scenario, files keyed `<scenario>/<file name>`.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def load(scenario: str = "mondial", root: str | Path | None = None) -> Dataset:
     sdir = base / REAL_WORLD.get(scenario, f"micro_benchmark/{scenario}")
 
     sqls = sorted(sdir.glob("*.sql"), key=lambda p: p.stat().st_size)
-    # 真实库常同时给「纯 schema」与「schema + 实例数据」两份 SQL，DDL 取小的那份
+    # real-world databases often ship both a schema-only and a schema + data SQL file; take the smaller one as DDL
     ddl_file = next((p for p in sqls if "schema" in p.name or "create" in p.name), sqls[0] if sqls else None)
     files = {p.name: p for p in sorted(sdir.iterdir()) if p.suffix in (".sql", ".csv")}
 

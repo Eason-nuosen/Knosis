@@ -1,6 +1,6 @@
-"""文本入口：一个文档目录 → doc / chunk 单元（+ 可选抽取器产出的三元组等）。
+"""Text entry: a directory of documents → doc / chunk units (+ triples etc. from an optional extractor).
 
-唯一一个 load 时就产出 units 的入口。真实抽取器（如 AutoSchemaKG）以函数传入：
+The only entry that produces units at load time. A real extractor (e.g. AutoSchemaKG) is passed in as a function:
 `extractor(doc_id, text) -> Iterable[Unit]`。
 """
 
@@ -17,13 +17,13 @@ from . import register
 SUFFIXES = (".txt", ".md", ".markdown", ".rst", ".html", ".json", ".jsonl", ".csv", ".tsv")
 
 METRICS = {
-    "duplicate_rate": "被折叠的重复文档 / 读入文档",
-    "provenance_resolvable": "π 能定位回原文的单元比例",
+    "duplicate_rate": "collapsed duplicate documents / documents read",
+    "provenance_resolvable": "fraction of units whose π resolves back to the source text",
 }
 
 
 def chunk(text: str, size: int, overlap: int) -> list[tuple[int, int]]:
-    """按字符切块，尽量在段落边界断开。返回 (start, end)。"""
+    """Chunk by characters, breaking at paragraph boundaries where possible. Returns (start, end)."""
     spans, start = [], 0
     while start < len(text):
         end = min(start + size, len(text))
@@ -41,7 +41,7 @@ def chunk(text: str, size: int, overlap: int) -> list[tuple[int, int]]:
 def load(path: str | Path, chunk_chars: int = 2000, overlap: int = 200, dedup: bool = True,
          extractor: Callable[[str, str], Iterable[Unit]] | None = None,
          suffixes: Iterable[str] = SUFFIXES, root: str | Path | None = None) -> Dataset:
-    """`path` 是语料目录；相对路径相对于 `root`（默认当前目录）。"""
+    """`path` is the corpus directory; relative paths are resolved against `root` (default: current directory)."""
     root = (Path(root or ".").expanduser() / Path(path).expanduser()).resolve()
     units, docs, seen, duplicates = [], [], {}, {}
 

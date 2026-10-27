@@ -1,13 +1,13 @@
-"""证据账本：`evidence/ledger.jsonl`，每行一次验证结果。
+"""Evidence ledger: `evidence/ledger.jsonl`, one verification result per line.
 
     {"id": "e-007", "unit": "<κ id>", "verdict": "support", "method": "check",
-     "source": "tool:tabpfn@0.2(cv,...)", "note": "...", "inputs": {"data/train.parquet": "<指纹>"}, "created": "..."}
+     "source": "tool:tabpfn@0.2(cv,...)", "note": "...", "inputs": {"data/train.parquet": "<fingerprint>"}, "created": "..."}
 
-`verdict`：support（支持）/ refute（反驳）/ undetermined（无法判定：条件或测量无法确认）/
-not_applicable（前提不成立，不算支持也不算反例）。
-`method`：check（Knosis 重跑单元的可执行检查）/ tool / data / feedback / ablation（去掉该知识对比）/ derivation / human。
-`inputs`：这条证据依赖的数据文件指纹；文件变了，证据就过期，相关知识需要重验或标为 stale。
-知识的状态仍由 agent 写，`units.check_units` 检查它和证据是否一致。
+`verdict`: support / refute / undetermined (condition or measurement cannot be confirmed) /
+not_applicable (premise does not hold; neither support nor counterexample).
+`method`: check (Knosis reruns the unit's executable check) / tool / data / feedback / ablation (compare without the knowledge) / derivation / human.
+`inputs`: fingerprints of the data files this evidence depends on; if a file changes, the evidence expires and the knowledge must be re-verified or marked stale.
+Knowledge status is still written by the agent; `units.check_units` checks that it agrees with the evidence.
 """
 
 from __future__ import annotations
@@ -26,13 +26,13 @@ METHODS = {"check", "tool", "data", "feedback", "ablation", "derivation", "human
 
 
 def load_evidence(root) -> list[dict]:
-    """`root`：工作区、知识库或知识版本快照。"""
+    """`root`: workspace, knowledge base or knowledge version snapshot."""
     path = layout(root).ledger
     return load_units(path) if path.exists() else []
 
 
 def add_evidence(root, entries) -> list[dict]:
-    """追加证据，补上 id 与 created。"""
+    """Append evidence, filling in id and created."""
     old = load_evidence(root)
     now = datetime.now(timezone.utc).isoformat()
     new = [{"id": f"e-{len(old) + i + 1:04d}", **entry, "created": entry.get("created", now)}
@@ -47,14 +47,14 @@ def fingerprint(path) -> str:
 
 
 def data_inputs(root, paths=None) -> dict:
-    """`paths`（相对工作区）的指纹；不给就取 `data/` 下所有文件。"""
+    """Fingerprints of `paths` (relative to the workspace); defaults to all files under `data/`."""
     root = Path(root)
     files = [root / p for p in paths] if paths else sorted(p for p in (root / "data").rglob("*") if p.is_file())
     return {str(p.relative_to(root)): fingerprint(p) for p in files}
 
 
 def expired(entry, root) -> list[str]:
-    """证据依赖的数据文件里已变化或消失的。继承来的证据：文件不存在说明换了环境布局，不在这里判定；存在而内容变了才算过期。"""
+    """Data files the evidence depends on that changed or disappeared. For inherited evidence a missing file means a different environment layout and is not judged here; only an existing file with changed content counts as expired."""
     root = Path(root)
     gone = lambda p: not (root / p).exists()  # noqa: E731
     return [p for p, fp in entry.get("inputs", {}).items()
@@ -80,7 +80,7 @@ def check_evidence(entries, unit_ids, root=None) -> list[str]:
 
 
 def by_unit(entries, root=None) -> dict[str, list[dict]]:
-    """每个单元的有效证据（未过期），按记录顺序。"""
+    """Valid (unexpired) evidence per unit, in record order."""
     grouped = {}
     for entry in entries:
         if root is None or not expired(entry, root):
@@ -88,16 +88,16 @@ def by_unit(entries, root=None) -> dict[str, list[dict]]:
     return grouped
 
 
-# ---------------------------------------------------------------- 可执行检查
+# ---------------------------------------------------------------- executable checks
 
 
 def run_check(unit, root, tables=None) -> tuple[str, str]:
-    """跑单元的 `check`，返回 (verdict, note)。
+    """Run a unit's `check`; return (verdict, note).
 
-    sql：`{"kind": "sql", "query": ..., "expect": [[...]]}`，在 `data/` 的表上（或给定 `tables`）执行；
-    有 expect 时结果行相等即支持，否则第一行全部为真即支持。
-    python：`{"kind": "python", "path": "evidence/checks/<id>.py"}`，在工作区根目录运行；
-    退出码 0 支持，1 反驳，其他无法判定；stdout 末尾几行作为 note。
+    sql: `{"kind": "sql", "query": ..., "expect": [[...]]}`, run on the tables in `data/` (or the given `tables`);
+    with expect, equal result rows mean support; otherwise support if every value in the first row is true.
+    python: `{"kind": "python", "path": "evidence/checks/<id>.py"}`, run from the workspace root;
+    exit code 0 supports, 1 refutes, anything else is undetermined; the last lines of stdout become the note.
     """
     check, root = unit["check"], Path(root)
     if check["kind"] == "sql":
@@ -125,7 +125,7 @@ def same(a, b) -> bool:
 
 
 def verify(ws, ids=None) -> list[dict]:
-    """重跑带 `check` 的活跃单元（或指定的 `ids`），把结果追加为 method=check 的证据。"""
+    """Rerun active units with a `check` (or the given `ids`) and append the results as method=check evidence."""
     ws = Path(ws)
     units = [u for u in load_units(layout(ws).units)
              if "check" in u and (u["id"] in ids if ids else u["status"] not in {"retracted", "stale", "merged"})]
@@ -142,7 +142,7 @@ def verify(ws, ids=None) -> list[dict]:
 
 
 def trace(root, unit_id, history=()) -> str:
-    """一条知识的发现途径：派生链 + 每条证据，按时间排列，markdown。`history` 是历史快照里的单元。"""
+    """How a piece of knowledge was found: derivation chain plus each evidence entry, in time order, as markdown. `history` holds units from past snapshots."""
     units = {u["id"]: u for u in [*history, *load_units(layout(root).units)]}
     evidence = by_unit(load_evidence(root))
     lines, seen = [], set()

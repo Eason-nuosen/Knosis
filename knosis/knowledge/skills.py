@@ -1,21 +1,21 @@
-"""skill 层：如何运用知识解某类任务（解题集）。知识是对环境的理解、与 agent 无关；skill 是用法，讲有没有效，不讲对错。
+"""Skill layer: how to apply knowledge to a class of tasks (solution playbooks). Knowledge is understanding of the environment, independent of the agent; a skill is usage, judged by whether it helps, not by truth.
 
-    kb/skills/<名字>/SKILL.md      与 Codex / Claude Code 的 skill 同格式
+    kb/skills/<name>/SKILL.md      same format as Codex / Claude Code skills
 
     ---
     name: multi-hop-loan
-    description: 多跳贷款类题目的解法          # 一句话，装给 agent 时用作触发说明
-    when: 题目沿 Loan / Account 走两跳以上     # 适用的任务类型与条件
-    uses: [refine/type-view, usage/refine/type-view/agg]   # 引用的知识 id（κ、usage 单元或本体单元）
-    derived_from: [003-refine-r1]           # 总结自哪些反馈记录（可选）
+    description: Solving multi-hop loan questions   # one sentence, used as the trigger description when installed for an agent
+    when: the question goes two or more hops via Loan / Account   # applicable task type and conditions
+    uses: [refine/type-view, usage/refine/type-view/agg]   # referenced knowledge ids (κ, usage units or ontology units)
+    derived_from: [003-refine-r1]           # feedback records it was summarized from (optional)
     status: active                          # active / stale / retracted
     ---
-    步骤 ……
+    Steps ...
 
-skill 由 agent 在 RSI 中根据反馈自己补充。聪明的 agent 也许用不上它，但它照样记录在库里。
-Knosis 检查：`uses` 能解析；所用知识被撤回或失效后，skill 须标为 stale / retracted（与 κ 的 I5 同理）。
-usage 管有没有用，skill 管怎么做：skill 的效果写成 usage 单元（`scope=usage`，`meta.of: skill:<名字>`，
-dev 反馈会自动生成 `usage/skill:<名字>/<题型>`），再由证据支持；在决策里通过 `used_units` 引用 `skill:<名字>`。
+Skills are added by the agent itself during RSI based on feedback. A smart agent may not need them, but they are still recorded in the library.
+Knosis checks: `uses` resolves; once the knowledge used is retracted or stale, the skill must be marked stale / retracted (same as κ's I5).
+Usage says whether it helps, a skill says how: a skill's effect is a usage unit (`scope=usage`, `meta.of: skill:<name>`;
+dev feedback auto-generates `usage/skill:<name>/<question type>`) backed by evidence; decisions cite `skill:<name>` via `used_units`.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ REQUIRED = ("name", "description", "when", "uses")
 
 
 def load_skills(base) -> list[dict]:
-    """知识库里的全部 skill：front matter 字段 + `body` + `path`（相对 `base`）。"""
+    """All skills in the knowledge base: front matter fields + `body` + `path` (relative to `base`)."""
     skills = []
     for path in sorted(layout(base).skills.glob("*/SKILL.md")):
         _, head, body = path.read_text(encoding="utf-8").split("---", 2)
@@ -45,7 +45,7 @@ def skill_id(skill) -> str:
 
 
 def check_skills(skills, units: dict, feedback_ids=None) -> list[str]:
-    """`units`：{id: κ}（含本体单元与历史版本）；`feedback_ids`：给定时检查 derived_from 指向的反馈记录存在。"""
+    """`units`: {id: κ} (including ontology units and historical versions); `feedback_ids`: if given, check that derived_from feedback records exist."""
     issues, seen = [], set()
     for skill in skills:
         name = skill.get("name") or skill["path"]

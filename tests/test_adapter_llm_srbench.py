@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import knosis.decision.llm_srbench  # noqa: F401  注册打分器
-import knosis.workspace.exporters.llm_srbench  # noqa: F401  注册导出器
+import knosis.decision.llm_srbench  # noqa: F401  register scorer
+import knosis.workspace.exporters.llm_srbench  # noqa: F401  register exporter
 from knosis import data_dir
 from knosis import workspace as w
 from knosis.decision import evaluate

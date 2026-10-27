@@ -1,6 +1,6 @@
 name: publish
 
-# 推送 v* 标签时构建并发布到 PyPI（Trusted Publishing，不需要 token）。
+# Build and publish to PyPI when a v* tag is pushed (Trusted Publishing, no token needed).
 on:
   push:
     tags: ["v*"]

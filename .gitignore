@@ -1,4 +1,4 @@
-# 数据不入仓：`knosis download <name>` 取到 data/<name>/（或用 KNOSIS_DATA_DIR 指到别处）
+# Data is not committed: `knosis download <name>` fetches into data/<name>/ (or point KNOSIS_DATA_DIR elsewhere)
 /data
 
 __pycache__/
@@ -9,5 +9,5 @@ dist/
 .pytest_cache/
 .DS_Store
 
-# agent 工作区
+# agent workspaces
 ws/

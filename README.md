@@ -1,157 +1,205 @@
 # Knosis
 
-> Knosis = knowledge + gnosis。**给 agent 用的知识底座：收集、管理、再利用 agent 的知识。**
+> Knosis = knowledge + gnosis. **A knowledge substrate for agents: collect, manage and reuse what your agents learn.**
 
-**在线演示**：https://eason-nuosen.github.io/Knosis/ （各类数据上 agent 构造的知识图谱、流程图、知识体系与结果，中英文）· `pip install knosis`
+English | [中文](https://github.com/Eason-nuosen/Knosis/blob/main/README_CN.md)
 
-Knosis 本身不是 agent。它让 Codex / Claude Code 这类编码 agent 把做事过程中学到的东西写成**显式知识**：
-每条知识都有来源、成立条件和证据，可以检查、追溯、撤回；下次做事时再按需取用。
+**Live demo**: https://eason-nuosen.github.io/Knosis/
 
-两类场景，同一套知识层：
+Knosis is not an agent. It lets coding agents such as Codex and Claude Code write down what they learn while working as
+**explicit knowledge**: every piece of knowledge has a source, the conditions under which it holds, and evidence, so it can
+be checked, traced and retracted; the next time the agent works, it retrieves what it needs.
 
-- **个人 agent**：从你日常的 Codex / Claude Code 会话里收集知识，整理成个人知识库，新会话通过 MCP 取用。
-- **任务 / 企业数据**：在具体任务上（benchmark、业务数据）让 agent 边探索边累积知识，经证据验证后写回知识库，
-  可继承到同类新任务。
+Two scenarios, one knowledge layer:
 
-## 核心概念
+- **Personal agents**: collect knowledge from your everyday Codex / Claude Code sessions into a personal knowledge base;
+  new sessions use it through MCP.
+- **Tasks and enterprise data**: on concrete tasks (benchmarks, business data) the agent accumulates knowledge as it
+  explores; knowledge verified by evidence is written back to the knowledge base and can be inherited by similar tasks.
 
-- **知识单元 κ**：一条知识 = 内容、形式（fact / rule / formula / procedure …）、成立条件、来源、状态
-  （observed → inferred → verified，或 contested / retracted / stale / merged）。存在 `kb/knowledge/units.jsonl`。
-- **证据**：支持或反驳某条知识的记录（可执行检查、工具输出、dev 反馈、轨迹步骤），存在 `evidence/`。状态必须与证据一致。
-- **内化**：知识多了以后由 agent 去重、处理矛盾、整理成知识体系（大纲、知识图谱、流程图），太多时再压缩；
-  每一步 Knosis 都检查、不通过就回滚，并留下操作记录。
-- **工作区**：一个任务的完整流程 explore → extract → refine（用 dev 反馈修正）→ decide，每阶段验收并提交 git；
-  标准答案不进工作区。
+## Core concepts
 
-知识库与工作区用同一个布局（`kb/` + `evidence/`），都是本地 git 仓库，每次写回一个版本，可回退。
+- **Knowledge unit κ**: one piece of knowledge = content, form (fact / rule / formula / procedure ...), conditions, source
+  and status (observed → inferred → verified, or contested / retracted / stale / merged). Stored in `kb/knowledge/units.jsonl`.
+- **Evidence**: records that support or refute a unit (executable checks, tool output, dev feedback, trace steps), stored in
+  `evidence/`. A unit's status must agree with its evidence.
+- **Consolidation**: as knowledge grows, the agent deduplicates it, resolves contradictions, organizes it into a knowledge
+  system (outline, knowledge graph, flows), and compacts it when it gets too large. Knosis checks every step, rolls back
+  steps that fail, and logs what was done.
+- **Workspace**: the full pipeline for one task, explore → extract → refine (corrected with dev feedback) → decide. Each stage
+  is checked and committed to git; ground truth never enters the workspace.
 
-## 安装
+Knowledge bases and workspaces share the same layout (`kb/` + `evidence/`). Both are local git repositories with one
+commit per write-back, so every version can be restored.
+
+## Installation
 
 ```bash
 pip install knosis               # Python 3.10+
-pip install 'knosis[all]'        # 加上各数据集需要的依赖（networkx、h5py、openpyxl、下载工具）
+pip install 'knosis[all]'        # plus the dependencies some datasets need (networkx, h5py, openpyxl, downloaders)
 ```
 
-需要一个编码 agent：[Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://claude.com/claude-code)，两者都已实测。
-从源码安装：`git clone` 后 `pip install -e '.[all]'`，`pytest -q` 跑测试。
+You also need a coding agent: [Codex CLI](https://github.com/openai/codex) or [Claude Code](https://claude.com/claude-code);
+both are tested. From source: `git clone`, then `pip install -e '.[all]'`; run the tests with `pytest -q`.
 
-## 上手：个人知识库
+## Quick start: personal knowledge base
 
-不需要任何数据集。
+No dataset required.
 
 ```bash
-knosis kb init ~/kb                                  # 建库（一个本地 git 仓库）
-knosis install --kb ~/kb                             # 让 Codex / Claude Code 能用它，见下一节
+knosis kb init ~/kb                                  # create the knowledge base (a local git repository)
+knosis install --kb ~/kb                             # let Codex / Claude Code use it, see the next section
 
-# 照常用 agent 干活；新会话里 agent 先看知识体系，再按任务检索
+# work with your agent as usual; in a new session it first reads the outline, then searches for the task at hand
 
-knosis kb collect --kb ~/kb --since 1d --dry-run     # 看会收集哪些会话
-knosis kb collect --kb ~/kb --since 1d               # 提取知识 → 验收 → 内化 → 提交一个版本（--source claude 收 Claude Code 会话）
+knosis kb collect --kb ~/kb --since 1d --dry-run     # see which sessions would be collected
+knosis kb collect --kb ~/kb --since 1d               # extract → check → consolidate → commit a version (--source claude for Claude Code sessions)
 
-knosis knowledge outline --ws ~/kb                   # 看知识体系
-knosis knowledge select  --ws ~/kb --text <关键词>    # 检索
-knosis knowledge trace <id> --ws ~/kb                # 一条知识的来源与证据
+knosis knowledge outline --ws ~/kb                   # the knowledge system
+knosis knowledge select  --ws ~/kb --text <keyword>  # search
+knosis knowledge trace <id> --ws ~/kb                # where a unit came from and its evidence
 ```
 
-只收集能被环境验证或反驳的知识（项目约定、数据的坑、工具的实际行为、报错与解决办法、可复用的方法），
-不收集偏好和闲聊。会话原文会复制进知识库供追溯，所以**知识库不要推到公开远端**。
+Only knowledge the environment can confirm or refute is collected (project conventions, data pitfalls, how tools and
+commands actually behave, errors and their fixes, reusable methods), not preferences or chat. Session transcripts are
+copied into the knowledge base for traceability, so **do not push your knowledge base to a public remote**.
 
-## 在 Codex 与 Claude Code 中使用
+## Using Knosis from Codex and Claude Code
 
-Knosis 通过两样东西接入 agent：**skill**（告诉 agent 有知识库、什么时候查、怎么写回）和 **MCP 服务**
-（`knosis mcp`，让 agent 在会话里直接查询、写入知识，16 个工具）。`knosis install --kb ~/kb` 两样都装：
+Knosis connects to agents through two things: a **skill** (tells the agent the knowledge base exists, when to consult it
+and how to write back) and an **MCP server** (`knosis mcp`, 16 tools to query and write knowledge inside a session).
+`knosis install --kb ~/kb` installs both:
 
 | | Codex | Claude Code |
 | --- | --- | --- |
-| skill | 复制到 `~/.codex/skills/knosis/`、`~/.agents/skills/knosis/` | 复制到 `~/.claude/skills/knosis/` |
-| MCP | 自动写入 `~/.codex/config.toml`（带标记的一段，可重复执行；已放行调用审批） | 打印一条命令，自己运行一次：`claude mcp add -s user knosis -- <python> -m knosis.cli mcp --ws ~/kb` |
-| 只装一方 | `knosis install --codex --kb ~/kb` | `knosis install --claude --kb ~/kb` |
+| skill | copied to `~/.codex/skills/knosis/` and `~/.agents/skills/knosis/` | copied to `~/.claude/skills/knosis/` |
+| MCP | written into `~/.codex/config.toml` (a marked block, safe to re-run; tool calls pre-approved) | prints a command to run once: `claude mcp add -s user knosis -- <python> -m knosis.cli mcp --ws ~/kb` |
+| one agent only | `knosis install --codex --kb ~/kb` | `knosis install --claude --kb ~/kb` |
 
-装好后在新会话里，agent 会先看知识体系（`knowledge_outline`），再按任务检索（`knowledge_select`）；
-也可以直接对它说"查一下知识库里关于 X 的知识""把这个结论记进知识库"。
+In a new session the agent first reads the outline (`knowledge_outline`), then searches for the task (`knowledge_select`).
+You can also just ask it to "look up what the knowledge base says about X" or "record this finding in the knowledge base".
 
-**收集**不在会话里自动发生，需要定期运行（可放进 cron）：
+**Collection** does not happen inside sessions; run it periodically (e.g. from cron):
 
 ```bash
-knosis kb collect --kb ~/kb --since 1d                                  # 收集 Codex 会话（~/.codex/sessions）
-knosis kb collect --kb ~/kb --since 1d --source claude                  # 收集 Claude Code 会话（~/.claude/projects）
-knosis kb collect --kb ~/kb --since 1d --agent claude --model <模型>     # 用 Claude Code 来做提取（默认用 Codex）
+knosis kb collect --kb ~/kb --since 1d                                  # Codex sessions (~/.codex/sessions)
+knosis kb collect --kb ~/kb --since 1d --source claude                  # Claude Code sessions (~/.claude/projects)
+knosis kb collect --kb ~/kb --since 1d --agent claude --model <model>   # use Claude Code for extraction (default: Codex)
 ```
 
-不装到全局、临时试用 MCP：
+Try the MCP server without a global install:
 
 ```bash
 codex exec -c 'mcp_servers.knosis.command="knosis"' -c 'mcp_servers.knosis.args=["mcp","--ws","/abs/path/kb"]' \
-  -c 'mcp_servers.knosis.default_tools_approval_mode="approve"' "<任务>"
-claude -p "<任务>" --mcp-config '{"mcpServers":{"knosis":{"command":"knosis","args":["mcp","--ws","/abs/path/kb"]}}}' \
+  -c 'mcp_servers.knosis.default_tools_approval_mode="approve"' "<task>"
+claude -p "<task>" --mcp-config '{"mcpServers":{"knosis":{"command":"knosis","args":["mcp","--ws","/abs/path/kb"]}}}' \
   --allowedTools mcp__knosis
 ```
 
-需要 agent 自动跑的命令（`ws run`、`kb collect`、`knowledge consolidate / compact`）都有 `--agent codex|claude`、
-`--model`、`--effort` 三个参数。
+Every command that runs an agent (`ws run`, `kb collect`, `knowledge consolidate / compact`) takes `--agent codex|claude`,
+`--model` and `--effort`.
 
-## 上手：任务工作区
+## Quick start: task workspace
 
 ```bash
-knosis ws init tabarena houses --out ws/houses       # 从数据集导出一个工作区（数据入口见下）
+knosis ws init tabarena houses --out ws/houses       # export a workspace from a dataset (data entries below)
 
-# 驱动模式：Knosis 启动 agent 跑完各阶段，每阶段验收，不过重试一次
+# driver mode: Knosis runs the agent through every stage, checks each one and retries once on failure
 knosis ws run ws/houses --agent codex --stage explore extract refine decide --rounds 2 --consolidate
-knosis ws run ws/houses --agent claude --model <模型> --effort medium ...    # 换成 Claude Code
+knosis ws run ws/houses --agent claude --model <model> --effort medium ...   # with Claude Code
 
-# 嵌入模式：直接在 agent 里打开工作区（Codex 读 AGENTS.md，Claude Code 读 CLAUDE.md），agent 自己推进
+# embedded mode: open the workspace in your agent (Codex reads AGENTS.md, Claude Code reads CLAUDE.md) and let it proceed
 knosis install
 
-knosis eval ws/houses                                # 评测，写 .knosis/eval.json
-knosis ws fork ws/houses --out ws/houses-none --knowledge none   # 对照：不给知识 / K_0 / K_final
+knosis eval ws/houses                                # evaluate, writes .knosis/eval.json
+knosis ws fork ws/houses --out ws/houses-none --knowledge none   # ablation: no knowledge / K_0 / K_final
 ```
 
-标准答案只在评测时读取，测试题直到 decide 才生成，反馈只接受 dev 题。这是软隔离，不是安全边界：
-正式评测请把原始数据目录放在 agent 环境之外。
+Ground truth is only read at evaluation time, test tasks are generated only at decide, and feedback only accepts dev tasks.
+This is soft isolation, not a security boundary: for formal evaluations keep the raw data outside the agent's environment.
 
-## 管理知识
+## Managing knowledge
 
 ```bash
-knosis knowledge check       --ws <dir>                    # 结构、来源、状态与证据一致性
-knosis knowledge consolidate --ws <dir>                    # 去重 → 矛盾处理 → 构建知识体系 → 结构化
-knosis knowledge compact     --ws <dir> [--topic <主题>]    # 知识太多时压缩：agent 自己判断，或只压缩某个主题
-knosis mcp --ws <dir>                                      # 以 MCP 暴露知识层与工具（16 个工具）
+knosis knowledge check       --ws <dir>                    # structure, sources, status vs. evidence
+knosis knowledge consolidate --ws <dir>                    # deduplicate → resolve contradictions → organize → structure
+knosis knowledge compact     --ws <dir> [--topic <topic>]  # shrink a large base: agent decides what to merge, or only one topic
+knosis mcp --ws <dir>                                      # expose the knowledge layer and tools over MCP (16 tools)
 ```
 
-被合并、被压缩的知识不会删除，而是作为别名指向保留下来的那条；撤回一条知识后，由它推出的知识也必须改为失效（检查会报出）。
+Merged or compacted units are never deleted; they stay as aliases of the unit that covers them. When a unit is retracted,
+the units derived from it must be invalidated too (the check reports them).
 
-## 支持的数据
+## Knowledge system: multiple forms, stored and visualized
 
-Knosis 面向**异构数据**：同一套知识层（κ + 证据 + 本体）覆盖下面这些数据形态，每类都有可评测的数据入口与对应工具。
+Knowledge is more than a list. Consolidation organizes the same units into several forms, each answering a different
+question. All of them are files in the knowledge base, and every node, edge and step cites the units it comes from
+(no new claims are added; Knosis checks the citations):
 
-| 数据形态 | 数据入口 | agent 从中得到的知识 | 工具 |
+| Form | Stored as | Answers | Produced by |
 | --- | --- | --- | --- |
-| 单表 | tabarena（51 个表格数据集的分类 / 回归） | 列含义、分布与异常、特征与目标的关系、建模经验 | profile、sql、fit、tabpfn |
-| 电子表格 | spreadsheetbench（真实 xlsx 上的单元格 / 工作表操作） | 表格结构、公式与操作的实际行为 | sheet（查看结构、LibreOffice 重算公式） |
-| 多表 / 关系数据库 | relbench（多表 + 时间切分的预测）、bibench（BI 项目问答）、burr（关系库 → 本体映射） | 主外键与 join、粒度、包含依赖、业务口径；可写成 OSI 本体 | joins、sql、profile |
-| 数据湖（多源异构文件） | kramabench（多份格式不一的文件上的数值问答） | 文件之间的对应关系、单位与时间对齐、清洗规则 | 通用表格工具（sql、profile） |
-| 图 | ngdbench（大规模属性图问答，含注入噪声的版本） | 节点 / 边类型、属性规律、哪些是噪声 | ultra（只适配接口，需另备 checkpoint） |
-| 方程与科学数据 | llm-srbench（数值数据 → 符号公式）、newtonbench（在模拟器里做实验发现物理定律） | 公式、成立范围、实验方法 | newton（模拟器实验）、fit |
-| 金融时间序列 | alphabench（A 股行情上的因子评估） | 因子的信号与稳定性判断 | 通用表格工具（sql、profile） |
-| 文本 | text（任意文档集合，无题目） | 文中的断言与实体关系，可抽成知识图谱 | autoschemakg（文本 → 知识图谱） |
-| agent 轨迹 | traces（Codex / Claude Code 会话、ATIF 等格式）、whoandwhen（多 agent 失败日志）；个人会话由 `kb collect` 收集 | 项目约定、工具与命令的实际行为、出错原因与解决办法 | 统一转成 ATIF 轨迹，知识引用到具体步骤 |
+| Outline (tree) | `kb/outline.yaml` | what parts the knowledge falls into and what each covers: scenario → relations between data → objects | agent (organize) |
+| Knowledge graph (KG) | `kb/graph.json` | which objects exist (tables, columns, variables, concepts, tools ...) and how they relate | agent (structure) |
+| Flows | `kb/flows/*.json` | how a kind of task is done: steps, checks, branches, and which unit or skill each step uses | agent (structure) |
+| Derivation graph | computed from `derived_from` / `merged_into` / `superseded_by` | which units were derived from, merged into or superseded by which; retractions propagate along it | computed by Knosis |
+| Rule and formula cards | computed from rule / formula units | which rules and formulas hold on each object | computed by Knosis |
+| Ontology (OSI standard) | `kb/knowledge/ontology/` | structured semantics of the data: entities, attributes, relations, keys | agent, or imported from BI / database metadata |
 
-各入口的场景、指标、dev 切分与已知限制见 [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md)；
-`knosis list` 列出全部入口，`knosis describe <名字>` 看数据说明，`knosis download <名字>` 取数（数据集不随包分发）。
-工具（`knosis tool list`、`knosis tool card <名字>`）只产出待验证的知识，不改数据。
+Knowledge bases from several datasets can be merged into one (`knosis kb merge --namespace`) and consolidated again to
+find entities and knowledge shared across datasets.
 
-## 文档
+Viewing and visualization:
 
-| 文档 | 内容 |
+```bash
+knosis knowledge outline --ws <dir>                       # outline rendered as markdown
+knosis knowledge graph   --ws <dir>                       # summary of the knowledge graph and flows
+knosis knowledge graph   --ws <dir> --entity <entity> --depth 2   # subgraph around one entity, edges with their units
+knosis knowledge graph   --ws <dir> --view flows|derivation|cards
+```
+
+Agents read the same content through the MCP tools `knowledge_outline` and `knowledge_graph`.
+The [live demo](https://eason-nuosen.github.io/Knosis/) renders the knowledge graphs, flows, derivation graphs, cards and
+outlines of each dataset as interactive pages, plus an atlas merged from several datasets; the site is generated from the
+demo workspaces by `site/build.py`.
+
+## Supported data
+
+Knosis targets **heterogeneous data**: one knowledge layer (κ + evidence + ontology) covers the data types below, each with
+evaluable data entries and matching tools.
+
+| Data type | Data entries | Knowledge the agent derives | Tools |
+| --- | --- | --- | --- |
+| Single table | tabarena (classification / regression on 51 tabular datasets) | column meanings, distributions and outliers, feature–target relations, modeling lessons | profile, sql, fit, tabpfn |
+| Spreadsheets | spreadsheetbench (cell / sheet manipulation on real xlsx files) | workbook structure, how formulas and operations actually behave | sheet (inspect structure, recalculate formulas with LibreOffice) |
+| Multi-table / relational databases | relbench (prediction over multiple tables with temporal splits), bibench (BI project QA), burr (relational DB → ontology mapping) | keys and joins, granularity, inclusion dependencies, business definitions; can be written as an OSI ontology | joins, sql, profile |
+| Data lakes (heterogeneous files) | kramabench (numeric QA over files in mixed formats) | how files correspond, unit and time alignment, cleaning rules | generic table tools (sql, profile) |
+| Graphs | ngdbench (QA over large property graphs, including versions with injected noise) | node / edge types, attribute regularities, what is noise | ultra (interface only; bring your own checkpoint) |
+| Equations and scientific data | llm-srbench (numeric data → symbolic formulas), newtonbench (discover physical laws by experimenting in a simulator) | formulas, where they hold, experimental methods | newton (simulator experiments), fit |
+| Financial time series | alphabench (factor evaluation on China A-share data) | judgments on factor signal and stability | generic table tools (sql, profile) |
+| Text | text (any document collection, no tasks) | claims and entity relations in the text, extractable into a knowledge graph | autoschemakg (text → knowledge graph) |
+| Agent traces | traces (Codex / Claude Code sessions, ATIF and other formats), whoandwhen (multi-agent failure logs); personal sessions via `kb collect` | project conventions, how tools and commands behave, causes of failures and their fixes | all converted to ATIF traces; knowledge cites individual steps |
+
+Scenarios, metrics, dev splits and known limitations of each entry are in
+[docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md).
+`knosis list` lists all entries, `knosis describe <name>` shows the data card, `knosis download <name>` fetches the data
+(datasets are not shipped with the package). Tools (`knosis tool list`, `knosis tool card <name>`) only produce knowledge
+to be verified; they never modify the data.
+
+## Documentation
+
+The documents below are currently in Chinese.
+
+| Document | Contents |
 | --- | --- |
-| [docs/knowledge.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/knowledge.md) | 知识格式、状态与证据、内化与压缩的规则 |
-| [docs/interfaces.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/interfaces.md) | 工具、skill、MCP 的分工与接入方式 |
-| [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md) | 数据入口、指标、Python 接口 |
-| [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | 各数据集上的演示与结果（网页版见[在线演示](https://eason-nuosen.github.io/Knosis/)） |
-| [docs/scope.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/scope.md) | 范围与定位 |
-| [docs/extending.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/extending.md) | 新增数据集、评测或工具 |
-| [docs/design.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/design.md) | 设计背景（四层架构：数据 / 知识 / 工具 / 决策） |
+| [docs/knowledge.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/knowledge.md) | knowledge format, status and evidence, rules for consolidation and compaction |
+| [docs/interfaces.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/interfaces.md) | how tools, skills and MCP divide the work, and how to connect agents |
+| [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md) | data entries, metrics, Python API |
+| [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | demos and results on each dataset (web version: [live demo](https://eason-nuosen.github.io/Knosis/)) |
+| [docs/scope.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/scope.md) | scope and positioning |
+| [docs/extending.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/extending.md) | adding datasets, evaluations or tools |
+| [docs/design.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/design.md) | design background (four layers: data / knowledge / tools / decision) |
 
-## 许可
+## License
 
-代码 Apache-2.0。数据集与模型权重各有许可，见 `datacards/` 与各工具的 `TOOL.md`；Knosis 不分发数据或权重。
+Code: Apache-2.0. Datasets and model weights have their own licenses, see `datacards/` and each tool's `TOOL.md`;
+Knosis does not distribute data or weights.

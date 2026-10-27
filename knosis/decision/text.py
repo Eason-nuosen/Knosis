@@ -1,6 +1,6 @@
-"""文本语料打分：没有下游 GT，评知识层本身——单元构成，以及来源能否定位回 `data/` 里的原文片段。
+"""Text corpus scoring: no downstream GT, so score the knowledge layer itself: unit composition, and whether sources resolve to original spans in `data/`.
 
-来源写法 `data/<文件>#<start>-<end>`（字符偏移，左闭右开）；单元 `meta.quote` 若给出，必须出现在该片段里。
+Sources are written `data/<file>#<start>-<end>` (character offsets, half-open); if a unit gives `meta.quote`, it must appear in that span.
 """
 
 from __future__ import annotations

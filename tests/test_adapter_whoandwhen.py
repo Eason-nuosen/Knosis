@@ -1,4 +1,4 @@
-"""Who&When：轨迹转换（步号与标注对齐、GT 不进轨迹）、导出器、打分器、dev 反馈。"""
+"""Who&When: trace conversion (step numbers aligned with annotations, GT kept out of traces), exporter, scorer, dev feedback."""
 
 import json
 

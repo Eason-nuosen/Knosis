@@ -1,6 +1,6 @@
-"""NewtonBench 打分：调用上游 `evaluate_law`（5000 个采样点上的 RMSLE，采样照上游），关闭 LLM 符号裁判。
+"""NewtonBench scoring: calls upstream `evaluate_law` (RMSLE over 5000 sampled points, sampled as upstream), with the LLM symbolic judge disabled.
 
-ok 取 RMSLE ≤ 0.01，是 Knosis 的约定（上游的成功标准是符号等价）。
+ok means RMSLE ≤ 0.01, a Knosis convention (upstream's success criterion is symbolic equivalence).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ OK_RMSLE = 0.01
 
 @register("newtonbench")
 def score(ws, state, ds, path, ids) -> dict:
-    module = upstream(ds.scenario, ds.root.parents[1])  # 先把上游根目录放进 sys.path，再导入它的 modules 包
+    module = upstream(ds.scenario, ds.root.parents[1])  # puts the upstream root on sys.path, then imports its modules package
     from modules.common.evaluation import extract_formula_from_function
 
     laws = __import__(f"modules.{ds.scenario}.laws", fromlist=["get_ground_truth_law"])
@@ -24,7 +24,7 @@ def score(ws, state, ds, path, ids) -> dict:
     items = []
     for tid in ids:
         meta = tasks[tid].meta
-        np.random.seed(0)  # 上游每次随机采样测试点；固定种子使分数可复现
+        np.random.seed(0)  # upstream samples test points randomly each time; fix the seed for reproducible scores
         result = module.evaluate_law(predictions.get(tid, ""), module.PARAM_DESCRIPTION, meta["difficulty"], meta["version"])
         gold = extract_formula_from_function(laws.get_ground_truth_law(meta["difficulty"], meta["version"])[0])
         rmsle = result["rmsle"]
@@ -33,5 +33,5 @@ def score(ws, state, ds, path, ids) -> dict:
     return {"metrics": {"ok_rate": float(np.mean([i["ok"] for i in items])) if items else 0.0,
                         "rmsle_median": float(np.nanmedian(rmsle)) if np.isfinite(rmsle).any() else float("nan"),
                         "invalid": int(np.isnan(rmsle).sum()), "missing": sum(tid not in predictions for tid in ids),
-                        "symbolic_accuracy": "未实现（需要 LLM 裁判）"},
+                        "symbolic_accuracy": "not implemented (needs an LLM judge)"},
             "items": items, "reference": {}}

@@ -1,9 +1,9 @@
-"""英文版的数据：把导出数据里的中文文本翻成英文，缓存在 site/i18n/en.json（中文原文 → 英文）。
+"""Data for the English version: translate Chinese text in the exported data to English, cached in site/i18n/en.json (Chinese source → English).
 
-知识单元、证据、图谱、流程图、大纲、skill 等都是 agent 用中文写的；网页切到 EN 时用这份对照显示译文。
-标识类字段（id、单元引用、路径、来源）不翻。只翻缓存里没有的文本，用 Codex 分批翻译（`codex exec`，输出受 JSON Schema 约束）。
+Knowledge units, evidence, graphs, flowcharts, outlines, skills etc. are written by agents in Chinese; when the page switches to EN it shows translations from this mapping.
+Identifier fields (ids, unit references, paths, sources) are not translated. Only text missing from the cache is translated, in batches by Codex (`codex exec`, output constrained by a JSON Schema).
 
-    python site/build.py --translate        # 导出时顺带补译
+    python site/build.py --translate        # also fill in translations while exporting
 """
 import json
 import re
@@ -83,7 +83,7 @@ def translate_batch(items: list[str]) -> list[str] | None:
 
 
 def translate(strings: list[str], workers=6) -> dict:
-    """补译缓存里没有的文本；返回（只含 `strings` 的）中文 → 英文对照。"""
+    """Translate text missing from the cache; return the Chinese → English mapping (restricted to `strings`)."""
     cache = load_cache()
     todo = [s for s in strings if s not in cache]
     batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]

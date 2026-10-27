@@ -1,4 +1,4 @@
-"""RelBench 打分：二分类 AUROC、回归 MAE、推荐 MAP@k；参照为训练集上的平凡基线。"""
+"""RelBench scoring: binary classification AUROC, regression MAE, recommendation MAP@k; reference is a trivial baseline on the training set."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def score(ws, state, ds, path, ids) -> dict:
     spec = splits["test"].meta
     target = spec["target_col"]
     labels = {s: pd.read_parquet(splits[s].answer)[target] for s in ("train", "val", "test")}
-    gold = [labels[i.split("-")[0]].iloc[int(i.split("-")[1])] for i in ids]  # row_id 形如 val-3 / test-12
+    gold = [labels[i.split("-")[0]].iloc[int(i.split("-")[1])] for i in ids]  # row_id looks like val-3 / test-12
     pred = pd.read_csv(path).set_index("row_id")["prediction"].reindex(ids)
     train = labels["train"]
     kind = spec["task_type"]
@@ -62,11 +62,11 @@ def score(ws, state, ds, path, ids) -> dict:
     return {"metrics": {"task": spec["name"], "task_type": kind, **metrics}, "items": items, "reference": reference}
 
 
-# ---------------------------------------------------------------- 本体（join 发现）评分
+# ---------------------------------------------------------------- ontology (join discovery) scoring
 
 
 def gold_pairs(ds) -> set[frozenset]:
-    """manifest 的外键 → 无向 join 集合：外键 (表, 列) 对主键表 (主表, 主键列)。"""
+    """Manifest foreign keys -> undirected join set: foreign key (table, column) to (primary table, primary key column)."""
     tables = ds.schema["tables"]
     return {frozenset({(ontology.snake(table), column), (ontology.snake(target), tables[target]["pkey"])})
             for table, spec in tables.items()
@@ -74,7 +74,7 @@ def gold_pairs(ds) -> set[frozenset]:
 
 
 def db_report(knowledge, ds) -> dict:
-    """知识层里的全部本体 → 该库的 join 发现分数；没有本体时 reported=False。"""
+    """All ontologies in the knowledge layer -> join discovery score for this database; reported=False when there is no ontology."""
     docs = {n: d for n, d in ontology_docs(knowledge).items() if "semantic_model" in d}
     if not docs:
         return {"reported": False}

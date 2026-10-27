@@ -1,4 +1,4 @@
-"""TabPFN 预测、OOF 与特征变体交叉验证；重依赖只在真实推断路径导入。"""
+"""TabPFN prediction, OOF and feature-variant cross-validation; heavy dependencies are imported only on the real inference path."""
 
 from __future__ import annotations
 
@@ -86,16 +86,16 @@ def findings(result, args):
     return units
 
 
-# ---------------------------------------------------------------- cv：特征变体对比
+# ---------------------------------------------------------------- cv: feature variant comparison
 
 
 def parse_spec(spec):
-    """`drop:a,b;add:name=expr;subset:query` → [(op, arg)]；空串即基线特征。"""
+    """`drop:a,b;add:name=expr;subset:query` -> [(op, arg)]; an empty string means baseline features."""
     return [tuple(part.split(":", 1)) for part in spec.split(";") if part.strip()]
 
 
 def build_variant(train, features, spec):
-    """返回 (编码后的全量帧, 特征, 行掩码)。新列在全部行上算，类别编码在子集前做，各折一致。"""
+    """Returns (encoded full frame, features, row mask). New columns are computed on all rows and categories encoded before subsetting, so folds stay consistent."""
     frame, features, mask = train.copy(), list(features), np.ones(len(train), dtype=bool)
     for op, arg in parse_spec(spec):
         if op == "drop":
@@ -108,7 +108,7 @@ def build_variant(train, features, spec):
         elif op == "subset":
             mask &= frame.eval(arg).to_numpy(dtype=bool)
         else:
-            raise ValueError(f"未知变体操作：{op}")
+            raise ValueError(f"unknown variant op: {op}")
     for f in features:
         if pd.api.types.is_bool_dtype(frame[f]):
             frame[f] = frame[f].astype(int)
@@ -118,7 +118,7 @@ def build_variant(train, features, spec):
 
 
 def fold_scores(truth, pred, kind, classes):
-    """回归返回 (RMSE,)，分类返回 (log loss, accuracy)；pred 为预测值或按 classes 对齐的概率。"""
+    """Returns (RMSE,) for regression and (log loss, accuracy) for classification; pred is predicted values or probabilities aligned to classes."""
     if kind == "regression":
         return (float(np.sqrt(np.mean((np.asarray(truth) - pred) ** 2))),)
     from sklearn.metrics import log_loss
@@ -127,7 +127,7 @@ def fold_scores(truth, pred, kind, classes):
 
 
 def cv_predict(frame, target, features, mask, folds, kind, classes, args):
-    """同一折划分下，在 mask 行上做 OOF；返回与全表对齐的预测（分类为按 classes 对齐的概率）。"""
+    """OOF on mask rows under a shared fold split; returns predictions aligned to the full table (probabilities aligned to classes for classification)."""
     pred = np.zeros((len(frame), len(classes)) if kind == "classification" else len(frame))
     for k in range(args.folds):
         fit_rows, valid_rows = (folds != k) & mask, (folds == k) & mask
@@ -141,7 +141,7 @@ def cv_predict(frame, target, features, mask, folds, kind, classes, args):
 
 
 def compare(name, spec, frame, features, mask, folds, pred, base_pred, kind, classes, args):
-    """各折在同一批行上比较变体与基线；Δ = 变体 − 基线，配对标准差取折间 Δ 的样本标准差。"""
+    """Compare each variant with the baseline on the same rows per fold; Δ = variant - baseline, paired std is the sample std of Δ across folds."""
     truth = frame[args.target].to_numpy()
     rows = []
     for k in range(args.folds):
@@ -160,7 +160,7 @@ def compare(name, spec, frame, features, mask, folds, pred, base_pred, kind, cla
 
 
 def verdict(record):
-    """指标越低越好：改进超过 1 个配对标准差为 support，变差超过为 refute。"""
+    """Lower is better: improving by more than 1 paired std is support, worsening by more is refute."""
     if -record["delta"] > record["delta_std"]:
         return "support"
     if record["delta"] > record["delta_std"]:
@@ -231,8 +231,8 @@ def main(argv=None):
         else:
             p.add_argument("--folds", type=int, default=5)
         if command == "cv":
-            p.add_argument("--variant", action="append", default=[], help="NAME=SPEC，可重复；base 为基线")
-            p.add_argument("--unit", action="append", default=[], help="VARIANT=UNITID，可重复；写 evidence.jsonl")
+            p.add_argument("--variant", action="append", default=[], help="NAME=SPEC, repeatable; base is the baseline")
+            p.add_argument("--unit", action="append", default=[], help="VARIANT=UNITID, repeatable; writes evidence.jsonl")
         p.add_argument("--target", required=True)
         p.add_argument("--out", required=True)
         p.add_argument("--problem-type", choices=["auto", "classification", "regression"], default="auto")

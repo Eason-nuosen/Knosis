@@ -1,4 +1,4 @@
-"""知识体系的结构化形式：知识图谱、流程图、派生图、规则 / 公式卡片，以及内化的 structure 步骤。"""
+"""Structured forms of the knowledge system: knowledge graph, flowcharts, derivation graph, rule / formula cards, and the consolidation structure step."""
 
 import json
 
@@ -40,7 +40,7 @@ def test_valid_structure_and_views(base):  # noqa: F811
     assert st.check_structure(base) == []
     cov = st.coverage(base)
     assert cov["entities"] == 2 and cov["relations"] == 1 and cov["n_flows"] == 1
-    assert cov["graph"] == 4 / 5 and cov["flows"] == 1.0  # both 没被图谱引用
+    assert cov["graph"] == 4 / 5 and cov["flows"] == 1.0  # both is not referenced by the graph
     cards = st.cards(base)
     assert cards[0]["entity"] == "table:orders" and {c["id"] for c in cards[0]["units"]} == {"refund-rule", "revenue"}
     assert cards[-1]["label"] == "其他" and cards[-1]["units"][0]["id"] == "both"
@@ -65,7 +65,7 @@ def test_invalid_structure(base):  # noqa: F811
                    "unknown unit ghost", "entity t:lonely: cites no unit", "unreachable nodes x",
                    "decision needs at least two outgoing edges", "node x: cites no unit"):
         assert needle in issues, needle
-    # 也进入知识层检查
+    # also part of knowledge layer checks
     assert any(i.startswith("structure") for i in check_knowledge(base, root=base))
 
 
@@ -73,7 +73,7 @@ def test_structure_step(base, monkeypatch):  # noqa: F811
     path = layout(base).units
     write_units(path, units())
 
-    def too_thin():  # 只画一条边：图谱覆盖不够、没有流程图
+    def too_thin():  # only one edge: insufficient graph coverage, no flowchart
         write(base, {"entities": GRAPH["entities"], "relations": GRAPH["relations"][:1]} | {
             "entities": [{"id": "table:orders", "type": "table", "label": "orders"}, GRAPH["entities"][1]]}, ())
 
@@ -96,7 +96,7 @@ def test_structure_step(base, monkeypatch):  # noqa: F811
     logged = load_units(layout(base).actions)[-1]
     assert logged["op"] == "structure" and logged["entities"] == 2
 
-    # 之后撤回被引用的单元：检查报问题，其他内化步骤不为它负责
+    # then retract a referenced unit: checks report it, other consolidation steps are not responsible for it
     write_units(path, [{**u, "status": "retracted"} if u["id"] == "orders-fk" else u for u in load_units(path)])
     assert any("inactive unit orders-fk" in i for i in check_knowledge(base, root=base))
     fake_run(monkeypatch, lambda: None)
@@ -119,7 +119,7 @@ def test_inherit_copies_structure_only_when_complete(tmp_path):
 
 
 def test_merge_with_namespace(tmp_path):
-    """不同数据集的工作区合进同一个 KB：同名 id 加前缀不互相覆盖，引用一并改写；KB 已有 skill 时反馈改名不弄坏证据账本。"""
+    """Workspaces from different datasets merged into one KB: same-name ids get prefixes instead of overwriting, references rewritten too; renaming feedback when the KB already has skills does not break the evidence ledger."""
     import json as _json
 
     from knosis import workspace as w
@@ -146,7 +146,7 @@ def test_merge_with_namespace(tmp_path):
     assert all(isinstance(e, dict) for e in ledger) and {e["unit"] for e in ledger} == {"a/explore/x", "b/explore/x"}
     assert "uses:\n- b/explore/x" in (layout(kb).skills / "b-s/SKILL.md").read_text()
     assert check_knowledge(kb) == []
-    # 合并记下了数据集；跨数据集的共享实体算桥，合并后的归纳单元顺着 derived_from 找到来源数据集
+    # merge records datasets; entities shared across datasets count as bridges, merged induced units find source datasets via derived_from
     assert set(st.namespaces(kb)) == {"a", "b"}
     write_units(layout(kb).units, load_units(layout(kb).units) + [
         unit("induce/m", provenance="derived", derived_from=["a/explore/x", "b/explore/x"], scope="method", form="procedure")])

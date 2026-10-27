@@ -17,11 +17,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install '.[all]'
-      # 用安装好的包跑测试（不从源码目录导入），顺带检查 package-data 是否打包完整。
+      # Run tests against the installed package (not imported from the source tree), which also checks package-data is complete.
       - run: cd /tmp && pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/tests"
 
   core-install:
-    # 只装核心依赖（pip install knosis）时，常用命令不能因为缺可选依赖而失败。
+    # With only core dependencies (pip install knosis), common commands must not fail on missing optional dependencies.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

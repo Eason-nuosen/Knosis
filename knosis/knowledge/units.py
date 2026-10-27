@@ -1,4 +1,4 @@
-"""知识单元 κ 的 JSONL 存储与结构检查；只守结构与「状态—证据」一致性，不判断内容对错。"""
+"""JSONL storage and structural checks for knowledge units κ; only guards structure and status/evidence consistency, never judges content."""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ from pathlib import Path
 
 from .layout import FEEDBACK
 
-# procedure：步骤型表达（如「如何验证某类知识」的步骤），可附可执行检查。
+# procedure: step-wise expression (e.g. steps for verifying a kind of knowledge), may carry an executable check.
 FORMS = {"finding", "fact", "rule", "formula", "schema", "tool", "procedure"}
-# contested：有反驳证据、尚未定论；默认不被选取，使用者应知道它有争议。
-# merged：去重时并入另一条（`merged_into`），只作为别名保留；stale：环境变化后失效，可由 `superseded_by` 指向新版本。
+# contested: refuting evidence exists, unresolved; not selected by default, and users should know it is disputed.
+# merged: folded into another unit during dedup (`merged_into`), kept only as an alias; stale: invalid after the environment changed, `superseded_by` may point to the new version.
 STATUSES = {"observed", "inferred", "verified", "contested", "retracted", "stale", "merged"}
 INACTIVE = {"retracted", "stale", "merged"}
-# 粒度。对象知识（关于环境）：instance 某个具体对象；relation 对象之间的结构（join、本体关系）；
-# dataset 这份数据整体的规律 / 分布 / 公式。元知识（关于知识）：method 怎么得到知识（发现与验证的方法）；
-# usage 怎么用好知识（哪些知识 / skill 在什么任务、什么读者下有效，由反馈或消融支持）。
-# 与 form（表达形式）正交；不写时由 `scope_of` 推断。
+# Scope. Object knowledge (about the environment): instance, a specific object; relation, structure between objects (joins, ontology relations);
+# dataset, patterns / distributions / formulas of the data as a whole. Meta-knowledge (about knowledge): method, how knowledge is obtained (discovery and verification);
+# usage, how to use knowledge well (which knowledge / skills work for which tasks and readers, backed by feedback or ablation).
+# Orthogonal to form (the expression); inferred by `scope_of` when absent.
 SCOPES = ("instance", "relation", "dataset", "method", "usage")
 META = {"method", "usage"}
 POINT = ("#node/", "#edge/", "#row/")
@@ -35,9 +35,9 @@ def write_units(path, units: list[dict]) -> None:
 
 
 def source_issues(source: str, root=None, inherited=False) -> list[str]:
-    """一个来源能否定位：`data/` 文件存在且在工作区数据目录内，`kb/` / `evidence/` 文件（如继承来的轨迹）存在，`feedback:` 记录存在。
+    """Whether a source resolves: a `data/` file exists inside the workspace data directory, a `kb/` / `evidence/` file (e.g. an inherited trace) exists, or a `feedback:` record exists.
 
-    `inherited`：从知识库继承来的单元 / 证据，`data/` 指的是产生它时的环境，新工作区的数据布局可能不同，不检查。
+    `inherited`: unit / evidence inherited from the knowledge base; its `data/` refers to the environment that produced it, whose layout may differ, so it is not checked.
     """
     if root is None or inherited and source.startswith("data/"):
         return []
@@ -56,8 +56,8 @@ def source_issues(source: str, root=None, inherited=False) -> list[str]:
 
 
 def scope_of(unit) -> str:
-    """显式的 `scope`；否则 procedure 形式 → method，join / 关系类 schema → relation，
-    来源全部定位到单个节点 / 边 / 行 → instance，其余 → dataset。"""
+    """Explicit `scope`; otherwise procedure form -> method, join / relational schema -> relation,
+    sources all pointing to a single node / edge / row -> instance, everything else -> dataset."""
     if unit.get("scope"):
         return unit["scope"]
     if unit.get("form") == "procedure":
@@ -72,12 +72,12 @@ def scope_of(unit) -> str:
 
 
 def level(unit) -> str:
-    """object（关于环境）或 meta（关于知识）。"""
+    """object (about the environment) or meta (about knowledge)."""
     return "meta" if scope_of(unit) in META else "object"
 
 
 def resolve(uid, by_id, limit=20):
-    """沿 `merged_into` 找到别名最终指向的单元 id。"""
+    """Follow `merged_into` to the unit id an alias ultimately points to."""
     for _ in range(limit):
         target = by_id.get(uid, {}).get("merged_into")
         if not target:
@@ -88,14 +88,14 @@ def resolve(uid, by_id, limit=20):
 
 def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology_refs=None,
                 evidence=None) -> list[str]:
-    """返回问题清单，空 = 通过。
+    """Return a list of issues; empty = pass.
 
-    `known_ids`：历史版本出现过的 id（I1）；`root`（工作区）：给定时检查 `data/` 来源文件与
-    `feedback:` 记录存在；
-    `ontology_refs`：给定时检查 `about` 里引用的本体元素存在（见 `ontology.refs`）。
-    `evidence`：给定时（`evidence.by_unit` 的结果，只含未过期证据）检查状态与证据一致：
-    verified 至少有一条支持；最近一条证据是反驳时须为 contested / retracted / stale；
-    I2：`support` 不超过支持证据的独立来源数（来源按 `#` 之前的部分去重）。
+    `known_ids`: ids seen in historical versions (I1); `root` (workspace): if given, check that `data/` source files and
+    `feedback:` records exist;
+    `ontology_refs`: if given, check that ontology elements referenced in `about` exist (see `ontology.refs`).
+    `evidence`: if given (result of `evidence.by_unit`, unexpired evidence only), check status agrees with evidence:
+    verified needs at least one support; if the latest evidence refutes, status must be contested / retracted / stale;
+    I2: `support` does not exceed the number of independent sources of supporting evidence (sources deduplicated by the part before `#`).
     """
     issues = []
     by_id = {unit["id"]: unit for unit in units if unit.get("id")}
@@ -124,7 +124,7 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
         for parent in parents:
             if parent not in available:
                 issues.append(f"{name}: unknown derived_from: {parent}")
-            # I5：父单元失效，后代必须跟着失效；并入别的单元（merged）的父单元按合并后的那条算。
+            # I5: if a parent is inactive, descendants must be too; a merged parent counts as the unit it was merged into.
             target = by_id.get(resolve(parent, by_id), {})
             if target.get("status") in INACTIVE and unit.get("status") not in INACTIVE:
                 issues.append(f"{name}: inactive parent {parent} requires stale or retracted status")
@@ -135,7 +135,7 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
             for ref in unit.get("about", []):
                 if not ref.startswith("data/") and ref not in ontology_refs:
                     issues.append(f"{name}: unknown ontology ref in about: {ref}")
-        # about 也可以直接锚定到数据位置（用于「以对象为键」的反查）。
+        # about may also anchor directly to a data location (for object-keyed reverse lookup).
         for ref in unit.get("about", []):
             if ref.startswith("data/"):
                 issues += [f"{name}: about {issue}" for issue in source_issues(ref, root, inherited)]
@@ -143,7 +143,7 @@ def check_units(units, known_ids=frozenset(), root: Path | None = None, ontology
 
 
 def consolidation_issues(unit, by_id, available) -> list[str]:
-    """内化留下的字段：merged_into（去重别名）、superseded_by（版本替换）、conflicts_with（已识别的矛盾）。"""
+    """Fields left by consolidation: merged_into (dedup alias), superseded_by (version replacement), conflicts_with (identified conflicts)."""
     issues, status = [], unit.get("status")
     if status == "merged" and not unit.get("merged_into"):
         issues.append("merged requires merged_into")
@@ -188,5 +188,5 @@ def evidence_issues(unit, entries) -> list[str]:
 
 
 def active(units) -> list[dict]:
-    """decide 阶段可用的单元（含 contested；选取时默认不给它，见 `select`）。"""
+    """Units usable in the decide stage (including contested; selection excludes them by default, see `select`)."""
     return [unit for unit in units if unit.get("status") not in INACTIVE]

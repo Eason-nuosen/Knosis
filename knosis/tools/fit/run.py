@@ -1,4 +1,4 @@
-"""符号表达式拟合：curve_fit 拟合自由常数 C0, C1, ...，验证集评估并做残差诊断。"""
+"""Symbolic expression fitting: curve_fit the free constants C0, C1, ..., evaluate on the validation set and diagnose residuals."""
 
 from __future__ import annotations
 
@@ -38,13 +38,13 @@ def nmse(y, pred) -> float:
 
 
 def diagnostics(residual, frame) -> list[dict]:
-    """验证残差与各输入及其平方的相关，按 |Spearman| 降序。"""
+    """Correlation of validation residuals with each input and its square, sorted by |Spearman| descending."""
     rows = []
     for column in frame:
         for name, x in ((column, frame[column].to_numpy(dtype=float)), (f"{column}^2", frame[column].to_numpy(dtype=float) ** 2)):
             pearson, spearman = stats.pearsonr(x, residual)[0], stats.spearmanr(x, residual)[0]
             rows.append({"term": name, "pearson": round(float(np.nan_to_num(pearson)), 4),
-                         "spearman": round(float(np.nan_to_num(spearman)), 4)})  # 残差恒定时相关无定义，记 0
+                         "spearman": round(float(np.nan_to_num(spearman)), 4)})  # correlation is undefined for constant residuals; record 0
     return sorted(rows, key=lambda r: -abs(r["spearman"]))
 
 
@@ -66,8 +66,8 @@ def fit(expr, data, target, init, split, seed) -> dict:
             values = dict(zip(names, map(float, fitted)))
         pred_train, pred_valid = evaluate(expr, inputs.iloc[train], values), evaluate(expr, inputs.iloc[valid], values)
         if not (np.isfinite(pred_train).all() and np.isfinite(pred_valid).all()):
-            raise FloatingPointError("预测含非有限值")
-    except (RuntimeError, ValueError, FloatingPointError, TypeError, ZeroDivisionError) as error:  # 拟合失败是结果
+            raise FloatingPointError("predictions contain non-finite values")
+    except (RuntimeError, ValueError, FloatingPointError, TypeError, ZeroDivisionError) as error:  # a failed fit is a result
         return {**result, "error": f"{type(error).__name__}: {error}"}
     relative = np.abs(pred_valid - y[valid]) / np.abs(y[valid])
     return {**result, "values": values, "fitted": substitute(expr, values),
@@ -84,23 +84,23 @@ def verdict(result, accept, reject) -> str:
 
 def summary(result) -> str:
     if "error" in result:
-        return f"拟合失败：{result['error']}"
-    top = "，".join(f"{r['term']} ρ={r['spearman']:+.2f}" for r in result["residual_correlations"][:3])
+        return f"fit failed: {result['error']}"
+    top = ", ".join(f"{r['term']} ρ={r['spearman']:+.2f}" for r in result["residual_correlations"][:3])
     return (f"{result['target']} = {result['fitted']}\n"
-            f"NMSE 训练 {result['train_nmse']:.3g} / 验证 {result['val_nmse']:.3g}，验证最大相对误差 {result['val_max_rel_error']:.3g}"
-            f"（Acc0.1={result['val_acc_0.1']}），常数 {result['n_constants']} 个\n残差相关：{top}")
+            f"NMSE train {result['train_nmse']:.3g} / val {result['val_nmse']:.3g}, val max relative error {result['val_max_rel_error']:.3g}"
+            f" (Acc0.1={result['val_acc_0.1']}), {result['n_constants']} constants\nresidual correlations: {top}")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True)
     parser.add_argument("--target", required=True)
-    parser.add_argument("--expr", required=True, help="含自由常数 C0, C1, ... 的表达式")
-    parser.add_argument("--init", default="", help="常数初值，如 C0=1,C2=280；默认 1.0")
+    parser.add_argument("--expr", required=True, help="expression with free constants C0, C1, ...")
+    parser.add_argument("--init", default="", help="initial constant values, e.g. C0=1,C2=280; default 1.0")
     parser.add_argument("--split", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--unit", help="待检验的 κ id；给定时写 evidence.jsonl")
+    parser.add_argument("--unit", help="κ id to test; if given, write evidence.jsonl")
     parser.add_argument("--accept", type=float, default=1e-3)
     parser.add_argument("--reject", type=float, default=0.1)
     args = parser.parse_args(argv)

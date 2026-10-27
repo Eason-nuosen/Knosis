@@ -1,14 +1,14 @@
-"""本体子层：Apache Ossie 三文件格式（core / ontology / mapping）+ EOB 扩展，与 ontology-bench 同一格式。
+"""Ontology sublayer: Apache Ossie three-file format (core / ontology / mapping) + EOB extensions, same format as ontology-bench.
 
-一份本体是一个目录下的至多三个文件：
+An ontology is up to three files in one directory:
 
-    <name>.semantic_model.yaml   core：表、列、主键、join、度量
-    <name>.ontology.yaml         概念、概念间关系、单位与约束（不提表和列）
-    <name>.mapping.yaml          列 → 概念 / 关系
+    <name>.semantic_model.yaml   core: tables, columns, primary keys, joins, metrics
+    <name>.ontology.yaml         concepts, relations between concepts, units and constraints (no tables or columns)
+    <name>.mapping.yaml          columns -> concepts / relations
 
-本体是知识层里的结构部分：κ 单元用 `about` 字段引用本体元素（`refs` 给出可引用的名字），
-`ontology_units` 把本体元素展开成 `form=schema` 的 κ，供只认 κ 的下游统一使用。
-EOB 信息写在 `custom_extensions`（`vendor_name: EOB`，`data` 是 JSON 字符串），不改官方 schema。
+The ontology is the structural part of the knowledge layer: κ units reference ontology elements via `about` (`refs` gives the citable names);
+`ontology_units` expands ontology elements into `form=schema` κ for downstream code that only understands κ.
+EOB information lives in `custom_extensions` (`vendor_name: EOB`, `data` is a JSON string), leaving the official schema untouched.
 """
 
 from __future__ import annotations
@@ -24,22 +24,22 @@ VERSION = "0.2.0.dev0"
 EOB_VERSION = "0.2"
 LAYERS = ("semantic_model", "ontology", "mapping")
 BUILTIN_TYPES = {"String", "Integer", "Decimal", "Float", "Boolean", "Date", "Time", "DateTime", "DateTimeTz", "Opaque", "Any"}
-# EOB provenance.method / 元素 origin → κ 的 status
+# EOB provenance.method / element origin -> κ status
 STATUS_BY_METHOD = {"human": "verified", "annotator": "verified", "converted": "observed", "llm": "inferred", "tool": "inferred"}
 STATUS_BY_ORIGIN = {**STATUS_BY_METHOD, "inferred": "inferred"}
 
-# 来自 benchmark GT、不能给被测 agent 的东西（relbench_gt 除外：RelBench 的 brief 本来就给 schema）
+# from benchmark GT and must not reach the agent under test (except relbench_gt: RelBench's brief already gives the schema)
 GT_ORIGINS = {"pbi_gt", "bibench_transformation_gt", "bibench_transformation_output"}
 GT_PREFIX = ("bibench_",)
-# 提到这些就等于泄露了逐题 oracle
+# mentioning these leaks the per-question oracle
 ORACLE_MARKS = ("query_metadata", "transformation/", "transformation\\")
-# 行首的 annotator 标记（`source` / 根 EOB 的 `note`）
+# leading annotator marker (`source` / root EOB `note`)
 NOTE_MARKERS = ("annotator-only", "annotator only")
 SQL = re.compile(r"^\s*(SELECT|WITH)\b", re.I)
 
 
 def load_ontology(directory) -> dict[str, dict]:
-    """返回 {层名: 文档}；缺的层不出现。一个目录只放一份本体。"""
+    """Return {layer name: document}; missing layers are omitted. One ontology per directory."""
     docs = {}
     for layer in LAYERS:
         paths = sorted(Path(directory).glob(f"*.{layer}.yaml"))
@@ -66,7 +66,7 @@ def eob(data: dict) -> list[dict]:
 
 
 def eob_data(item: dict) -> dict:
-    """合并一个条目上所有 EOB 扩展的 data。"""
+    """Merge the data of all EOB extensions on an entry."""
     merged = {}
     for ext in item.get("custom_extensions") or []:
         if ext.get("vendor_name") == "EOB":
@@ -75,8 +75,8 @@ def eob_data(item: dict) -> dict:
 
 
 def refs(docs: dict[str, dict]) -> set[str]:
-    """可被 κ 的 `about` 引用的名字：dataset、`dataset.field`、core relationship 名、metric 名、
-    概念名、`概念.关系名`。"""
+    """Names citable by κ `about`: dataset, `dataset.field`, core relationship names, metric names,
+    concept names, `concept.relation`."""
     names = set()
     model = docs.get("semantic_model", {})
     for ds in model.get("datasets", []):
@@ -91,7 +91,7 @@ def refs(docs: dict[str, dict]) -> set[str]:
 
 
 def check_ontology(docs: dict[str, dict]) -> list[str]:
-    """跨文件引用检查（官方 validate.py 不查的部分）；返回问题清单。"""
+    """Cross-file reference checks (what the official validate.py does not cover); return a list of issues."""
     issues = []
     model = docs.get("semantic_model", {})
     fields = {ds["name"]: {f["name"] for f in ds.get("fields", [])} for ds in model.get("datasets", [])}
@@ -140,9 +140,9 @@ def walk(node):
 
 
 def ontology_units(docs: dict[str, dict], prefix: str = "kb/knowledge/ontology") -> list[dict]:
-    """把本体元素展开成 κ（form=schema）。status 优先取元素上的 `origin`，其次 EOB provenance.method，默认 observed。"""
+    """Expand ontology elements into κ (form=schema). status comes from the element's `origin`, then EOB provenance.method, default observed."""
     units = []
-    # ontology 层不允许 custom_extensions，整份本体的 provenance 记在 core / mapping 的根上。
+    # the ontology layer forbids custom_extensions; provenance of the whole ontology is on the core / mapping root.
     default = next((eob_data(docs[k])["provenance"] for k in ("semantic_model", "mapping")
                     if k in docs and "provenance" in eob_data(docs[k])), {})
 
@@ -185,21 +185,21 @@ def ontology_units(docs: dict[str, dict], prefix: str = "kb/knowledge/ontology")
 
 
 def source_text(ds: dict) -> str:
-    """dataset 的来源短描述：SQL 视图只记标记，不把整段 SQL（往往是 GT 变换的复现）塞进 κ。"""
+    """Short source description of a dataset: SQL views get only a marker, not the full SQL (often a reproduction of GT transformations) in κ."""
     source = ds.get("source", "")
     return "（SQL 视图）" if SQL.match(source) else source
 
 
-# ---------------------------------------------------------------- 剔除 benchmark GT
+# ---------------------------------------------------------------- strip benchmark GT
 
 
 def strip_gt(docs: dict[str, dict]) -> tuple[dict[str, dict], dict]:
-    """去掉来自 benchmark GT 的部分（关系 / 条目的 origin 是 pbi_gt、bibench_*，以及被 SQL 或 oracle 变换
-    复现出来的 dataset 及其全部引用），返回 (新文档, 各类计数)。relbench_gt 与 annotator 的内容保留。
+    """Remove parts from benchmark GT (relations / entries with origin pbi_gt, bibench_*, and datasets reproduced by SQL or oracle
+    transformations together with all their references); return (new documents, counts by kind). relbench_gt and annotator content is kept.
 
-    返回的计数按元素数；连到 transient 表（LocalDateTable_…）的 GT 关系没有 dataset 可数，记在 `dataset` 下。
-    根 provenance 一律改成 `{"method": "llm"}`（内容已不再是标注者照 GT 抄的），有剔除时加 `stripped` 明细。
-    `origin: annotator` 的度量与注记（从数据推出的）保留，只把提到 oracle 的根注记换成占位。
+    Counts are per element; GT relations to transient tables (LocalDateTable_…) have no dataset to count and are recorded under `dataset`.
+    Root provenance always becomes `{"method": "llm"}` (content is no longer copied from GT by the annotator), plus `stripped` details when anything was removed.
+    `origin: annotator` metrics and notes (derived from data) are kept; only root notes mentioning the oracle are replaced with a placeholder.
     """
     report = dict.fromkeys(("relationship", "dataset", "metric", "mapping", "annotation", "transform", "note"), 0)
     docs = copy.deepcopy(docs)
@@ -208,7 +208,7 @@ def strip_gt(docs: dict[str, dict]) -> tuple[dict[str, dict], dict]:
     report["dataset"] = len(dropped)
     if dropped:
         model["datasets"] = [ds for ds in model.get("datasets", []) if ds["name"] not in dropped]
-        # 只连到 transient 表（LocalDateTable_…）的 GT 关系：那些表本就不在 datasets 里，记到 dataset 一栏。
+        # GT relations only to transient tables (LocalDateTable_…): those tables are not in datasets, so count them under dataset.
         names = {ds["name"] for ds in model["datasets"]}
         orphans = {side for r in model.get("relationships", []) if _forbidden(r) for side in (r["from"], r["to"])}
         orphans -= names
@@ -250,10 +250,10 @@ def strip_gt(docs: dict[str, dict]) -> tuple[dict[str, dict], dict]:
 
 
 def is_oracle(ds: dict) -> bool:
-    """dataset 是否由 GT 的逐题变换（query_metadata / transformation/）复现而来：SQL 视图，
-    或其描述 / EOB note 明说是 GT 变换的产物，或带 GT 来源的变换步骤。"""
+    """Whether a dataset was reproduced from GT per-question transformations (query_metadata / transformation/): a SQL view,
+    or its description / EOB note says it comes from a GT transformation, or it has transformation steps with a GT source."""
     ext = eob_data(ds)
-    # BI-Bench 的 SQL 视图都是按 query_metadata 复现的逐题变换；KramaBench 等的视图是标注者对原始文件的拆分 / 派生，不是 GT。
+    # BI-Bench SQL views all reproduce per-question transformations from query_metadata; views in KramaBench etc. are annotator splits / derivations of raw files, not GT.
     other = str((ext.get("raw") or {}).get("path", "")).startswith(("kramabench", "relbench", "fdabench"))
     return (bool(SQL.match(ds.get("source", ""))) and not other
             or _text_hit(ds.get("description")) or _text_hit(ext.get("note"))
@@ -270,7 +270,7 @@ def _forbidden(item: dict) -> bool:
 
 
 def mentions(item, names: set[str]) -> bool:
-    """条目里是否引用了这些 dataset（`表` 或 `表.列`，也认 SQL 表达式里出现的表名）。"""
+    """Whether the entry references these datasets (`table` or `table.column`, including table names in SQL expressions)."""
     if not names or not isinstance(item, dict):
         return False
     values = []
@@ -298,7 +298,7 @@ def _strip_list(node: dict, key: str, drop) -> int:
 
 
 def _strip_notes(root: dict) -> int:
-    """根 EOB 的 note / source.note 提到 oracle 或标注为 annotator 专用时换成占位。"""
+    """Replace root EOB note / source.note with a placeholder when it mentions the oracle or is marked annotator-only."""
     n = 0
     if isinstance(root.get("note"), str) and (_text_hit(root["note"]) or _annotator(root["note"])):
         root["note"] = "（提到被剔除的 GT 内容，见 provenance.stripped）"
@@ -316,14 +316,14 @@ def _annotator(note: str) -> bool:
 
 
 def _write_eob(item: dict, data: dict) -> None:
-    """把 EOB 扩展整体换成 `data`（其余扩展不动）。"""
+    """Replace the EOB extension wholesale with `data` (other extensions untouched)."""
     item["custom_extensions"] = [x for x in item.get("custom_extensions") or [] if x.get("vendor_name") != "EOB"] + eob(data)
 
 
 def import_annotation(src_dir, dest_dir, strip: bool = False) -> dict:
-    """把一个标注单元的三个 yaml（不要 report.md）复制到 `<dest_dir>/<单元名>/`，返回剔除报告。
+    """Copy an annotation unit's three yaml files (not report.md) to `<dest_dir>/<unit name>/`; return the strip report.
 
-    `dest_dir` 是知识层的 `ontology/` 目录：每个单元一个子目录，多个单元可以共存。
+    `dest_dir` is the knowledge layer's `ontology/` directory: one subdirectory per unit, so several units can coexist.
     """
     src = Path(src_dir)
     [model] = src.glob("*.semantic_model.yaml")
@@ -344,7 +344,7 @@ def import_annotation(src_dir, dest_dir, strip: bool = False) -> dict:
     return report
 
 
-# ---------------------------------------------------------------- core 层的构造与转换
+# ---------------------------------------------------------------- building and converting the core layer
 
 
 def snake(name: str) -> str:
@@ -395,7 +395,7 @@ def semantic_model(name, datasets, relationships=(), provenance=None, source=Non
 
 
 def from_tables(name, tables: dict, primary_keys=None, relationships=(), provenance=None, source=None) -> dict:
-    """由 {表名: DataFrame 或 {列名: datatype}} 构造 core 层。表名保留为 `source`，dataset 名转成 snake_case。"""
+    """Build a core layer from {table name: DataFrame or {column name: datatype}}. Table names are kept as `source`; dataset names become snake_case."""
     primary_keys = primary_keys or {}
     datasets = []
     for table, frame in tables.items():
@@ -408,22 +408,22 @@ def from_tables(name, tables: dict, primary_keys=None, relationships=(), provena
     return semantic_model(name, datasets, relationships, provenance, source)
 
 
-# Power BI（TOM）的 DataType 编码
+# Power BI (TOM) DataType codes
 POWERBI_TYPES = {2: "String", 6: "Integer", 8: "Float", 9: "DateTime", 10: "Decimal", 11: "Boolean"}
 CARDINALITY = {1: "one", 2: "many"}
 
 
 def from_bibench(ds) -> dict:
-    """BI-Bench 用例的 Power BI 模型元数据 → core 层。
+    """Power BI model metadata of a BI-Bench case -> core layer.
 
-    注意：`_relationships` 是项目作者定义的关系，在 join 发现类评测里属于 GT，不应给被测 agent。
+    Note: `_relationships` are relations defined by the project author; in join-discovery evaluations they are GT and must not reach the agent under test.
     """
     import pandas as pd
 
     tables = pd.read_csv(ds.files["_tables"])
     columns = pd.read_csv(ds.files["_columns"])
     rels = pd.read_csv(ds.files["_relationships"])
-    # Power BI 自动生成的日期表与 RowNumber 列不是用户数据。
+    # Power BI auto-generated date tables and RowNumber columns are not user data.
     tables = tables[~tables["Name"].str.startswith(("LocalDateTable_", "DateTableTemplate_"))]
     columns = columns[(columns["Type"] != 3) & columns["TableID"].isin(tables["ID"])].copy()
     columns["name"] = columns["ExplicitName"].fillna(columns["InferredName"])
@@ -433,7 +433,7 @@ def from_bibench(ds) -> dict:
     ]
     table_names = dict(zip(tables["ID"], tables["Name"]))
     col_names = dict(zip(columns["ID"], columns["name"]))
-    # 不同表名可能转成同一个 snake 名（"Table (5)" 与 "Table 5"），重名时加序号。
+    # different table names may map to the same snake name ("Table (5)" and "Table 5"); append a number on collision.
     dataset_names, used = {}, set()
     for tid, tname in table_names.items():
         name, n = snake(tname), 2
@@ -456,7 +456,7 @@ def from_bibench(ds) -> dict:
             continue
         many_from = r.FromCardinality == 2 or r.ToCardinality != 2
         a, b = ((r.FromTableID, r.FromColumnID), (r.ToTableID, r.ToColumnID))
-        (ft, fc), (tt, tc) = (a, b) if many_from else (b, a)  # Ossie 的 from 是多的一侧
+        (ft, fc), (tt, tc) = (a, b) if many_from else (b, a)  # Ossie's from is the many side
         relationships.append(relationship(
             dataset_names[ft], [col_names[fc]], dataset_names[tt], [col_names[tc]],
             cardinality=f"{CARDINALITY[r.FromCardinality]}-to-{CARDINALITY[r.ToCardinality]}",
@@ -468,7 +468,7 @@ def from_bibench(ds) -> dict:
 
 
 def from_relbench(ds) -> dict:
-    """RelBench 库的 manifest（pkey / fkeys / time_col）+ parquet 列类型 → core 层。"""
+    """RelBench database manifest (pkey / fkeys / time_col) + parquet column types -> core layer."""
     import pyarrow.parquet as pq
 
     tables, keys, relationships = {}, {}, []

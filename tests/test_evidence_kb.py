@@ -41,7 +41,7 @@ def test_sql_check(tmp_path):
     pd.DataFrame({"x": [1, 2, 3], "y": [0, 1, 1]}).to_csv(tmp_path / "data/train.csv", index=False)
     assert run_check({"check": {"kind": "sql", "query": "SELECT MIN(x) > 0 FROM train"}}, tmp_path)[0] == "support"
     assert run_check({"check": {"kind": "sql", "query": "SELECT COUNT(*) FROM train WHERE y = 1", "expect": [[3]]}}, tmp_path)[0] == "refute"
-    # 留出数据上重跑同一检查：换一张表即可。
+    # Rerun the same check on held-out data: just swap the table.
     held = {"train": pd.DataFrame({"x": [-1], "y": [0]})}
     assert run_check({"check": {"kind": "sql", "query": "SELECT MIN(x) > 0 FROM train"}}, tmp_path, held)[0] == "refute"
 
@@ -80,7 +80,7 @@ def test_python_check_verify_expiry_and_trace(ngd_root, tmp_path):
     assert check_knowledge(ws, root=ws) == []
     text = trace(ws, "b")
     assert "**b**" in text and "**m**" in text and "support（check" in text
-    # 数据变了，证据过期，verified 失去支持。
+    # Data changed, evidence is stale, verified loses support.
     graph = nx.MultiDiGraph()
     with (ws / "data/graph.gpickle").open("wb") as fh:
         pickle.dump(graph, fh)
@@ -118,7 +118,7 @@ def test_kb_inherit_merge_and_fork(ngd_root, tmp_path):
     assert load_units(base / "kb/knowledge/units.jsonl")[1]["provenance"].startswith(f"feedback:{renamed}")
     assert load_evidence(base)[0]["source"].startswith(f"feedback:{renamed}") and check_knowledge(base) == []
 
-    # 第二个工作区：继承全部；同一数据集上反馈见过的题不进测试集；继承的反馈不占预算。
+    # Second workspace: inherit everything; tasks seen in feedback on the same dataset stay out of the test set; inherited feedback does not use budget.
     ws2 = make(ngd_root, tmp_path / "ws2", kb=base, seed=1, limit=12)
     state = w.status(ws2)
     assert state["kb"]["units"] == 2 and set(state["exclude"]) <= {t["id"] for t in dev}
@@ -128,7 +128,7 @@ def test_kb_inherit_merge_and_fork(ngd_root, tmp_path):
     assert not {t["id"] for t in load_units(ws2 / "tasks/tasks.jsonl")} & {t["id"] for t in dev}
     assert w.stage_issues(ws2, w.status(ws2)) == ["missing or empty predictions: stages/4_decide/predictions.jsonl"]
 
-    # 只继承元知识。
+    # Inherit meta-knowledge only.
     ws3 = make(ngd_root, tmp_path / "ws3", kb=base, kb_scope=["method"])
     assert [u["id"] for u in load_units(ws3 / "kb/knowledge/units.jsonl")] == ["m"]
     write_units(ws3 / "kb/knowledge/units.jsonl", [unit("m", form="procedure"), unit("n")])
@@ -220,7 +220,7 @@ def test_skills_checks_select_and_usage(ngd_root, tmp_path):
     assert not any("skill solve" in i for i in issues)
     assert [s["name"] for s in select_skills(ws)] == ["ghost", "old", "solve"]
 
-    # dev 反馈附 used_units：按题型生成 usage 候选（κ 与 skill 都统计）
+    # dev feedback with used_units: generate usage candidates per task kind (counting both κ and skills)
     dev = load_units(ws / "tasks/dev.jsonl")
     path = ws / "stages/1_explore/dev.jsonl"
     write_units(path, [{"id": t["id"], "answer": int(t["id"].rsplit("/", 1)[1]) if i < 2 else -1} for i, t in enumerate(dev)])
@@ -232,7 +232,7 @@ def test_skills_checks_select_and_usage(ngd_root, tmp_path):
     assert set(made) == {f"usage/a/{kind}", f"usage/skill:solve/{kind}"}
     assert made[f"usage/a/{kind}"]["meta"]["acc_used"] == 1.0 and made[f"usage/a/{kind}"]["meta"]["acc_other"] == 0.0
     assert {e["unit"]: e["verdict"] for e in load_evidence(ws)}[f"usage/a/{kind}"] == "support"
-    # usage 只能由反馈或消融证据支持为 verified
+    # usage can only be verified by feedback or ablation evidence
     units = load_units(ws / "kb/knowledge/units.jsonl")
     write_units(ws / "kb/knowledge/units.jsonl", [{**u, "status": "verified"} if u["id"] == f"usage/a/{kind}" else u for u in units])
     assert not any(f"usage/a/{kind}: usage" in i for i in check_knowledge(ws, root=ws))

@@ -1,9 +1,9 @@
-"""AlphaBench（evaluate，对应上游 T2）打分：给定因子表达式，预测它在评估窗口内的表现。
+"""AlphaBench (evaluate, upstream T2) scoring: given a factor expression, predict its performance over the evaluation window.
 
-GT 由 IC / RankIC 真值表按上游 `benchmark/utils/data_builder/base_eval/stats.py` 的口径现算：
-mean_ic、mean_rankic、icir、换手代理（IC 符号翻转率）、胜率、偏度；|mean_ic| < 0.01 为 Noise，
-否则按符号分 Positive / Negative；四个维度（Performance=|ICIR|、Stability=1-翻转率、WinRate、Skewness）
-在同类因子内按分位数给 1–5 分，Noise 全为 1。
+GT is computed on the fly from the IC / RankIC truth tables following upstream `benchmark/utils/data_builder/base_eval/stats.py`:
+mean_ic, mean_rankic, icir, turnover proxy (IC sign-flip rate), win rate, skewness; |mean_ic| < 0.01 is Noise,
+otherwise Positive / Negative by sign; the four dimensions (Performance=|ICIR|, Stability=1-flip rate, WinRate, Skewness)
+get 1-5 by quantile within factors of the same signal; Noise gets 1 everywhere.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def quintile(values: pd.Series) -> pd.Series:
 
 @lru_cache(maxsize=4)
 def factor_stats(ic_path, rankic_path, start, end) -> pd.DataFrame:
-    """每个因子一行：统计量、signal、四个维度的 1–5 分。观测少于 20 天的因子统计量为 NaN，记为 Noise。"""
+    """One row per factor: statistics, signal, 1-5 scores on the four dimensions. Factors with fewer than 20 observed days get NaN statistics and are marked Noise."""
     ic, rankic = window(ic_path, start, end), window(rankic_path, start, end)
     enough = ic.count() >= MIN_OBS
     stats = pd.DataFrame({
@@ -75,12 +75,12 @@ def gold_record(row) -> dict:
 
 def spearman(pred, gold) -> float | None:
     frame = pd.DataFrame({"p": pred, "g": gold}).dropna()
-    # 常数预测没有排序信息，Spearman 无定义。
+    # A constant prediction carries no ranking information; Spearman is undefined.
     return number(frame["p"].corr(frame["g"], method="spearman")) if len(frame) > 2 and frame["p"].nunique() > 1 else None
 
 
 def summarize(rows, gold) -> dict:
-    """rows：每题的预测 dict（可缺字段）；gold：对应的 GT 行。"""
+    """rows: per-task prediction dicts (fields may be missing); gold: the matching GT rows."""
     n = len(rows)
     metrics = {"signal_accuracy": sum(r.get("signal") == g["signal"] for r, g in zip(rows, gold)) / max(1, n)}
     for key in ("mean_ic", "mean_rankic"):
@@ -91,7 +91,7 @@ def summarize(rows, gold) -> dict:
             metrics[f"{key}_spearman"] = spearman(p, g)
     with_ic = [(r["mean_ic"], g["mean_ic"]) for r, g in zip(rows, gold) if r.get("mean_ic") is not None and g["mean_ic"] is not None]
     if with_ic:
-        # Precision@K：按预测 mean_ic 取前 K，与按真值取前 K 的重合率（K = 10%）。
+        # Precision@K: overlap between the top K by predicted mean_ic and the top K by true value (K = 10%).
         k = max(1, len(with_ic) // 10)
         top = lambda values: set(np.argsort(-np.asarray(values))[:k])  # noqa: E731
         metrics["precision_at_10pct"] = len(top([p for p, _ in with_ic]) & top([g for _, g in with_ic])) / k
@@ -119,6 +119,6 @@ def score(ws, state, ds, path, ids) -> dict:
             item["mean_ic_error"] = float(r["mean_ic"]) - g["mean_ic"]
         items.append(item)
     metrics = {**summarize(rows, gold), "missing": sum(i not in predictions for i in ids)}
-    # 参照：全部判为 Noise、mean_ic 猜 0。
+    # Reference: predict Noise for everything and mean_ic = 0.
     reference = summarize([{"signal": "Noise", "mean_ic": 0.0, "mean_rankic": 0.0}] * len(ids), gold)
     return {"metrics": metrics, "items": items, "reference": {"all_noise_zero_ic": reference}}

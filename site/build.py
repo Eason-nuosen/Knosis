@@ -1,12 +1,12 @@
-"""把演示工作区导出成 site/data.js，供 index.html 的 Demo 页使用。
+"""Export demo workspaces to site/data.js for the Demo page of index.html.
 
-每类数据一个经典 case（`case: True`）：知识图谱、流程图、派生图、规则 / 公式卡片、大纲，以及一道题的完整链路
-（题目 → 用到的知识 → 结果，来自 used_units 与 eval.json）；其余 benchmark 作为「更多结果」。另导出总图：
-各 case 的知识库按数据集加前缀合进 `ws/kb-atlas` 后再内化得到的知识图谱（`--atlas`）。
+One showcase case per data type (`case: True`): knowledge graph, flowcharts, derivation graph, rule / formula cards, outline, and one task's
+full chain (task → knowledge used → result, from used_units and eval.json); the other benchmarks go under "more results". Also exports the atlas:
+the knowledge graph obtained by merging each case's knowledge base into `ws/kb-atlas` with dataset prefixes and then consolidating (`--atlas`).
 
-用法：python site/build.py [--ws ws] [--atlas ws/kb-atlas]
-工作区不入仓，所以 data.js 需要在有 ws/ 的机器上重新生成。每个演示的结果表由 eval.json 填；
-highlights 是人工写的观察（site/notes.yaml）。数字只来自本地工作区，单次运行、题量很小。
+Usage: python site/build.py [--ws ws] [--atlas ws/kb-atlas]
+Workspaces are not committed, so data.js must be regenerated on a machine that has ws/. Each demo's results table is filled from eval.json;
+highlights are hand-written observations (site/notes.yaml). Numbers come only from local workspaces: single runs, very few tasks.
 """
 import argparse
 import json
@@ -20,7 +20,7 @@ from knosis.knowledge.skills import load_skills
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# 每个 benchmark 一个演示（2026-10-24，v0.5：explore → extract → refine ×2 → 内化 → decide，Codex gpt-6.1-sol / medium）
+# One demo per benchmark (2026-10-24, v0.5: explore → extract → refine ×2 → consolidate → decide, Codex gpt-6.1-sol / medium)
 DEMOS = [
     {"key": "ngd", "dir": "v05-ngd", "modality": "噪声知识图谱", "title": "NGDBench NGD-Fin：含噪金融图问答",
      "task": "图里注入了节点类型、属性、边的噪声；人工核对的演示题集，dev 10 / 测试 20，dev 给正确答案作反馈，每次须答全部 dev 题。",
@@ -59,7 +59,7 @@ DEMOS = [
      "task": "6 条 AppWorld（Spotify 应用）ReAct 轨迹，统一成 ATIF；没有下游题目，从轨迹里提取关于 API 与数据的知识，引用到具体步骤。",
      "metrics": [("units", "知识单元"), ("cites_trace", "引用有效步骤"), ("trace_checked", "已与轨迹核对")]},
 ]
-# 每类数据的经典 case；其余是「更多结果」
+# showcase case per data type; the rest are "more results"
 CASES = ["ngd", "tab", "bi", "newton", "burr", "alpha", "sheet", "text", "appworld"]
 TEXT_FIELDS = ("question", "instruction", "expression", "signature", "factor", "files")
 
@@ -133,7 +133,7 @@ def fmt(v):
 
 
 def scalars(report, keys):
-    """eval.json 里指定的指标（顶层或 metrics 段）；找不到的跳过。"""
+    """The requested metrics from eval.json (top level or the metrics section); missing ones are skipped."""
     flat = {**report, **(report.get("metrics") or {})}
     return [[label, fmt(flat[k])] for k, label in keys if isinstance(flat.get(k), (int, float))]
 
@@ -159,7 +159,7 @@ def short(v, n=360):
 
 
 def case(ws, report, graph_units):
-    """一道题的完整链路：答对、用到 2 到 10 条知识、其中被知识图谱引用得最多的题；没有逐题对错时取误差最小的。"""
+    """Full chain of one task: among correct tasks using 2 to 10 units, the one whose units the knowledge graph cites most; without per-task correctness, the one with the smallest error."""
     ws = Path(ws)
     tasks = {str(t["id"]): t for t in jsonl(ws / "tasks/tasks.jsonl")}
     used = {str(r["id"]): r.get("used_units", []) for r in jsonl(ws / "stages/4_decide/used_units.jsonl")}
@@ -181,7 +181,7 @@ def case(ws, report, graph_units):
 
 
 def unit_story(units, evidence, graph_units):
-    """没有题目时：一条被知识图谱引用、证据最多的 verified 单元，连同来源与证据。"""
+    """Without tasks: the verified unit cited by the knowledge graph with the most evidence, along with its provenance and evidence."""
     count = {}
     for e in evidence:
         count[e["unit"]] = count.get(e["unit"], 0) + (e["verdict"] == "support")
@@ -200,7 +200,7 @@ def structure(base):
 
 
 def atlas(path):
-    """总图：实体按引用单元的数据集前缀着色；被多个数据集的单元引用的是「桥」。"""
+    """Atlas: entities colored by the dataset prefix of the units citing them; entities cited by units from several datasets are "bridges"."""
     path = Path(path)
     graph = st.load_graph(path) if path.exists() else None
     if not graph:
@@ -211,7 +211,7 @@ def atlas(path):
         own = set().union(*[ns.get(u, set()) for u in e.get("units", [])] or [set()])
         near = set().union(*[ns.get(u, set()) for r in graph["relations"] if e["id"] in (r["src"], r["dst"])
                              for u in r.get("units", [])] or [set()])
-        e["datasets"] = sorted(own or near)  # 自己引用的单元跨两个以上数据集才算桥；没有自己的引用时按相连关系着色
+        e["datasets"] = sorted(own or near)  # a bridge only if its own cited units span two or more datasets; without own citations, colored by its neighbors
         e["bridge"] = len(own) >= 2
     brief = {uid: {k: u.get(k) for k in ("content", "form", "status", "scope")} for uid, u in units.items()}
     return {"graph": graph, "units": brief, "flows": st.load_flows(path) if st.flows_dir(path).is_dir() else [],
@@ -238,7 +238,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws", default=str(ROOT / "ws"))
     ap.add_argument("--atlas", default=str(ROOT / "ws/kb-atlas"))
-    ap.add_argument("--translate", action="store_true", help="用 Codex 补译缓存里没有的中文文本（英文版用）")
+    ap.add_argument("--translate", action="store_true", help="translate Chinese text missing from the cache with Codex (for the English version)")
     args = ap.parse_args()
     notes = yaml.safe_load(NOTES_FILE.read_text()) if NOTES_FILE.exists() else {}
     out = []
@@ -275,7 +275,7 @@ def main():
     text = ("window.KNOSIS_DEMOS = " + json.dumps(out, ensure_ascii=False, default=str) + ";\n"
             + "window.KNOSIS_ATLAS = " + json.dumps(big, ensure_ascii=False, default=str) + ";\n"
             + "window.KNOSIS_EN = " + json.dumps(en, ensure_ascii=False) + ";\n")
-    # 网页是公开的：本机绝对路径改成仓库相对路径，家目录写成 ~。
+    # The page is public: local absolute paths become repo-relative, and the home directory is written as ~.
     target.write_text(text.replace(f"{ROOT}/", "").replace(str(ROOT), ".").replace(str(Path.home()), "~"))
     print(f"wrote {target} ({target.stat().st_size // 1024} KB)")
 

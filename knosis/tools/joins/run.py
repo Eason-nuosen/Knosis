@@ -1,4 +1,4 @@
-"""包含依赖式的 join 发现，可选输出本体 core 层草稿。"""
+"""Inclusion-dependency join discovery, optionally writing a draft ontology core layer."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from knosis.tools import read_tables, write_result
 
 
 def key_values(values: pd.Series) -> set[str] | None:
-    """可参与 join 比较的取值集合；不可比较的列返回 None。"""
+    """Value set usable for join comparison; None for incomparable columns."""
     if pd.api.types.is_bool_dtype(values) or pd.api.types.is_float_dtype(values) and not (values.dropna() % 1 == 0).all():
         return None
     if pd.api.types.is_float_dtype(values):
@@ -36,7 +36,7 @@ def discover(tables, min_containment=0.9, min_distinct=2, min_name_similarity=0.
                 continue
             containment = len(values & columns[tt, str(tc)]) / len(values)
             similarity = difflib.SequenceMatcher(None, fc.lower(), str(tc).lower()).ratio()
-            # 只看包含率会把年份、小整数等列大量误配到别的表上；列名相似度是最便宜的过滤。
+            # Containment alone mismatches years, small integers etc. to many other tables; column name similarity is the cheapest filter.
             if containment >= min_containment and similarity >= min_name_similarity:
                 rows.append({"from_table": ft, "from_column": fc, "to_table": tt, "to_column": str(tc),
                              "containment": containment, "from_distinct": len(values), "name_similarity": similarity})
@@ -83,7 +83,7 @@ def main(argv=None):
     parser.add_argument("--min-containment", type=float, default=0.9)
     parser.add_argument("--min-distinct", type=int, default=2)
     parser.add_argument("--min-name-similarity", type=float, default=0.5)
-    parser.add_argument("--ontology", help="写本体 core 层草稿的目录")
+    parser.add_argument("--ontology", help="directory for the draft ontology core layer")
     parser.add_argument("--name", default="draft")
     args = parser.parse_args(argv)
     started = time.monotonic()

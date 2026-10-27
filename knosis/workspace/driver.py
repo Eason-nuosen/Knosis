@@ -1,4 +1,4 @@
-"""驱动模式：由 Knosis 启动外部编码 agent（`codex exec` / `claude -p`）逐阶段完成并验收。"""
+"""Driver mode: Knosis launches an external coding agent (`codex exec` / `claude -p`) to complete each stage, then runs the acceptance check."""
 
 from __future__ import annotations
 
@@ -24,28 +24,28 @@ def agent_command(agent, ws, prompt, model=None, effort=None):
 
 
 def submit_round(ws, state, directory) -> None:
-    """自动 RSI：refine 每轮结束时，把本轮的 dev 预测提交一次反馈，结果进入下一轮的提示。"""
+    """Automatic RSI: at the end of each refine round, submit this round's dev predictions for feedback; the result goes into the next round's prompt."""
     path = directory / f"dev_{state['output']}"
     submitted = {r["submitted"] for r in feedback.own(ws)}
     if path.exists() and str(path.relative_to(ws)) not in submitted and feedback.left(ws, state) > 0:
         dev = {t["id"] for t in load_units(ws / "tasks/dev.jsonl")}
         ids, _ = prediction_ids(path)
-        # 要求全做时不完整的文件不提交，由验收报出缺题，带着问题重试。
+        # When full coverage is required, an incomplete file is not submitted; the acceptance check reports missing tasks and the stage is retried with those issues.
         if not state["feedback"].get("full") or dev <= set(ids):
             feedback.submit(ws, path)
 
 
 def organize(path, agent="codex", model=None, effort=None) -> list[str]:
-    """只做内化的「构建知识体系」一步（见 `knowledge.consolidate`），返回最后的问题清单。"""
+    """Run only the "build knowledge structure" step of consolidation (see `knowledge.consolidate`); return the final issue list."""
     from ..knowledge import consolidate
 
     return consolidate.run(path, ["organize"], agent, model, effort)[0]["issues"]
 
 
 def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=None, consolidate=False) -> None:
-    """每阶段失败后带着验收问题重试一次；记录写入 `.knosis/runs.jsonl`。`note`：附加在每个阶段提示末尾的实验说明。
-    `consolidate`：refine 全部轮次结束、进入 decide 之前做一次内化（去重 → 矛盾处理 → 构建知识体系），
-    通过后把知识层再快照为最后一轮之后的版本。"""
+    """Each failed stage is retried once with the acceptance issues; runs are logged to `.knosis/runs.jsonl`. `note`: experiment instructions appended to every stage prompt.
+    `consolidate`: after all refine rounds and before decide, run consolidation once (dedup -> contradiction handling -> build knowledge structure),
+    then snapshot the knowledge layer again as the version after the last round."""
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
     ws = Path(ws).resolve()
@@ -61,14 +61,14 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=
                 started = time.monotonic()
                 before = status(ws)
                 with (directory / "agent.log").open("a", encoding="utf-8") as log:
-                    # stdin 必须关掉：codex exec 在 stdin 未关闭时会一直等待追加输入。
+                    # stdin must be closed: codex exec keeps waiting for more input while stdin is open.
                     result = subprocess.run(agent_command(agent, ws, prompt, model, effort), cwd=ws, env=env,
                                             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
                 if result.returncode:
                     raise RuntimeError(f"{agent} exited with {result.returncode}; see {directory / 'agent.log'}")
                 if stage == "refine":
                     submit_round(ws, before, directory)
-                # agent 偶尔自行验收；仍检查原阶段交付，不能用切换状态绕过验收。
+                # The agent sometimes runs the check itself; still check the original stage's deliverables so switching state cannot bypass acceptance.
                 if status(ws) == before:
                     issues = check(ws)
                 else:
@@ -92,7 +92,7 @@ def run(ws, agent="codex", stages=None, rounds=1, model=None, effort=None, note=
 
 
 def consolidate_ws(ws, agent, model, effort) -> None:
-    """refine 之后的内化；结果与耗时记进 runs.jsonl，通过的步骤会改变知识层，再提交一次 refine 版本作为 K_final。"""
+    """Consolidation after refine; results and timing go to runs.jsonl. Passing steps change the knowledge layer, which is committed once more as a refine version (K_final)."""
     from ..knowledge import consolidate
 
     results = consolidate.run(ws, agent=agent, model=model, effort=effort)
@@ -101,7 +101,7 @@ def consolidate_ws(ws, agent, model, effort) -> None:
             fh.write(json.dumps({"stage": "consolidate", **r, "agent": agent, "model": model, "effort": effort,
                                  "units": len(load_units(layout(ws).units))}, ensure_ascii=False) + "\n")
     if any(not r["issues"] for r in results):
-        # 内化发生在最后一轮 refine 之后：快照为下一个 refine 版本（K_final），每步已各自验收过。
+        # Consolidation happens after the last refine round: snapshot as the next refine version (K_final); each step was already checked.
         from . import commit, copy_knowledge
 
         state = status(ws)

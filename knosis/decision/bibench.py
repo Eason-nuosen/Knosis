@@ -1,4 +1,4 @@
-"""BI-Bench 打分：移植上游 `tools/run_large_models.py` 的 compare_dataframes 口径；外加 join 发现的本体评分。"""
+"""BI-Bench scoring: port of compare_dataframes from upstream `tools/run_large_models.py`; plus ontology scoring for join discovery."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ MISSING = {"", "na", "n/a", "nan", "null", "none", "-", "--"}
 
 
 def parse(value):
-    """'$1.5' → 1.5，'8.95%' → 0.0895，数字串 → float，其余原样。"""
+    """'$1.5' -> 1.5, '8.95%' -> 0.0895, numeric string -> float, anything else unchanged."""
     if not isinstance(value, str):
         return value
     text = value.strip()
@@ -60,7 +60,7 @@ def same(a, b, rtol=1e-3, atol=0.5) -> bool:
 
 
 def flat(frame: pd.DataFrame, max_rows=100) -> list:
-    """上游的规范化：按各列字符串排序、截前 100 行、展平，缺失值记为 0。"""
+    """Upstream normalization: sort by column strings, keep the first 100 rows, flatten, missing values become 0."""
     frame = frame.sort_values(by=list(frame.columns), key=lambda c: c.astype(str), kind="mergesort").iloc[:max_rows]
     return [0.0 if missing(v) else v for v in frame.to_numpy().flatten().tolist()]
 
@@ -75,10 +75,10 @@ def matches(gold: pd.DataFrame, pred: pd.DataFrame) -> bool:
         best, best_diff = None, math.inf
         for i, w in enumerate(remaining):
             x, y = number(v), number(w)
-            if x is not None and y is not None:  # 都是数：取 rtol=1e-2 / atol=0.5 内最接近的
+            if x is not None and y is not None:  # both numeric: take the closest within rtol=1e-2 / atol=0.5
                 if np.isclose(x, y, rtol=1e-2, atol=0.5) and abs(x - y) < best_diff:
                     best, best_diff = i, abs(x - y)
-            elif same(v, w):  # 否则按 $ / % / 日期 / 字符串比较，命中即停
+            elif same(v, w):  # otherwise compare as $ / % / date / string, stop at first match
                 best = i
                 break
         if best is None:
@@ -113,16 +113,16 @@ def score(ws, state, ds, path, ids) -> dict:
             "items": items, "reference": {}}
 
 
-# ---------------------------------------------------------------- 本体（join 发现）评分
+# ---------------------------------------------------------------- ontology (join discovery) scoring
 
 
 def key(name: str) -> str:
-    """表名比较用：去掉非字母数字、转小写（CSV 文件名与 Power BI 表名只差空格和标点）。"""
+    """For table name comparison: drop non-alphanumerics, lowercase (CSV file names and Power BI table names differ only in spaces and punctuation)."""
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
 def pairs(model: dict) -> set[frozenset]:
-    """core 层的关系 → {(表, 列), (表, 列)} 的无向集合；只比第一组列。"""
+    """Core-layer relations -> undirected set of {(table, column), (table, column)}; only the first column pair is compared."""
     out = set()
     for r in model.get("relationships", []):
         if r.get("from_columns") and r.get("to_columns"):
@@ -131,7 +131,7 @@ def pairs(model: dict) -> set[frozenset]:
 
 
 def index(model: dict, case: str) -> dict[str, str]:
-    """Power BI 表名（按 CSV 文件名归一）→ core 层 dataset 名；先找该用例的 CSV 路径，再找同源用例（-1/-2…）。"""
+    """Power BI table name (normalized by CSV file name) -> core-layer dataset name; look in this case's CSV paths first, then sibling cases (-1/-2...)."""
     raw = [((ontology.eob_data(d).get("raw") or {}).get("path"), d["name"]) for d in model.get("datasets", [])]
     paths = [(Path(p), n) for p, n in raw if p]
     for match in (lambda p: p.parent.name == case, lambda p: p.parent.name.split("-")[0] == case.split("-")[0]):
@@ -142,7 +142,7 @@ def index(model: dict, case: str) -> dict[str, str]:
 
 
 def gold_pairs(metadata: Path, model: dict, case: str) -> set[frozenset]:
-    """`_relationships.csv` 的 GT（Power BI 项目作者定义的 join）→ 无向 join 集合。"""
+    """GT from `_relationships.csv` (joins defined by the Power BI project authors) -> undirected join set."""
     if not (metadata / "_relationships.csv").is_file():
         return set()
     names = index(model, case)
@@ -168,11 +168,11 @@ def score_pairs(pred: set[frozenset], gold: set[frozenset]) -> dict:
 
 
 def join_report(knowledge, ds) -> dict:
-    """知识层里的全部本体 → 各用例的 join 发现分数；没有本体时 reported=False。"""
+    """All ontologies in the knowledge layer -> per-case join discovery scores; reported=False when there is no ontology."""
     docs = {n: d for n, d in ontology_docs(knowledge).items() if "semantic_model" in d}
     if not docs:
         return {"reported": False}
-    bench = Path(ds.root) if Path(ds.root).name == "bi-bench" else Path(ds.root).parent  # 单用例时 root 是 bi-bench/<用例>/
+    bench = Path(ds.root) if Path(ds.root).name == "bi-bench" else Path(ds.root).parent  # for a single case, root is bi-bench/<case>/
     meta = bench.parent / "tools/data_management_tools/metadata"
     scores = {name: {case: score_pairs(pairs(docs[name]["semantic_model"]),
                                        gold_pairs(meta / case, docs[name]["semantic_model"], case))

@@ -1,8 +1,8 @@
-"""工具层：每个工具一个目录 `<name>/{TOOL.md, run.py}`，以独立进程运行；核心包不导入神经模型。
+"""Tool layer: one directory per tool, `<name>/{TOOL.md, run.py}`, run as a separate process; the core package never imports neural models.
 
-新增工具：建目录，写带 YAML 头的 TOOL.md（name / version / kind / modality / stage / license）
-和一个命令行 run.py；输出目录里用 `write_result` 写 `units.jsonl` 与 `run.json`。
-工具只产出注解，不改数据；注解一律是 inferred 或 observed 的 κ。
+To add a tool: create the directory, write a TOOL.md with a YAML header (name / version / kind / modality / stage / license)
+and a command-line run.py; in the output directory, use `write_result` to write `units.jsonl` and `run.json`.
+Tools only produce annotations and never modify data; annotations are always inferred or observed κ.
 """
 
 from __future__ import annotations
@@ -34,13 +34,13 @@ def card(name) -> str:
 
 
 def run_tool(name, args: list[str]) -> int:
-    """重模型在自己的环境里跑：`KNOSIS_<NAME>_PYTHON` 指定解释器，默认当前解释器。"""
+    """Heavy models run in their own environment: `KNOSIS_<NAME>_PYTHON` sets the interpreter, defaulting to the current one."""
     python = os.environ.get(f"KNOSIS_{name.upper()}_PYTHON", sys.executable)
     return subprocess.run([python, str(TOOLS_DIR / name / "run.py"), *args]).returncode
 
 
 def available(info) -> bool:
-    """模型工具的依赖能否在它的解释器里导入（`TOOL.md` 的 `requires`）。"""
+    """Whether a model tool's dependencies (`requires` in `TOOL.md`) import in its interpreter."""
     python = os.environ.get(f"KNOSIS_{info['name'].upper()}_PYTHON", sys.executable)
     code = "; ".join(f"import {module}" for module in info.get("requires", []))
     return not code or subprocess.run([python, "-c", code], capture_output=True).returncode == 0
@@ -77,17 +77,17 @@ def write_result(out, name, params, units, started):
     (out / "run.json").write_text(json.dumps(record, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
 
 
-# ---------------------------------------------------------------- 表格工具共用
+# ---------------------------------------------------------------- shared by table tools
 
 
 def table_name(path: Path) -> str:
-    """SQL 可用的表名（与 BI-Agent 的 sanitize 一致：非字母数字转下划线，数字开头加下划线）。"""
+    """SQL-safe table name (same as BI-Agent's sanitize: non-alphanumerics become underscores, a leading digit gets an underscore prefix)."""
     name = re.sub(r"[^A-Za-z0-9]", "_", path.stem.replace("'", "").replace('"', ""))
     return f"_{name}" if name[:1].isdigit() else name
 
 
 def read_tables(paths) -> dict[str, tuple[Path, "pd.DataFrame"]]:
-    """目录展开为其中的 csv / parquet；返回 {表名: (路径, DataFrame)}。下划线开头的文件是元数据，跳过。"""
+    """Directories expand to their csv / parquet files; returns {table name: (path, DataFrame)}. Files starting with an underscore are metadata and skipped."""
     import pandas as pd
 
     files = []
@@ -99,7 +99,7 @@ def read_tables(paths) -> dict[str, tuple[Path, "pd.DataFrame"]]:
             continue
         if f.suffix == ".parquet":
             frame = pd.read_parquet(f)
-        else:  # 真实 BI 项目里有空表文件
+        else:  # real BI projects contain empty table files
             frame = pd.read_csv(f, low_memory=False) if f.stat().st_size else pd.DataFrame()
         tables[table_name(f)] = (f, frame)
     return tables

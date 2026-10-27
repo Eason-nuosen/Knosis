@@ -1,7 +1,7 @@
-"""SpreadsheetBench：agent 拿到每条指令全部测试用例的输入表格，交回改好的表格；答案表格留在原始目录。
+"""SpreadsheetBench: the agent gets the input spreadsheets of all test cases for each instruction and returns the modified ones; answer spreadsheets stay in the raw directory.
 
-按指令切分 dev 与测试：dev 指令的反馈带每个用例第一处不一致的单元格（mode=answer 时含正确值），
-测试指令是没见过的指令，检验的是「这类操作怎么做」能否迁移，而不是记住某张表。
+Dev and test are split by instruction: dev feedback gives the first mismatching cell per case (with the correct value when mode=answer);
+test instructions are unseen, so the test checks whether "how to do this kind of operation" transfers rather than memorizing a sheet.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from . import place, register, render, split
 
 
 def usable(task, xlsm) -> bool:
-    """默认只取 3 个用例齐全、都是 .xlsx 的指令（.xlsm 带宏，openpyxl 只能读值、保存可能丢宏）。"""
+    """By default only take instructions with all 3 cases present and all .xlsx (.xlsm has macros; openpyxl reads values only and saving may drop macros)."""
     files = task.meta["inputs"] + task.answer
     return len(task.answer) == 3 and (xlsm or all(p.suffix == ".xlsx" for p in files))
 

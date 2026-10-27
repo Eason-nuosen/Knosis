@@ -1,4 +1,4 @@
-"""本体标注的导入、GT 剔除与 join 发现评分（ontology-bench 标注 → 知识层 ontology/ 子目录）。"""
+"""Ontology annotation import, GT stripping and join discovery scoring (ontology-bench annotations -> knowledge layer ontology/ subdirectory)."""
 
 import json
 from pathlib import Path
@@ -26,7 +26,7 @@ def mapping(concept, *expressions):
 
 @pytest.fixture
 def docs():
-    """一份小本体：一条 pbi_gt join、一条 inferred join、一个 SQL 视图表、一个 relbench_gt join。"""
+    """A small ontology: one pbi_gt join, one inferred join, one SQL view table, one relbench_gt join."""
     model = ontology.semantic_model(
         "demo",
         [ds("sales", "Sales"), ds("budget", "SELECT k, v FROM raw UNPIVOT (v FOR k IN (a, b))"),
@@ -58,7 +58,7 @@ def test_strip_gt_removes_pbi_gt_and_oracle(docs):
     assert not ontology.check_ontology(docs)
     stripped, report = ontology.strip_gt(docs)
     kept = {r["name"] for r in stripped["semantic_model"]["relationships"]}
-    assert kept == {"r2", "r3"}  # pbi_gt 去掉，inferred / relbench_gt 保留
+    assert kept == {"r2", "r3"}  # pbi_gt removed, inferred / relbench_gt kept
     assert [d["name"] for d in stripped["semantic_model"]["datasets"]] == ["sales", "region"]
     assert [m["name"] for m in stripped["semantic_model"]["metrics"]] == ["total"]
     assert [cm["concept"] for cm in stripped["mapping"]["concept_mappings"]] == ["Sale"]
@@ -87,7 +87,7 @@ def test_strip_gt_keeps_relbench_units_whole(tmp_path):
 
 
 def annotation(root, name):
-    """一个最小的标注单元：三个 yaml + report.md。"""
+    """A minimal annotation unit: three yaml files + report.md."""
     model = ontology.semantic_model(
         name, [ds("sales", "Sales", raw={"path": "bi-bench/u1/Sales.csv"}),
                ds("plan", "SELECT * FROM raw UNPIVOT (v FOR k IN (a))"), ds("lookup", "Lookup")],
@@ -112,7 +112,7 @@ def test_import_annotation_into_subdirectories(tmp_path):
     assert report == {"unit": "101248502", "dir": str(out), "stripped": False}
     docs = ontology.load_ontology(out)
     assert len(docs["semantic_model"]["relationships"]) == 2 and not ontology.check_ontology(docs)
-    # 多个单元可共存
+    # multiple units can coexist
     ontology.import_annotation(annotation(tmp_path / "ann", "202"), tmp_path / "kb/knowledge/ontology")
     assert sorted(p.name for p in (tmp_path / "kb/knowledge/ontology").iterdir()) == ["101248502", "202"]
 
@@ -120,7 +120,7 @@ def test_import_annotation_into_subdirectories(tmp_path):
 def test_import_annotation_with_strip(tmp_path):
     src = annotation(tmp_path / "ann", "u1")
     report = ontology.import_annotation(src, tmp_path / "onto", strip=True)
-    assert report["stripped"] and report["counts"]["dataset"] == 2  # plan 是 SQL 视图；关系引用了它，sales 也按引用剔掉
+    assert report["stripped"] and report["counts"]["dataset"] == 2  # plan is a SQL view; relations reference it, so sales is stripped by reference too
     docs = ontology.load_ontology(tmp_path / "onto/u1")
     assert [d["name"] for d in docs["semantic_model"]["datasets"]] == ["sales", "lookup"]
     assert [r["name"] for r in docs["semantic_model"]["relationships"]] == ["inf"]
@@ -129,10 +129,10 @@ def test_import_annotation_with_strip(tmp_path):
 
 
 def test_bibench_join_scorer(tmp_path):
-    """Power BI 的表名与 CSV 文件名只差空格标点；方向无关。"""
+    """Power BI table names differ from CSV file names only in spaces and punctuation; direction irrelevant."""
     root = tmp_path
     meta = tmp_path / "tools/data_management_tools/metadata/7"
-    # loader 的 root 是 `bi-bench/` 目录，scorer 从 `bi-bench/<用例>/` 往上两级找 metadata
+    # the loader root is `bi-bench/`; the scorer looks for metadata two levels up from `bi-bench/<case>/`
     for path, text in {
         root / "bi-bench/queries.json": json.dumps({"7": "q"}),
         root / "bi-bench/7/Sales.csv": "CountryId,Amount\n1,3\n",
@@ -152,7 +152,7 @@ def test_bibench_join_scorer(tmp_path):
                        "custom_extensions": ontology.eob({"raw": {"path": "bi-bench/7/Country List.csv"}})},
                       {"name": "unrelated", "source": "Unrelated", "fields": [ontology.field("Id", "Integer")],
                        "custom_extensions": ontology.eob({"raw": {"path": "bi-bench/7/Unrelated.csv"}})}],
-        # 写成反方向、且列数 / 表名大小写不同，仍然命中
+        # reversed direction, different column count / table name case, still matches
         [{**ontology.relationship("sales", ["CountryId"], "country_list", ["Id"]), "name": "ok"},
          {**ontology.relationship("unrelated", ["Id"], "sales", ["Amount"]), "name": "wrong"}])
     ontology.write_ontology(tmp_path / "kb/knowledge/ontology/7", {"semantic_model": model})
@@ -195,7 +195,7 @@ def test_relbench_join_scorer(tmp_path):
     assert not relbench.db_report(tmp_path / "empty", dsx)["reported"]
 
 
-# ---------------------------------------------------------------- 真实标注（本地有才跑）
+# ---------------------------------------------------------------- real annotations (run only if present locally)
 
 
 def bi_units():
@@ -214,7 +214,7 @@ def test_strip_all_real_bi_bench_units(tmp_path):
         assert all(ontology.eob_data(r).get("origin") in (None, "inferred", "relbench_gt")
                    for r in docs["semantic_model"].get("relationships", []))
     assert len(bi_units()) == 83
-    assert totals["relationship"] == 578  # 683 条 pbi_gt：105 条只连 transient 表，计入 dataset
+    assert totals["relationship"] == 578  # 683 pbi_gt: 105 only connect transient tables, counted under dataset
     assert totals["dataset"] == 166
 
 
@@ -222,7 +222,7 @@ def test_strip_all_real_bi_bench_units(tmp_path):
 @pytest.mark.parametrize("unit, case", [("101248502", "101248502"), ("159612708", "159612708")])
 def test_real_annotation_scores_high_and_stripped_scores_low(tmp_path, unit, case):
     docs = ontology.load_ontology(ANNOTATIONS / "bi-bench" / unit)
-    assert load_dataset("bibench", case).tasks  # 用例在本地
+    assert load_dataset("bibench", case).tasks  # case is available locally
     meta = data_dir("bibench") / "tools/data_management_tools/metadata" / case
     gold = bibench.gold_pairs(meta, docs["semantic_model"], case)
     raw = bibench.score_pairs(bibench.pairs(docs["semantic_model"]), gold)

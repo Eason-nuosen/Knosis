@@ -1,7 +1,7 @@
-"""BI-Bench：真实 BI 项目上的端到端业务问答。每个用例 = 一组 CSV 表 + 一道业务问题。
+"""BI-Bench: end-to-end business QA on real BI projects. Each case = a set of CSV tables + one business question.
 
-    data/bibench/bi-bench/{<用例id>/*.csv, gt/<用例id>[_k].csv, queries.json}
-    data/bibench/tools/data_management_tools/metadata/<用例id>/{_tables,_columns,_relationships}.csv
+    data/bibench/bi-bench/{<case id>/*.csv, gt/<case id>[_k].csv, queries.json}
+    data/bibench/tools/data_management_tools/metadata/<case id>/{_tables,_columns,_relationships}.csv
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 from ..dataset import Dataset, Task, data_dir
 from . import register
 
-METRICS = {"success": "预测结果与任一 GT 表匹配（数值 rtol=1e-2 / atol=0.5，不计行列顺序）的用例比例"}
+METRICS = {"success": "fraction of cases whose prediction matches any GT table (numbers rtol=1e-2 / atol=0.5, row and column order ignored)"}
 
 
 def scenarios(root: str | Path | None = None) -> list[str]:
@@ -22,8 +22,8 @@ def scenarios(root: str | Path | None = None) -> list[str]:
 
 @register("bibench", scenarios=scenarios)
 def load(scenario: str | None = None, root: str | Path | None = None) -> Dataset:
-    """`scenario` 是用例 id；也可以是项目 id（如 `280113507`，加载它的全部用例 `280113507-1` …）；
-    不给或为 `all` 时加载全部用例。多用例时 files 为空，各用例的表在 `meta["dir"]`。"""
+    """`scenario` is a case id, or a project id (e.g. `280113507` loads all its cases `280113507-1` …);
+    omitted or `all` loads every case. With multiple cases `files` is empty and each case's tables are in `meta["dir"]`."""
     scenario = None if scenario == "all" else scenario
     base = Path(root or data_dir("bibench"))
     bench, meta = base / "bi-bench", base / "tools" / "data_management_tools"
@@ -33,14 +33,14 @@ def load(scenario: str | None = None, root: str | Path | None = None) -> Dataset
 
     tasks = []
     for cid in cases:
-        gt = sorted(bench.glob(f"gt/{cid}_*.csv")) or [bench / "gt" / f"{cid}.csv"]  # 多个文件 = 任一匹配即对
+        gt = sorted(bench.glob(f"gt/{cid}_*.csv")) or [bench / "gt" / f"{cid}.csv"]  # multiple files = matching any one is correct
         hint = meta / "metadata" / cid / "query_metadata.json"
         tasks.append(Task(
             id=cid,
             input=queries[cid],
             answer=gt,
             kind="bi_query",
-            # oracle：该用哪些表 / 做哪些变换，属于提示，不给被测 agent
+            # oracle: which tables / transforms to use; these are hints, not given to the agent under test
             meta={"dir": bench / cid, "oracle": json.loads(hint.read_text()) if hint.is_file() else None},
         ))
 

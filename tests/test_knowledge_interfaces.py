@@ -1,4 +1,4 @@
-"""autoschemakg 工具、知识体系大纲、MCP 服务。"""
+"""autoschemakg tool, knowledge system outline, MCP server."""
 
 import io
 import json
@@ -18,8 +18,8 @@ def extraction(pid):
     return {"id": pid,
             "entity_relation_dict": [{"Head": "Hubert Hinterseher", "Relation": "serves as", "Tail": "Chief Financial Officer"},
                                      {"Head": "PUMA", "Relation": "focused on", "Tail": "China market"},
-                                     {"Head": "PUMA", "Relation": "acquired", "Tail": "Nike"},  # 原文没有：不 grounded
-                                     {"Head": "PUMA"}],  # 残缺项丢弃
+                                     {"Head": "PUMA", "Relation": "acquired", "Tail": "Nike"},  # not in source text: not grounded
+                                     {"Head": "PUMA"}],  # incomplete item dropped
             "event_entity_dict": [{"Event": "PUMA appointed a CFO.", "Entity": ["PUMA", "Hubert Hinterseher"]}],
             "event_relation_dict": [{"Head": "PUMA appointed a CFO.", "Relation": "before", "Tail": "PUMA focused on China."}]}
 
@@ -53,7 +53,7 @@ def test_autoschemakg_pipeline(ws, capsys):
     assert triples == {"Hubert Hinterseher —serves as→ Chief Financial Officer": True, "PUMA —focused on→ China market": True,
                        "PUMA —acquired→ Nike": False}
     assert all(u["status"] == "inferred" for u in units)
-    # 概念化：按 concept_todo 写概念后再建一次，得到概念层 schema
+    # conceptualization: write concepts per concept_todo and rebuild to get the concept-level schema
     todo = askg.read_jsonl(out / "concept_todo.jsonl")
     assert {"PUMA", "focused on"} <= {t["name"] for t in todo} and "CONTEXT" in todo[0]["prompt"]
     askg.write_jsonl(out / "concepts.jsonl", [{"name": "PUMA", "type": "entity", "concepts": ["company", "brand"]},
@@ -67,7 +67,7 @@ def test_autoschemakg_pipeline(ws, capsys):
 
 
 def test_autoschemakg_upstream_format(tmp_path):
-    """上游抽取文件：段落在 original_text 里，id 在不同文档间重复，按行号区分。"""
+    """Upstream extraction file: passages in original_text, ids repeat across documents, distinguished by line number."""
     rows = [{**extraction("1"), "original_text": TEXT}, {**extraction("1"), "original_text": "unrelated text"}]
     path = tmp_path / "upstream.json"
     askg.write_jsonl(path, rows)
@@ -93,7 +93,7 @@ def test_outline(ws, capsys):
     assert any("unknown unit nope" in i for i in issues) and any("inactive unit old" in i for i in issues)
     assert any("duplicate id" in i for i in issues)
     assert outline.unplaced(bad, outline.members(kdir)) == ["m"]
-    # 有大纲时知识层检查会带上它
+    # knowledge layer checks include the outline when present
     outline.write_outline(kdir, bad)
     assert any(i.startswith("outline") for i in check_knowledge(kdir, root=ws))
     before = {u["id"] for u in load_units(ws / "kb/knowledge/units.jsonl")}
@@ -123,15 +123,15 @@ def test_mcp_server(ws):
     assert json.loads(call("knowledge_select", scope="method")["content"][0]["text"])[0]["id"] == "m"
     new = {"id": "n", "content": "n", "form": "rule", "provenance": "data/doc.md#0-4", "status": "inferred"}
     assert not call("knowledge_add", unit=new)["isError"]
-    assert call("knowledge_add", unit=new)["isError"]  # 重复 id
+    assert call("knowledge_add", unit=new)["isError"]  # duplicate id
     missing = call("knowledge_add", unit={**new, "id": "x", "provenance": "data/missing.csv"})
     assert missing["isError"] and "missing data source" in missing["content"][0]["text"]
-    # 撤回父单元时，派生单元未跟着失效（I5）→ 拒绝
+    # retracting a parent while derived units stay active (I5) -> rejected
     assert call("knowledge_update", id="a", fields={"status": "retracted"})["isError"]
     assert not call("knowledge_update", id="n", fields={"status": "retracted"})["isError"]
     assert {u["id"]: u["status"] for u in load_units(ws / "kb/knowledge/units.jsonl")}["n"] == "retracted"
     result = json.loads(call("evidence_add", unit="m", verdict="refute", method="derivation", source="a")["content"][0]["text"])
-    assert result["unit_issues"]  # 被反驳后要求改状态
+    assert result["unit_issues"]  # status change required after refutation
     assert call("nope")["isError"]
     run = json.loads(call("tool_run", name="autoschemakg", args=["prepare", "--text", "data/", "--out", "kg"])["content"][0]["text"])
     assert run["returncode"] == 0 and (ws / "kg/passages.jsonl").exists()
@@ -145,7 +145,7 @@ def test_mcp_stdio(ws):
     assert replies[0]["result"] == {} and replies[1]["error"]["code"] == -32601 and replies[2]["error"]["code"] == -32700
 
 
-# ---------------------------------------------------------------- 日常收集与安装
+# ---------------------------------------------------------------- daily collection and install
 
 
 def codex_session(path, cwd, calls=3):
@@ -168,9 +168,9 @@ def test_collect(tmp_path, monkeypatch):
     (wsdir / ".knosis/state.json").write_text("{}")
     project.mkdir()
     codex_session(sessions / "rollout-a.jsonl", project)
-    codex_session(sessions / "rollout-b.jsonl", project, calls=1)    # 调用太少
-    codex_session(sessions / "rollout-c.jsonl", wsdir / "sub")        # Knosis 工作区内
-    codex_session(sessions / "rollout-d.jsonl", kb)                   # 收集自身的会话
+    codex_session(sessions / "rollout-b.jsonl", project, calls=1)    # too few calls
+    codex_session(sessions / "rollout-c.jsonl", wsdir / "sub")        # inside a Knosis workspace
+    codex_session(sessions / "rollout-d.jsonl", kb)                   # the collector's own session
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     assert collect.parse_since("2h") < collect.parse_since("1h")
     found, skipped = collect.find(kb, since="1d")
@@ -178,7 +178,7 @@ def test_collect(tmp_path, monkeypatch):
     assert skipped == {"collected": 0, "inside_kb": 1, "workspace": 1, "few_calls": 1, "unreadable": 0}
     assert len(collect.find(kb, since="1d", include_workspaces=True)[0]) == 2
 
-    def fake_agent(cmd, cwd, env, stdin, stdout, stderr):  # 模拟 agent：写一条引用轨迹的知识
+    def fake_agent(cmd, cwd, env, stdin, stdout, stderr):  # fake agent: writes one unit citing the trace
         units = load_units(kb / "kb/knowledge/units.jsonl")
         write_units(kb / "kb/knowledge/units.jsonl", units + [{"id": "collect/ls", "content": "ls works", "form": "finding",
                                                   "status": "inferred", "provenance": "evidence/traces/rollout-a.json#step/2"}])
@@ -190,7 +190,7 @@ def test_collect(tmp_path, monkeypatch):
     assert result["added"] == ["collect/ls"] and (kb / "evidence/traces/rollout-a.md").exists()
     assert collect.collected(kb) == {"rollout-a"} and not collect.find(kb, since="1d")[0]
     assert "collect: 1 codex sessions" in collect.git(kb, "log", "-1", "--format=%s")
-    # 不引用本次轨迹的新单元不通过，重试后仍不通过就恢复知识库
+    # new units not citing this trace fail; restore the knowledge base if still failing after retry
     codex_session(sessions / "rollout-e.jsonl", project)
 
     def bad_agent(cmd, cwd, env, stdin, stdout, stderr):
@@ -214,7 +214,7 @@ def test_install_mcp(tmp_path, monkeypatch):
     config.parent.mkdir(parents=True)
     config.write_text('model = "x"\n')
     install_skill(codex=True, home=tmp_path, kb=tmp_path / "kb")
-    install_skill(codex=True, home=tmp_path, kb=tmp_path / "kb2")   # 再装一次替换，不重复
+    install_skill(codex=True, home=tmp_path, kb=tmp_path / "kb2")   # reinstalling replaces, no duplicates
     text = config.read_text()
     assert text.startswith('model = "x"\n') and text.count("[mcp_servers.knosis]") == 1 and "kb2" in text
     assert 'default_tools_approval_mode = "approve"' in text

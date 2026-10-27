@@ -7,7 +7,7 @@ from knosis import workspace as w
 from knosis.decision import evaluate
 from knosis.decision import kramabench as scorer
 from knosis.knowledge import feedback, load_units, write_units
-from knosis.workspace.exporters import kramabench  # noqa: F401  注册导出器
+from knosis.workspace.exporters import kramabench  # noqa: F401  register exporter
 
 TASKS = [
     {"id": "fire-easy-1", "query": "q1", "answer": 7805421, "answer_type": "numeric_exact", "subtasks": [{"id": "s", "query": "SUB"}]},

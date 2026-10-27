@@ -1,4 +1,4 @@
-"""不用模型/API 的 TabArena 四阶段试跑，预测只用训练集多数类或中位数。"""
+"""Four-stage TabArena trial run without models or APIs; predictions use only the training majority class or median."""
 
 from __future__ import annotations
 
@@ -31,22 +31,22 @@ def trial(scenario="houses", out=None, root=None):
     is_regression = ds.schema["problem_type"] == "regression"
     value = train[target].median() if is_regression else counts.index[0]
     baseline = value.item() if hasattr(value, "item") else value
-    notes = f"只分析训练集：{len(train)} 行，目标 {target}。\n\n缺失值计数：\n{train.isna().sum().to_string()}\n"
+    notes = f"Training set only: {len(train)} rows, target {target}.\n\nMissing value counts:\n{train.isna().sum().to_string()}\n"
     (ws / "stages/1_explore/notes.md").write_text(notes, encoding="utf-8")
     accept(ws)
     units = [
-        {"id": "schema", "content": f"训练列：{', '.join(train.columns)}；目标：{target}",
+        {"id": "schema", "content": f"Training columns: {', '.join(train.columns)}; target: {target}",
          "form": "schema", "provenance": f"data/train.parquet#col/{target}",
-         "condition": "当前数据集与划分", "status": "observed"},
-        {"id": "prior", "content": f"训练目标{'中位数' if is_regression else '多数类'}为 {baseline}",
+         "condition": "current dataset and split", "status": "observed"},
+        {"id": "prior", "content": f"Training target {'median' if is_regression else 'majority class'} is {baseline}",
          "form": "fact", "provenance": f"data/train.parquet#col/{target}",
-         "condition": "只描述训练集，不保证测试分布一致", "status": "observed",
+         "condition": "describes the training set only; the test distribution may differ", "status": "observed",
          "meta": {"baseline": baseline, "support_count": int(train[target].notna().sum())}},
     ]
     write_units(ws / "kb/knowledge/units.jsonl", units)
     accept(ws)
     w.next_prompt(ws)
-    # 验证：给 prior 附一条可执行检查，由 Knosis 重跑并记一条支持证据，再标为 verified。
+    # Verify: attach an executable check to prior, let Knosis rerun it and record supporting evidence, then mark it verified.
     units[1]["check"] = {"kind": "sql", "query": f'SELECT COUNT(*) > 0 FROM train WHERE "{target}" IS NOT NULL'}
     write_units(ws / "kb/knowledge/units.jsonl", units)
     verify(ws, ["prior"])
@@ -54,7 +54,7 @@ def trial(scenario="houses", out=None, root=None):
     units[1]["meta"]["counterexamples"] = 0
     write_units(ws / "kb/knowledge/units.jsonl", units)
     (ws / "stages/3_refine/round_1/changelog.md").write_text(
-        "重新从训练目标计算统计量，确认 prior 一致。未使用测试标签；仅验证统计事实，不宣称预测规律成立。\n",
+        "Recomputed the statistic from the training target; prior is consistent. No test labels used; only the statistical fact is verified, no predictive claim is made.\n",
         encoding="utf-8",
     )
     accept(ws)

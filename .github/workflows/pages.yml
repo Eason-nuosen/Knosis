@@ -1,6 +1,6 @@
 name: pages
 
-# 把 site/（静态演示页）发布到 GitHub Pages：https://eason-nuosen.github.io/Knosis/
+# Publish site/ (static demo page) to GitHub Pages: https://eason-nuosen.github.io/Knosis/
 on:
   push:
     branches: [main]

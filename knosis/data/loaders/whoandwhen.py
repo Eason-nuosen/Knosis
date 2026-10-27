@@ -1,9 +1,9 @@
-"""Who&When：LLM 多 agent 系统失败日志的失败归因（哪个 agent、在哪一步造成了失败），标注由论文作者人工完成。
+"""Who&When: failure attribution on failure logs of LLM multi-agent systems (which agent, at which step, caused the failure), hand-annotated by the paper authors.
 
     data/whoandwhen/Who&When/{Algorithm-Generated,Hand-Crafted}/<n>.json
 
-一道题 = 一条失败日志；`answer` 是标注 {agent, step, reason}，`step` 换成 ATIF 步号（上游 `mistake_step` 是 history 下标，+1）。
-轨迹本身由 `knosis.data.traces.whoandwhen` 转换，标注与题目标准答案不进轨迹。
+One task = one failure log; `answer` is the annotation {agent, step, reason}, with `step` converted to the ATIF step number (upstream `mistake_step` is a history index, +1).
+The trace itself is converted by `knosis.data.traces.whoandwhen`; annotations and the task's reference answer stay out of the trace.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ from . import register
 SUBSETS = {"algorithm": ("Algorithm-Generated", "ag"), "hand": ("Hand-Crafted", "hc")}
 SCENARIOS = ("all", *SUBSETS)
 METRICS = {
-    "agent": "出错 agent 判对的比例（上游 agent-level accuracy；名字忽略大小写）",
-    "step": "决定性出错步骤判对的比例（上游 step-level accuracy）",
-    "both": "agent 与步骤都判对的比例",
+    "agent": "fraction with the faulty agent correct (upstream agent-level accuracy; names case-insensitive)",
+    "step": "fraction with the decisive error step correct (upstream step-level accuracy)",
+    "both": "fraction with both agent and step correct",
 }
 
 

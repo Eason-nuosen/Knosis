@@ -1,17 +1,17 @@
-"""导出器：把一个数据集变成工作区里 agent 可见的部分（数据 + BRIEF + 题目）；GT 留在原始数据目录。
+"""Exporters: turn a dataset into the agent-visible part of a workspace (data + BRIEF + tasks); GT stays in the raw data directory.
 
-新增数据集的工作区支持：在本目录写 `<name>.py`，用 `@register("<name>")` 装饰
-`export(ds, ws, write_data=True, **opts) -> dict`，并加进下面的 import 列表。返回：
+To add workspace support for a dataset: write `<name>.py` here, decorate
+`export(ds, ws, write_data=True, **opts) -> dict` with `@register("<name>")`, and add it to the import list below. Returns:
 
-    brief        BRIEF.md 正文
-    tasks        测试题（无答案），每项至少有 "id"；decide 阶段才写到 tasks/tasks.jsonl
-    dev          开发题（无答案，与测试题不重叠），init 时写到 tasks/dev.jsonl，用于知识层反馈；可为空
-    holdout      写进 BRIEF 当示例的题目 id
-    output       decide 交付文件名：predictions.jsonl（每行 {id, answer}）或 predictions.csv（row_id, prediction, ...）；
-                 没有下游预测时为 None
-    modalities   用于挑选 TOOLS.md 里的工具，如 ["graph"]、["table"]、["tables"]
+    brief        BRIEF.md body
+    tasks        test tasks (no answers), each with at least "id"; written to tasks/tasks.jsonl only at decide
+    dev          dev tasks (no answers, disjoint from test), written to tasks/dev.jsonl at init for knowledge-layer feedback; may be empty
+    holdout      task ids shown as examples in BRIEF
+    output       decide deliverable file name: predictions.jsonl (one {id, answer} per line) or predictions.csv (row_id, prediction, ...);
+                 None when there is no downstream prediction
+    modalities   used to pick tools for TOOLS.md, e.g. ["graph"], ["table"], ["tables"]
 
-同样的 `opts` 必须给出同样的划分（`write_data=False` 用于 decide 阶段重新生成题目）。
+The same `opts` must yield the same split (`write_data=False` regenerates tasks at decide).
 """
 
 from __future__ import annotations
@@ -36,13 +36,13 @@ def register(name: str):
 
 
 def place(src, dst) -> None:
-    """把原始文件放进工作区：同一文件系统用硬链接（不占空间），否则复制。
-    不用软链接：软链接会暴露原始目录的位置，GT 往往就在旁边。"""
+    """Put raw files into the workspace: hard link on the same filesystem (no extra space), otherwise copy.
+    No symlinks: they expose the raw directory's location, and GT is often right next to it."""
     dst = Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     try:
         os.link(src, dst)
-    except OSError:  # 跨文件系统
+    except OSError:  # cross-filesystem
         shutil.copy2(src, dst)
 
 
@@ -51,7 +51,7 @@ def render(template, **values):
 
 
 def split(items, dev, limit=None, seed=0):
-    """按 `seed` 打乱后切出 dev 与测试；`limit` 限制测试题数。保持原顺序输出。"""
+    """Shuffle with `seed` and split into dev and test; `limit` caps the test count. Output keeps the original order."""
     order = list(range(len(items)))
     random.Random(seed).shuffle(order)
     dev_idx, test_idx = set(order[:dev]), order[dev:]

@@ -1,14 +1,14 @@
-"""MCP 服务：把一个工作区（或知识库）的知识层与工具层以 MCP 工具暴露给 agent（stdio，JSON-RPC 2.0，每行一条消息）。
+"""MCP server: exposes a workspace's (or knowledge base's) knowledge and tool layers to agents as MCP tools (stdio, JSON-RPC 2.0, one message per line).
 
-三层的分工：
-- 工具（`knosis/tools/<name>/`）：独立进程，读数据、产出 inferred / observed 的 κ 注解，不改知识层；
-- skill（`kb/skills/<name>/SKILL.md`）：知识库里「如何运用知识解某类任务」的流程，由 agent 写、讲怎么做；
-- MCP（本模块）：协议适配，不实现功能。知识操作直接调用 `knosis.knowledge`，工具经 `tool_run` 以子进程运行。
+Division of labor:
+- tools (`knosis/tools/<name>/`): separate processes that read data and emit inferred / observed κ annotations, never modifying the knowledge layer;
+- skills (`kb/skills/<name>/SKILL.md`): procedures in the knowledge base for "how to apply knowledge to a class of tasks", written by agents;
+- MCP (this module): protocol adapter only, no functionality. Knowledge operations call `knosis.knowledge` directly; tools run as subprocesses via `tool_run`.
 
-写操作（`knowledge_add`、`knowledge_update`、`evidence_add`）在写入前用 `check_units` 检查，引入新问题就拒绝。
-不暴露 `eval`（测试题评测不属于 agent 可用的操作）。
+Writes (`knowledge_add`, `knowledge_update`, `evidence_add`) are checked with `check_units` first and rejected if they introduce new issues.
+`eval` is not exposed (scoring test tasks is not an operation available to agents).
 
-    knosis mcp --ws <工作区或知识库>
+    knosis mcp --ws <workspace or knowledge base>
     codex:  -c 'mcp_servers.knosis.command="knosis"' -c 'mcp_servers.knosis.args=["mcp","--ws","<dir>"]'
     claude: --mcp-config '{"mcpServers":{"knosis":{"command":"knosis","args":["mcp","--ws","<dir>"]}}}'
 """
@@ -30,12 +30,12 @@ class Server:
     def __init__(self, ws):
         from .knowledge import data_root, layout
 
-        # 工作区与知识库同布局（kb/ + evidence/）；知识库没有 data/，root 为 None。
+        # Workspaces and knowledge bases share a layout (kb/ + evidence/); a knowledge base has no data/, so root is None.
         self.ws = Path(ws).resolve()
         self.lay = layout(self.ws)
         self.root = data_root(self.ws)
 
-    # ------------------------------------------------------------ 知识层
+    # ------------------------------------------------------------ knowledge layer
 
     def units(self):
         from .knowledge import load_units
@@ -48,7 +48,7 @@ class Server:
         return set(check_units(units, root=self.root, evidence=by_unit(load_evidence(self.ws), self.root)))
 
     def guarded_write(self, units):
-        """只在不引入新问题时写回 units.jsonl。"""
+        """Write back units.jsonl only if no new issues are introduced."""
         from .knowledge import write_units
 
         new = sorted(self.issues(units) - self.issues(self.units()))
@@ -58,7 +58,7 @@ class Server:
 
     def knowledge_select(self, text=None, about=None, form=None, scope=None, include_inactive=False,
                          include_contested=False, limit=50):
-        """`text` 含空格时按关键词检索：命中任一词即入选，按命中词数排序。"""
+        """If `text` contains spaces, search by keywords: any matching word selects a unit, ranked by number of matched words."""
         from .knowledge import scope_of
         from .knowledge.select import select
 
@@ -155,7 +155,7 @@ class Server:
 
         return check_knowledge(self.ws, root=self.root) or ["OK"]
 
-    # ------------------------------------------------------------ 工具层与工作区
+    # ------------------------------------------------------------ tool layer and workspace
 
     def tool_list(self, modality=None):
         from .tools import list_tools
@@ -182,7 +182,7 @@ class Server:
             raise ValueError("not a workspace")
         return next_prompt(self.ws)
 
-    # ------------------------------------------------------------ 协议
+    # ------------------------------------------------------------ protocol
 
     def call(self, name, arguments):
         if name not in TOOLS:
@@ -191,7 +191,7 @@ class Server:
 
     def handle(self, message):
         method, mid = message.get("method"), message.get("id")
-        if mid is None:  # 通知不回复
+        if mid is None:  # notifications get no reply
             return None
         if method == "initialize":
             client = message.get("params", {}).get("protocolVersion", PROTOCOL)
@@ -208,7 +208,7 @@ class Server:
                 value = self.call(params["name"], params.get("arguments") or {})
                 text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=1, default=str)
                 result = {"content": [{"type": "text", "text": text}], "isError": False}
-            except Exception as error:  # 工具错误按 MCP 约定放进结果，让 agent 看到并修正
+            except Exception as error:  # per MCP convention tool errors go in the result, so the agent can see and fix them
                 result = {"content": [{"type": "text", "text": f"{type(error).__name__}: {error}"}], "isError": True}
         else:
             return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"method not found: {method}"}}
@@ -230,39 +230,39 @@ S, B, I = {"type": "string"}, {"type": "boolean"}, {"type": "integer"}
 LIST = {"type": "array", "items": {"type": "string"}}
 SCOPE = {"type": "string", "enum": ["instance", "relation", "dataset", "method", "usage"]}
 TOOLS = {
-    "knowledge_select": ("按任务筛选知识（κ 与本体单元），附证据计数。text 为一个词时在 id / content / condition 里找子串；"
-                         "多个词（空格分隔）时命中任一词即入选，按命中词数排序。scope：对象知识 instance / relation / dataset，"
-                         "元知识 method（怎么得到知识）/ usage（怎么用好知识）。矛盾未决（contested）的默认不给。",
+    "knowledge_select": ("Select knowledge for a task (κ and ontology units), with evidence counts. A single-word text matches substrings of id / content / condition; "
+                         "multiple words (space-separated) select units matching any word, ranked by number of matched words. scope: object knowledge instance / relation / dataset, "
+                         "meta-knowledge method (how knowledge was obtained) / usage (how to use knowledge well). Unresolved (contested) units are excluded by default.",
                          {"text": S, "about": LIST, "form": S, "scope": SCOPE, "include_inactive": B,
                           "include_contested": B, "limit": I}, ()),
-    "knowledge_skills": ("列出 skill（如何运用知识解某类任务），附评价它的 usage 单元。", {"text": S}, ()),
-    "knowledge_index": ("以对象为键的视图：某个数据文件 / 列 / 节点上有哪些知识、被决策引用过几次。", {"prefix": S}, ()),
-    "knowledge_trace": ("一条知识的发现途径：派生链与全部证据。", {"unit": S}, ("unit",)),
-    "knowledge_outline": ("知识体系大纲（kb/outline.yaml）渲染成 markdown；没有大纲或 draft=true 时给按粒度生成的草稿。",
+    "knowledge_skills": ("List skills (how to apply knowledge to a class of tasks), with the usage units that evaluate them.", {"text": S}, ()),
+    "knowledge_index": ("Object-keyed view: which knowledge sits on a data file / column / node and how often decisions cited it.", {"prefix": S}, ()),
+    "knowledge_trace": ("How a unit was found: derivation chain and all evidence.", {"unit": S}, ("unit",)),
+    "knowledge_outline": ("Knowledge outline (kb/outline.yaml) rendered as markdown; without an outline, or with draft=true, returns a draft generated by scope.",
                           {"draft": B}, ()),
-    "knowledge_graph": ("知识体系的结构化形式。不给参数：知识图谱与流程图的摘要；entity：某个实体（id 或名字）周围 depth 跳的子图，"
-                        "边上附引用的单元；view=flows：全部流程图（步骤、检查、判断，各引用单元或 skill）；view=cards：按对象分组的规则与公式。",
+    "knowledge_graph": ("Structured forms of the knowledge. No arguments: summary of the knowledge graph and flowcharts; entity: the subgraph within depth hops of an entity (id or name), "
+                        "with cited units on edges; view=flows: all flowcharts (steps, checks, decisions, each citing units or skills); view=cards: rules and formulas grouped by object.",
                         {"entity": S, "depth": I, "view": {"type": "string", "enum": ["summary", "flows", "cards"]}}, ()),
-    "knowledge_add": ("新增一条 κ（字段同 units.jsonl：id、content、form、provenance、status，可选 scope、condition、about、"
-                      "derived_from、meta）。form：finding / fact / rule / formula / schema / tool / procedure。"
-                      "写入前检查结构与来源，引入新问题会被拒绝。",
+    "knowledge_add": ("Add a κ (fields as in units.jsonl: id, content, form, provenance, status; optional scope, condition, about, "
+                      "derived_from, meta). form: finding / fact / rule / formula / schema / tool / procedure. "
+                      "Structure and provenance are checked before writing; additions that introduce new issues are rejected.",
                       {"unit": {"type": "object"}}, ("unit",)),
-    "knowledge_update": ("修改一条 κ 的字段，不能改 id；同样先检查再写。撤回：{\"status\": \"retracted\"}；"
-                         "去重：{\"status\": \"merged\", \"merged_into\": 主单元}；版本替换：{\"status\": \"stale\", "
-                         "\"superseded_by\": 新单元}；矛盾未决：{\"status\": \"contested\", \"conflicts_with\": [对方]}。",
+    "knowledge_update": ("Update fields of a κ (id cannot change); also checked before writing. Retract: {\"status\": \"retracted\"}; "
+                         "dedup: {\"status\": \"merged\", \"merged_into\": primary unit}; supersede: {\"status\": \"stale\", "
+                         "\"superseded_by\": new unit}; unresolved conflict: {\"status\": \"contested\", \"conflicts_with\": [other units]}.",
                          {"id": S, "fields": {"type": "object"}}, ("id", "fields")),
-    "evidence_add": ("给一条 κ 记一条证据（skill 的效果写成 usage 单元，不直接记在 skill 上）。verdict：support / refute / undetermined / not_applicable；"
-                     "method：check / tool / data / feedback / ablation / derivation / human。返回该单元因此需要处理的问题（如被反驳后要改状态）。",
+    "evidence_add": ("Record evidence for a κ (a skill's effect is written as a usage unit, not recorded on the skill). verdict: support / refute / undetermined / not_applicable; "
+                     "method: check / tool / data / feedback / ablation / derivation / human. Returns issues the unit now needs addressed (e.g. a status change after refutation).",
                      {"unit": S, "verdict": S, "method": S, "source": S, "note": S, "inputs": LIST},
                      ("unit", "verdict", "method", "source")),
-    "knowledge_verify": ("重跑单元的可执行检查（check 字段），结果记为证据；不给 units 时检查全部。", {"units": LIST}, ()),
-    "knowledge_candidates": ("内化用的候选：疑似重复的单元对、同一对象上可能矛盾的单元对、有争议的单元。只是提示，由你判断。", {}, ()),
-    "knowledge_check": ("检查整个知识层：结构、状态与证据一致、本体引用、skill、大纲、去重别名与矛盾标记。", {}, ()),
-    "tool_list": ("可用工具（profile、joins、sql、fit、tabpfn、ultra、newton、autoschemakg 等）。", {"modality": S}, ()),
-    "tool_card": ("工具说明与用法。", {"name": S}, ("name",)),
-    "tool_run": ("在工作区根目录运行一个工具，args 同命令行（如 [\"--tables\", \"data/\", \"--out\", \"stages/1_explore/profile\"]）。",
+    "knowledge_verify": ("Rerun units' executable checks (check field) and record results as evidence; checks all units if units is omitted.", {"units": LIST}, ()),
+    "knowledge_candidates": ("Consolidation candidates: likely duplicate unit pairs, possibly conflicting pairs on the same object, contested units. Hints only; you decide.", {}, ()),
+    "knowledge_check": ("Check the whole knowledge layer: structure, status/evidence consistency, ontology references, skills, outline, dedup aliases and conflict marks.", {}, ()),
+    "tool_list": ("Available tools (profile, joins, sql, fit, tabpfn, ultra, newton, autoschemakg, etc.).", {"modality": S}, ()),
+    "tool_card": ("Tool description and usage.", {"name": S}, ("name",)),
+    "tool_run": ("Run a tool from the workspace root; args as on the command line (e.g. [\"--tables\", \"data/\", \"--out\", \"stages/1_explore/profile\"]).",
                  {"name": S, "args": LIST, "timeout": I}, ("name", "args")),
-    "workspace_next": ("当前阶段的目标、输入、交付与验收标准。", {}, ()),
+    "workspace_next": ("Goal, inputs, deliverables and acceptance criteria of the current stage.", {}, ()),
 }
 
 

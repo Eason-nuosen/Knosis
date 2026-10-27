@@ -1,19 +1,19 @@
-"""把 v0.4 布局的工作区或知识库转换为 v0.5（`kb/` + `evidence/`），见 `layout`。
+"""Convert a v0.4-layout workspace or knowledge base to v0.5 (`kb/` + `evidence/`), see `layout`.
 
-    knosis migrate <工作区或知识库> [...]
+    knosis migrate <workspace or knowledge base> [...]
 
-v0.4：工作区的知识层在 `knowledge/`，知识库本身就是知识层目录（根目录下 `units.jsonl`、`evidence.jsonl` ……）。
-转换内容：
-- 文件搬家：units.jsonl / ontology/ → kb/knowledge/，skills/、outline.yaml → kb/，evidence.jsonl → evidence/ledger.jsonl，
-  checks/、feedback/、traces/ → evidence/；工作区各阶段的知识快照（`stages/**/knowledge/`）同样转换。
-- 改名：scope utility → usage（id 前缀 `utility/` → `usage/`），form method → procedure；
-  路径 `knowledge/{checks,traces,feedback,ontology}/` → 新位置（单元、证据、大纲、skill、检查脚本、used_units 里都改）。
-- skill 上的证据（unit 为 `skill:<名字>`）转成一条 usage 单元（`usage/skill:<名字>/migrated`，`meta.of` 指向 skill），证据改挂到它上面。
-工作区会按新模板重写 `AGENTS.md`，并各自提交一个 git 版本。
+v0.4: a workspace's knowledge layer is in `knowledge/`; a knowledge base is itself the knowledge layer directory (`units.jsonl`, `evidence.jsonl` ... at the root).
+What is converted:
+- Moves: units.jsonl / ontology/ -> kb/knowledge/, skills/, outline.yaml -> kb/, evidence.jsonl -> evidence/ledger.jsonl,
+  checks/, feedback/, traces/ -> evidence/; per-stage knowledge snapshots of a workspace (`stages/**/knowledge/`) are converted too.
+- Renames: scope utility -> usage (id prefix `utility/` -> `usage/`), form method -> procedure;
+  paths `knowledge/{checks,traces,feedback,ontology}/` -> new locations (rewritten in units, evidence, outline, skills, check scripts, used_units).
+- Evidence on skills (unit `skill:<name>`) becomes a usage unit (`usage/skill:<name>/migrated`, `meta.of` pointing to the skill) and is reattached to it.
+Workspaces get `AGENTS.md` rewritten from the new template, and each commits a git version.
 
-轨迹（v0.5 之后）：`traces/` 下旧的步骤序列 `<id>.jsonl`（每行 `{step, role, kind, text}`）转成 ATIF 轨迹 `<id>.json` + `.md`
-（见 `knosis.data.traces`），引用 `traces/<id>.jsonl#step/<n>` 按新步号改写（旧的多步并成 ATIF 的一步时指向那一步）；
-轨迹工作区的 `BRIEF.md` 按新格式重写。已是 v0.5 布局的工作区或知识库只做这一步。
+Traces (after v0.5): old step sequences `<id>.jsonl` under `traces/` (one `{step, role, kind, text}` per line) become ATIF traces `<id>.json` + `.md`
+(see `knosis.data.traces`); references `traces/<id>.jsonl#step/<n>` are rewritten to the new step numbers (old steps merged into one ATIF step point to it);
+`BRIEF.md` of trace workspaces is rewritten in the new format. Workspaces or knowledge bases already on the v0.5 layout get only this step.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def rewrite_unit(unit: dict) -> dict:
 
 
 def convert(old: Path, root: Path) -> dict:
-    """把旧知识层目录 `old` 的内容搬进 `root`（新布局的根），并改写内容。`old` 与 `root` 可以相同（知识库）。"""
+    """Move the old knowledge layer directory `old` into `root` (root of the new layout) and rewrite contents. `old` and `root` may be the same (knowledge base)."""
     moved = []
     for name, target in MOVES.items():
         src = old / name
@@ -66,7 +66,7 @@ def convert(old: Path, root: Path) -> dict:
     ensure(root)
     units = [rewrite_unit(u) for u in load_units(root / UNITS)]
     ledger = [json.loads(rewrite_text(json.dumps(e, ensure_ascii=False))) for e in load_units(root / LEDGER)]
-    # skill 上的证据 → usage 单元
+    # evidence on skills -> usage units
     by_skill = {}
     for e in ledger:
         if str(e.get("unit", "")).startswith("skill:"):
@@ -111,7 +111,7 @@ def files(root, skip=("data", ".git", ".knosis")):
 
 
 def upgrade_traces(root: Path) -> dict:
-    """旧步骤序列 → ATIF，并改写所有引用（单元、证据、大纲、skill、检查脚本、反馈、used_units，含各阶段快照）。"""
+    """Old step sequences -> ATIF, rewriting all references (units, evidence, outline, skills, check scripts, feedback, used_units, including stage snapshots)."""
     mappings = {}
     found = [p for p in [*(root / "data/traces").glob("*.jsonl"), *(p for p in files(root) if p.parent.name == "traces"
                                                                       and p.suffix == ".jsonl")]]
@@ -156,8 +156,8 @@ def upgrade_traces(root: Path) -> dict:
 
 
 def fresh_inputs(root: Path) -> set:
-    """迁移前仍有效的 (证据 id, 指纹)。迁移只是搬家、改写路径或换轨迹编码，内容不变：迁移后这些指纹换成新文件的，
-    免得证据被判过期；迁移前就已过期的保持过期。"""
+    """(evidence id, fingerprint) pairs still valid before migration. Migration only moves files, rewrites paths or re-encodes traces without changing content:
+    afterwards these fingerprints are replaced with the new files' so the evidence is not judged expired; evidence already expired stays expired."""
     from .evidence import fingerprint
 
     out = set()

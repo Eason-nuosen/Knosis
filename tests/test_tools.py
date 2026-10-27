@@ -257,7 +257,7 @@ def test_tabpfn_variant_encoding(cv_file):
 
 
 class LinearModel:
-    """只用 x 线性拟合的假模型；有 xp 特征时再加上它，便于判断 Δ 的方向。"""
+    """Fake model fitting x linearly only; adds xp when present, so the sign of Δ is easy to judge."""
 
     def fit(self, x, y):
         design = np.column_stack([x[[c for c in ("x", "xp") if c in x]], np.ones(len(x))])
@@ -276,7 +276,7 @@ def test_tabpfn_cv_contract(cv_file, tmp_path, monkeypatch):
               "--unit", "inter=k-1", "--unit", "lean=k-2"])
     table = pd.read_csv(out / "cv.csv").set_index("variant")
     assert table.loc["base", "delta"] == 0 and table.loc["inter", "delta"] < 0
-    assert table.loc["lean", "delta"] == 0  # 假模型不用 noise
+    assert table.loc["lean", "delta"] == 0  # the fake model ignores noise
     ps = table.loc["ps"]
     assert ps.n_rows < 60 and ps.base_mean != table.loc["base", "mean"]
     units = load_units(out / "units.jsonl")
@@ -291,7 +291,7 @@ def test_tabpfn_cv_real(cv_file, tmp_path, monkeypatch):
     pytest.importorskip("tabpfn")
     model = Path(os.environ.get("KNOSIS_TABPFN_MODEL", "/Users/eason/Desktop/optiver/cache/tabpfn-v3-regressor-v3_default.ckpt"))
     if not model.exists():
-        pytest.skip("没有本地 TabPFN 回归权重")
+        pytest.skip("no local TabPFN regression weights")
     out = tmp_path / "out"
     tab.main(["cv", "--train", str(cv_file), "--target", "y", "--folds", "3", "--out", str(out), "--model", str(model),
               "--device", "cpu", *CV_VARIANTS[:2], "--unit", "inter=k-1"])

@@ -1,6 +1,6 @@
-"""NewtonBench：通过实验发现（被改写过的）物理定律。没有数据文件，GT 定律留在原始目录，
-agent 通过 `newton` 工具做实验。同一难度、同一版本的三种实验系统共用一条定律，
-所以 dev 与测试按（难度, 版本）整组切分，dev 反馈不会泄漏测试题的定律。"""
+"""NewtonBench: discover (modified) physical laws through experiments. There are no data files; the GT law stays in the raw directory,
+and the agent runs experiments via the `newton` tool. The three experiment systems of the same difficulty and version share one law,
+so dev and test are split by whole (difficulty, version) groups and dev feedback cannot leak a test law."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from . import register, render, split
 
 @register("newtonbench")
 def export(ds, ws: Path, write_data=True, dev=2, limit=None, seed=0, noise=0.0, systems=None, **opts) -> dict:
-    """`dev`：用于反馈的（难度, 版本）组数；`limit`：测试组数；`noise`：实验观测的相对噪声水平（上游默认 0）；
-    `systems`：只用这些实验系统（逗号分隔，如 `vanilla_equation`），默认三种都用。"""
+    """`dev`: number of (difficulty, version) groups for feedback; `limit`: number of test groups; `noise`: relative noise level of observations (upstream default 0);
+    `systems`: use only these experiment systems (comma-separated, e.g. `vanilla_equation`); all three by default."""
     keep = set(systems.split(",")) if systems else None
     module = upstream(ds.scenario, ds.root.parents[1])
     groups = {}

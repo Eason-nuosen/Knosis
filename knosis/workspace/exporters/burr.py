@@ -1,4 +1,4 @@
-"""Burr：关系库 → 本体映射。agent 只拿到 SQL（DDL 与实例数据）与 CSV；mapping.json / mappings/ / *.ttl 留在原始目录。"""
+"""Burr: relational database -> ontology mapping. The agent gets only SQL (DDL and instance data) and CSV; mapping.json / mappings/ / *.ttl stay in the raw directory."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from . import place, register, render, split
 
 @register("burr")
 def export(ds, ws: Path, write_data=True, dev=None, seed=0, **opts) -> dict:
-    """单个场景一题、没有 dev；`micro` / `micro/<类别>` 每个场景一题，`dev` 默认约 1/4（至少 1 题）。"""
+    """A single scenario is one task with no dev; `micro` / `micro/<category>` gives one task per scenario, `dev` defaults to about 1/4 (at least 1)."""
     if write_data:
         for key, path in ds.files.items():
             place(path, Path(ws) / "data" / key)

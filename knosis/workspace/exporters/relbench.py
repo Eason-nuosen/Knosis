@@ -1,4 +1,4 @@
-"""RelBench：关系库上的实体级预测（二分类 / 回归 / 推荐），按时间切分。"""
+"""RelBench: entity-level prediction on relational databases (binary classification / regression / recommendation), split by time."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from . import place, register, render, split
 
 
 def key_columns(spec) -> list[str]:
-    """测试表里留给 agent 的列：实体与时间。"""
+    """Columns of the test table left for the agent: entity and time."""
     entity = spec.get("entity_col") or spec["src_entity_col"]
     return [spec["time_col"], entity]
 
@@ -23,7 +23,7 @@ def row_ids(prefix, n) -> list[str]:
 
 @register("relbench")
 def export(ds, ws: Path, write_data=True, task=None, dev=None, limit=None, seed=0, **opts) -> dict:
-    """train 带标签；val 去掉标签作为 dev（`dev` 限制条数）；test 只留实体与时间列（`limit` 抽样）。"""
+    """train keeps labels; val without labels becomes dev (`dev` caps the count); test keeps only entity and time columns (`limit` samples)."""
     splits = task_splits(ds, task)
     spec = splits["test"].meta
     val, test = (pd.read_parquet(splits[s].answer) for s in ("val", "test"))
@@ -35,7 +35,7 @@ def export(ds, ws: Path, write_data=True, task=None, dev=None, limit=None, seed=
         time_col = ds.schema["tables"].get(table, {}).get("time_col")
         out = Path(ws) / "data/db" / f"{table}.parquet"
         if time_col:
-            # 只留测试时刻之前的行（RelBench 的 upto_test_timestamp 口径）：未来的行能直接推出测试标签。
+            # Keep only rows before the test time (RelBench's upto_test_timestamp convention): future rows reveal test labels directly.
             keep = ~(pd.read_parquet(path, columns=[time_col])[time_col] >= cutoff)
             if write_data:
                 out.parent.mkdir(parents=True, exist_ok=True)

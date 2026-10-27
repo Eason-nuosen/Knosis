@@ -1,4 +1,4 @@
-"""在 CSV / parquet 表上执行 SQL（内存 SQLite）。"""
+"""Run SQL over CSV / parquet tables (in-memory SQLite)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def connect(tables) -> sqlite3.Connection:
 
 
 def statements(sql: str):
-    """按分号切分，但不切开字符串字面量里的分号。"""
+    """Split on semicolons, but not inside string literals."""
     buffer = ""
     for part in sql.split(";"):
         buffer += part + ";"

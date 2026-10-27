@@ -1,1 +1,1 @@
-"""TabPFN 适配器；导入包不加载模型。"""
+"""TabPFN adapter; importing the package does not load the model."""

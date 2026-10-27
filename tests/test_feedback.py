@@ -98,7 +98,7 @@ def test_driver_auto_feedback_per_round(ngd_root, tmp_path, monkeypatch):
     records = feedback.records(ws)
     assert [r["id"] for r in records] == ["001-refine-r1", "002-refine-r2"]
     assert "001-refine-r1.json" in prompts[1] and "001-refine-r1" not in prompts[0]
-    # 反馈记录随知识版本快照
+    # feedback records are snapshotted with knowledge versions
     assert (ws / "stages/3_refine/round_1/evidence/feedback/001-refine-r1.json").exists()
     fork = w.fork(ws, tmp_path / "k1", "K_1")
     assert [p.name for p in (fork / "evidence/feedback").iterdir()] == ["001-refine-r1.json"]

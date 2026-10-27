@@ -42,7 +42,7 @@ def test_read_dispatch(tmp_path):
     assert len(read(tmp_path)) == 4
 
 
-# ---------------------------------------------------------------- 每个 loader 一个最小目录
+# ---------------------------------------------------------------- one minimal directory per loader
 
 
 def test_ngdbench(tmp_path):
@@ -160,7 +160,7 @@ def test_text(tmp_path):
     assert len(chunks) > 1 and chunks[0].provenance.startswith("text:a.md#0-")
 
 
-# ---------------------------------------------------------------- 本地真实数据（有就跑）
+# ---------------------------------------------------------------- real local data (run if present)
 
 
 @pytest.mark.parametrize("name, scenario", [

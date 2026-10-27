@@ -1,4 +1,4 @@
-"""图问答（NGDBench）打分：答案集合 EM / F1；噪声断言（`noise.jsonl`）对照 clean / perturbed 图的差异打分。"""
+"""Graph QA (NGDBench) scoring: answer-set EM / F1; noise claims (`noise.jsonl`) are scored against the clean / perturbed graph diff."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def scalar(value) -> str:
 
 
 def answer_set(value) -> frozenset:
-    """标量 → 单元素集合；列表去重；字典行只比较取值（不要求与 Cypher 的返回别名一致），单列字典等同于它的值。"""
+    """Scalar -> singleton set; lists deduplicated; dict rows compare values only (aliases need not match the Cypher RETURN), a single-column dict equals its value."""
     items = value if isinstance(value, list) else [value]
     return frozenset(
         (scalar(*item.values()) if len(item) == 1 else tuple(sorted(scalar(v) for v in item.values())))
@@ -53,7 +53,7 @@ def score(ws, state, ds, path, ids) -> dict:
         task = gold[tid]
         g = answer_set(task.answer)
         p = answer_set(predictions[tid]) if tid in predictions else frozenset()
-        # 参照：直接照抄含噪观测图上的答案能得几分；两者不同即该题受噪声影响。
+        # Reference: score from copying the answer on the noisy observed graph; if the two differ, the task is affected by noise.
         n = answer_set(task.meta.get("noise_answer"))
         group = "noise_unaffected" if n == g else "noise_affected"
         item = {"id": tid, "kind": task.kind, "ok": p == g, "f1": f1(p, g), "gold": task.answer, "group": group}
@@ -63,7 +63,7 @@ def score(ws, state, ds, path, ids) -> dict:
         split[group].append((item, noise[-1]))
     metrics = {**summarize(items), "missing": sum(tid not in predictions for tid in ids),
                "by_kind": {k: {"n": len(v), **summarize(v)} for k, v in sorted(by_kind.items())}}
-    # 分噪声是否改变答案两组看：受影响的题才考验去噪。
+    # Split by whether noise changes the answer: only affected tasks test denoising.
     reference = {"noisy_graph_answer": summarize(noise)}
     for group in ("noise_affected", "noise_unaffected"):
         rows = split[group]
@@ -77,7 +77,7 @@ def score(ws, state, ds, path, ids) -> dict:
 
 @cache
 def noise_truth(clean_path, perturbed_path) -> dict:
-    """clean 与 perturbed 图逐项比对得到的噪声真值；id、key 一律转成 str 比较。"""
+    """Noise ground truth from an item-by-item diff of the clean and perturbed graphs; ids and keys are compared as str."""
     with open(clean_path, "rb") as fh:
         clean = pickle.load(fh)
     with open(perturbed_path, "rb") as fh:
@@ -105,7 +105,7 @@ def prf(asserted: set, truth: set) -> dict:
 
 @register_knowledge("ngdbench")
 def score_knowledge(ws, state, ds) -> dict:
-    """`stages/4_decide/noise.jsonl`（每行一条噪声断言）按类别计精确率 / 召回率 / F1。"""
+    """Per-category precision / recall / F1 of `stages/4_decide/noise.jsonl` (one noise claim per line)."""
     path = ws / "stages/4_decide/noise.jsonl"
     if not path.exists():
         return {"noise": {"reported": False}}

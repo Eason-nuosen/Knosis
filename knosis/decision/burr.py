@@ -1,10 +1,10 @@
-"""Burr 打分：移植上游 `evaluator/metrics` 与 `mapping_parser` 对 JSON 映射的比较（不需要 LLM）。
+"""Burr scoring: port of upstream `evaluator/metrics` and `mapping_parser` comparison of JSON mappings (no LLM needed).
 
-类、关系（object property）、属性（data property）各算 P / R / F1，两种口径：
-- mapping_based：类比 (URI 模式中的列, 条件, join)；关系 / 属性比 (join, 列, 表达式中的列, 模式, 常量, 条件)，
-  这些都为空时比两端类；按多重集合计数（上游 Counter）。
-- name_based：类比类名；关系 / 属性比清洗后的属性名与两端类名；按集合计数。
-GT 是 D2RQ 的 .ttl（iswc、npd）时上游先转成 D2RQ 对象再比较，这里尚未支持。
+P / R / F1 for classes, relations (object properties) and attributes (data properties), under two criteria:
+- mapping_based: classes compare (columns in URI pattern, condition, join); relations / attributes compare (join, column, columns in expression, pattern, constant, condition),
+  falling back to the endpoint classes when all are empty; counted as multisets (upstream Counter).
+- name_based: classes compare class names; relations / attributes compare the cleaned property name and endpoint class names; counted as sets.
+When GT is a D2RQ .ttl (iswc, npd), upstream first converts it to D2RQ objects; not supported here yet.
 """
 
 from __future__ import annotations
@@ -37,14 +37,14 @@ def joins(value) -> frozenset:
 
 
 def clean_property(name: str) -> str:
-    """上游 equality_by_property_name 的清洗：去掉空格、下划线、连字符与 has/is/of/the。"""
+    """Cleaning from upstream equality_by_property_name: strip spaces, underscores, hyphens and has/is/of/the."""
     for filler in (" ", "_", "-", "has", "is", "of", "the"):
         name = name.replace(filler, "")
     return name.strip().lower()
 
 
 def elements(mapping: dict) -> dict:
-    """{口径: {cls|rel|attr: [可比较的键]}}。"""
+    """{criterion: {cls|rel|attr: [comparable keys]}}."""
     classes = mapping.get("classes", [])
     by_name = {c.get("name", c["class"]): c for c in classes}
 
@@ -110,7 +110,7 @@ def compare(gold: dict, pred: dict) -> dict:
 
 
 def gold_mapping(answer) -> dict:
-    """单个 mapping.json，或真实库 mappings/ 下多个文件（合并）。"""
+    """A single mapping.json, or multiple files under mappings/ for real databases (merged)."""
     paths = answer if isinstance(answer, list) else [answer]
     if any(Path(p).suffix == ".ttl" for p in paths):
         raise NotImplementedError("D2RQ (.ttl) ground truth is not supported yet")

@@ -1,4 +1,4 @@
-"""LLM-SRBench：抗记忆的符号回归。parquet 里是题目元数据与真值表达式，数值在 HDF5。
+"""LLM-SRBench: memorization-resistant symbolic regression. The parquet holds task metadata and GT expressions; numeric data is in HDF5.
 
     data/llm-srbench/{data/lsr_*.parquet, lsr_bench_data.hdf5}
 """
@@ -13,10 +13,10 @@ from . import register
 SPLITS = ("lsr_transform", "lsr_synth_chem_react", "lsr_synth_bio_pop_growth", "lsr_synth_phys_osc", "lsr_synth_matsci")
 
 METRICS = {
-    "symbolic_accuracy": "符号等价率（GPT-4o 裁判，先剥掉常数）",
-    "nmse": "域内测试集 NMSE（越低越好）",
-    "acc_tau": "最大相对误差 ≤ τ 的题目比例",
-    "ood_nmse": "域外 NMSE，只有 LSR-Synth 有",
+    "symbolic_accuracy": "symbolic equivalence rate (GPT-4o judge, constants stripped first)",
+    "nmse": "in-domain test NMSE (lower is better)",
+    "acc_tau": "fraction of tasks with max relative error ≤ τ",
+    "ood_nmse": "out-of-domain NMSE, LSR-Synth only",
 }
 
 

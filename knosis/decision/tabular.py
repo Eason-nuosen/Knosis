@@ -1,4 +1,4 @@
-"""单表预测（TabArena）打分：回归 RMSE / MAE / R²；分类 accuracy，给了概率时加 ROC-AUC / log loss。"""
+"""Single-table prediction (TabArena) scoring: regression RMSE / MAE / R²; classification accuracy, plus ROC-AUC / log loss when probabilities are given."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def classification(y, predictions: pd.DataFrame, labels) -> dict:
 
 
 def score_rows(truth: pd.Series, predictions: pd.DataFrame, train_y: pd.Series, problem_type: str) -> dict:
-    """`truth` 与 `predictions` 按行 id 对齐；RelBench 等其他表格任务也复用。"""
+    """`truth` and `predictions` aligned by row id; reused by other tabular tasks such as RelBench."""
     predictions = predictions.loc[truth.index]
     if problem_type == "regression":
         metrics = regression(truth, predictions["prediction"])
@@ -61,14 +61,14 @@ def score(ws, state, ds, path, ids) -> dict:
     opts = state["options"]
     task = next(t for t in ds.tasks if t.meta["repeat"] == opts.get("repeat", 0) and t.meta["fold"] == opts.get("fold", 0))
     y = ds.read("data")[ds.schema["target"]]
-    truth = pd.Series(y.iloc[ids].tolist(), index=ids)  # row_id 就是原始行号
+    truth = pd.Series(y.iloc[ids].tolist(), index=ids)  # row_id is the original row number
     predictions = pd.read_csv(path).set_index("row_id")
     return score_rows(truth, predictions, y.iloc[task.meta["train"]], ds.schema["problem_type"])
 
 
 @register_knowledge("tabarena")
 def score_knowledge(ws, state, ds) -> dict:
-    """带 SQL 检查的活跃单元，在训练行与带标签的留出（测试）行上各跑一次：规律是否在没见过的数据上仍成立。"""
+    """Run active units with SQL checks once on training rows and once on labeled held-out (test) rows: does the pattern still hold on unseen data."""
     opts = state["options"]
     task = next(t for t in ds.tasks if t.meta["repeat"] == opts.get("repeat", 0) and t.meta["fold"] == opts.get("fold", 0))
     data = ds.read("data")
@@ -77,7 +77,7 @@ def score_knowledge(ws, state, ds) -> dict:
     frames = {k: f[["row_id", *[c for c in f.columns if c != "row_id"]]] for k, f in frames.items()}
     from ..tools import read_tables
 
-    # 其他可见表（dev / test 特征）照常提供，只把 train 换成带标签的留出行。
+    # Other visible tables (dev / test features) are provided as usual; only train is replaced by the labeled held-out rows.
     visible = {name: frame for name, (_, frame) in read_tables([Path(ws) / "data"]).items()}
     items = []
     for unit in active(load_units(layout(ws).units)):

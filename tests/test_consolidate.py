@@ -1,4 +1,4 @@
-"""v0.5：内化（去重、矛盾处理、构建知识体系）的不变式与流程，以及 v0.4 布局迁移。"""
+"""v0.5: consolidation (dedup, contradiction handling, building the knowledge system) invariants and flow, plus v0.4 layout migration."""
 
 import json
 
@@ -30,7 +30,7 @@ def test_merge_alias_and_supersede():
     units = [unit("a"), unit("b", status="merged", merged_into="a"), unit("c", derived_from=["b"]),
              unit("old", status="stale", superseded_by="a")]
     assert check_units(units) == []
-    # 别名指向已失效单元、merged 缺 merged_into、superseded_by 却仍活跃
+    # alias pointing to an inactive unit, merged without merged_into, superseded_by yet still active
     bad = [unit("a", status="retracted"), unit("b", status="merged", merged_into="a"), unit("d", status="merged"),
            unit("e", superseded_by="a")]
     issues = check_units(bad)
@@ -64,7 +64,7 @@ def test_skill_effects_are_usage_units(base):
                                                  "method": "feedback", "source": "x", "created": "t"}])
     issues = check_knowledge(base, root=base)
     assert any("skill effects are usage units" in i for i in issues)
-    # skill 引用被合并的单元：按别名解析到活跃的 a，不要求 skill 失效
+    # skill cites a merged unit: resolved via alias to active a, skill need not be invalidated
     assert not any("uses inactive knowledge" in i for i in issues)
 
 
@@ -108,7 +108,7 @@ def test_consolidate_step_logs_and_restores(base, monkeypatch):
     logged = load_units(layout(base).actions)
     assert logged[0]["op"] == "merge" and logged[0]["into"] == "a" and logged[0]["step"] == "dedup"
 
-    def delete():  # 删除单元不允许：重试一次仍不过就恢复
+    def delete():  # deleting units is not allowed: restore if still failing after one retry
         write_units(path, load_units(path)[:1])
 
     fake_run(monkeypatch, delete)
@@ -201,7 +201,7 @@ def test_compact_topic_and_invariants(base, monkeypatch):
     assert "订单表" in text and "`a`" in text and "`c`" not in text and "只动与主题有关的单元" in text
     assert "`c`" in consolidate.prompt(base, "compact")
 
-    def drop():  # 只改状态、不指向主单元：不允许悄悄丢掉
+    def drop():  # status changed without pointing to a primary unit: silent drops not allowed
         units = load_units(path)
         write_units(path, [units[0], {**units[1], "status": "stale"}, units[2]])
 
@@ -219,5 +219,5 @@ def test_compact_topic_and_invariants(base, monkeypatch):
     assert result["issues"] == [] and result["active"] == [3, 2] and result["topic"] == "订单表"
     assert load_units(layout(base).actions)[-1]["op"] == "compact"
 
-    fake_run(monkeypatch, lambda: None)  # 没有可压缩的：什么都不改也通过
+    fake_run(monkeypatch, lambda: None)  # nothing to compact: passes with no changes
     assert consolidate.run_step(base, "compact")["issues"] == []

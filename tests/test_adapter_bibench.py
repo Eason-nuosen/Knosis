@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 import knosis.decision.bibench as scorer
-import knosis.workspace.exporters.bibench  # noqa: F401  注册
+import knosis.workspace.exporters.bibench  # noqa: F401  register
 from knosis import data_dir, list_scenarios
 from knosis import workspace as w
 from knosis.decision import evaluate
@@ -43,11 +43,11 @@ def root(tmp_path):
 def test_matching_rules():
     m = scorer.matches
     gold = pd.DataFrame({"Year": [1991, 1992], "Share": ["8.95%", "9.15%"]})
-    assert m(gold, pd.DataFrame({"y": [1992, 1991], "s": [0.0915, 0.0895]}))   # 行序无关，% 解析
-    assert not m(gold, pd.DataFrame({"y": [1991], "s": [0.0895]}))              # 形状不同
-    assert m(pd.DataFrame({"v": [8]}), pd.DataFrame({"a": ["x", "y"], "b": [1, 8.3]}))  # 1×1 只要出现
+    assert m(gold, pd.DataFrame({"y": [1992, 1991], "s": [0.0915, 0.0895]}))   # row order irrelevant, % parsed
+    assert not m(gold, pd.DataFrame({"y": [1991], "s": [0.0895]}))              # shape differs
+    assert m(pd.DataFrame({"v": [8]}), pd.DataFrame({"a": ["x", "y"], "b": [1, 8.3]}))  # 1x1 only needs to appear
     assert not m(pd.DataFrame({"v": [8]}), pd.DataFrame({"b": [9]}))
-    assert m(pd.DataFrame({"a": [100.0, None]}), pd.DataFrame({"a": [100.5, 0]}))     # 缺失记为 0
+    assert m(pd.DataFrame({"a": [100.0, None]}), pd.DataFrame({"a": [100.5, 0]}))     # missing counts as 0
     assert scorer.table({"columns": ["a"], "rows": [[1], [2]]}).shape == (2, 1)
     assert scorer.table(3.5).shape == (1, 1)
 
@@ -82,7 +82,7 @@ def test_score_and_feedback(root, tmp_path):
 
 def test_single_case_metadata(root, tmp_path):
     ws = w.init("bibench", "1", tmp_path / "ws", root=root, metadata=True)
-    assert w.status(ws)["feedback"]["mode"] == "none"  # 单用例没有 dev 题
+    assert w.status(ws)["feedback"]["mode"] == "none"  # a single case has no dev tasks
     docs = load_ontology(ws / "kb/knowledge/ontology")
     assert [d["name"] for d in docs["semantic_model"]["datasets"]] == ["sales"]
     assert "kb/knowledge/ontology/" in (ws / "BRIEF.md").read_text()

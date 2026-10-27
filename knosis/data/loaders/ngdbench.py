@@ -1,4 +1,4 @@
-"""NGDBench：大规模属性图问答，结构化域自带 clean / perturbed 配对图。
+"""NGDBench: QA over large property graphs; structured domains come with paired clean / perturbed graphs.
 
     data/ngdbench/NGDBenchV1_1/<NGDFin|NGDBi|...>/{graph,query,noise_info}/
 """
@@ -14,11 +14,11 @@ from . import register
 DOMAINS = ("ngd-bi", "ngd-fin", "ngd-prime", "ngd-mcp", "ngd-econ")
 
 METRICS = {
-    "answer_set_em": "答案集合与 GT 完全一致的比例（按 Cypher 返回别名做集合匹配，忽略顺序）",
-    "answer_set_f1": "答案集合 F1",
-    "count_error": "聚合题的计数相对误差（越低越好）",
-    "management_steps": "管理类题按序执行 steps 的完成比例",
-    "noise_sensitivity": "同一题在 perturbed 与 clean 图上的分差",
+    "answer_set_em": "fraction whose answer set equals the GT exactly (set match on Cypher return aliases, order ignored)",
+    "answer_set_f1": "answer set F1",
+    "count_error": "relative count error on aggregation questions (lower is better)",
+    "management_steps": "fraction of steps completed in order on management questions",
+    "noise_sensitivity": "score gap on the same question between perturbed and clean graphs",
 }
 
 
@@ -26,7 +26,7 @@ METRICS = {
 def load(scenario: str = "ngd-fin", root: str | Path | None = None, version: str = "NGDBenchV1_1") -> Dataset:
     vdir = Path(root or data_dir("ngdbench")) / version
     key = scenario.lower().replace("-", "")
-    ddir = next(p for p in vdir.iterdir() if p.name.lower() == key)  # 磁盘目录名大小写不统一
+    ddir = next(p for p in vdir.iterdir() if p.name.lower() == key)  # directory name casing on disk is inconsistent
 
     files = {}
     for p in sorted((ddir / "graph").iterdir()):
@@ -38,7 +38,7 @@ def load(scenario: str = "ngd-fin", root: str | Path | None = None, version: str
 
     tasks = []
     for qfile in sorted((ddir / "query").glob("*.json")):
-        if qfile.with_name(f"{qfile.stem}_with_nlp.json").is_file():  # NGD-MCP：同一批题另有带 NL 的版本
+        if qfile.with_name(f"{qfile.stem}_with_nlp.json").is_file():  # NGD-MCP: the same questions also have a version with NL
             continue
         for i, rec in enumerate(json.loads(qfile.read_text())):
             answer = next((rec.pop(k) for k in ("clean_answer", "gnd", "answer") if k in rec), None)
@@ -47,7 +47,7 @@ def load(scenario: str = "ngd-fin", root: str | Path | None = None, version: str
                 input=rec.get("nlp") or rec.get("query") or json.dumps(rec.get("steps"), ensure_ascii=False),
                 answer=answer,
                 kind=qfile.stem,
-                meta=rec,  # 含 Cypher（query）与 noise_answer
+                meta=rec,  # includes Cypher (query) and noise_answer
             ))
 
     return Dataset("ngdbench", scenario, ddir, files=files, tasks=tasks, metrics=METRICS)

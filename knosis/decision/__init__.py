@@ -1,12 +1,12 @@
-"""决策层：decide 产物如何打分，以及知识在决策中被如何使用。
+"""Decision layer: how decide outputs are scored, and how knowledge is used in decisions.
 
-每个数据集一个打分器 `score(ws, state, ds, path, ids) -> dict`，用 `@register("<数据集>")` 注册：
-`path` 是交付文件（格式见导出器的 `output`），`ids` 是要打分的题目 id，`ds` 从原始数据目录重新加载（含 GT）。
-返回 `{"metrics": {...}, "items": [{"id", "ok", "gold", ...}], "reference": {...}}`：
-`evaluate` 在测试题上调用它；dev 反馈（`knowledge.feedback.submit`）在 dev 题上调用同一个函数。
+One scorer per dataset, `score(ws, state, ds, path, ids) -> dict`, registered with `@register("<dataset>")`:
+`path` is the deliverable (format: see the exporter's `output`), `ids` are the task ids to score, `ds` is reloaded from the raw data directory (with GT).
+Returns `{"metrics": {...}, "items": [{"id", "ok", "gold", ...}], "reference": {...}}`:
+`evaluate` calls it on test tasks; dev feedback (`knowledge.feedback.submit`) calls the same function on dev tasks.
 
-知识本身对不对（与任务有没有用分开）由可选的 `score_knowledge(ws, state, ds) -> dict` 评，
-用 `@register_knowledge("<数据集>")` 注册，结果写进评测报告的 `knowledge` 段；它可以读 GT，但结果不回给 agent。
+Whether the knowledge itself is correct (separately from whether it helps the task) is scored by the optional `score_knowledge(ws, state, ds) -> dict`,
+registered with `@register_knowledge("<dataset>")`; results go into the `knowledge` section of the eval report. It may read GT, but results are never returned to the agent.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def register_knowledge(name: str):
 def evaluate(ws, write: bool = True) -> dict:
     from ..workspace import open_dataset, status
 
-    # 驱动模式下的 agent 带 KNOSIS_DEPTH=1：不给它看测试分数，否则就是在针对 GT 调参。
+    # In driver mode the agent runs with KNOSIS_DEPTH=1: hide test scores from it, otherwise it would be tuning against GT.
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("evaluation is disabled inside agent runs (KNOSIS_DEPTH >= 1)")
     ws = Path(ws).resolve()
@@ -65,14 +65,14 @@ def evaluate(ws, write: bool = True) -> dict:
 
 
 def usage(ws) -> dict:
-    """`stages/4_decide/used_units.jsonl`（每行 {id, used_units}）里知识被引用的情况。"""
+    """How knowledge is cited in `stages/4_decide/used_units.jsonl` (one {id, used_units} per line)."""
     path = Path(ws) / "stages/4_decide/used_units.jsonl"
     units = {u["id"]: u for u in load_units(layout(ws).units)}
     if not path.exists():
         return {"reported": False, "units": len(units)}
     rows = load_units(path)
     cited = [uid for row in rows for uid in row.get("used_units", [])]
-    # 本体单元与 skill 也可以被引用。
+    # Ontology units and skills can be cited too.
     known = set(units) | {u["id"] for u in all_ontology_units(ontology_docs(ws))}
     known |= {skills.skill_id(s) for s in skills.load_skills(ws)}
     return {
@@ -85,7 +85,7 @@ def usage(ws) -> dict:
 
 
 def test_usage(ws, items) -> dict:
-    """测试题上每条被引用知识的使用效果：用到时 / 没用到时的正确率。只写进评测报告，不写回知识层（否则测试结果会经知识库泄漏）。"""
+    """Effect of each cited unit on test tasks: accuracy when used vs. not used. Written only to the eval report, never back to the knowledge layer (otherwise test results would leak through the knowledge base)."""
     path = Path(ws) / "stages/4_decide/used_units.jsonl"
     if not path.exists() or not items or "ok" not in items[0]:
         return {"reported": False}
@@ -105,7 +105,7 @@ def mean_bool(values):
 
 
 def summary(ws) -> dict:
-    """知识层概况：各形式 / 状态的单元数，各结论的证据数，带可执行检查的单元数。"""
+    """Knowledge layer overview: unit counts by form / status, evidence counts by verdict, number of units with executable checks."""
     from ..knowledge import load_evidence
 
     units = load_units(layout(ws).units)
@@ -121,7 +121,7 @@ def summary(ws) -> dict:
 
 
 def answers(path) -> dict:
-    """JSONL 交付 → {id: answer}。"""
+    """JSONL deliverable -> {id: answer}."""
     return {row["id"]: row.get("answer") for row in load_units(path)}
 
 

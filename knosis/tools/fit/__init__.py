@@ -1,1 +1,1 @@
-"""符号表达式拟合；只依赖 numpy / scipy。"""
+"""Symbolic expression fitting; depends only on numpy / scipy."""

@@ -1,4 +1,4 @@
-"""统一的数据集对象。所有 loader 都返回 `Dataset`。"""
+"""Unified dataset object. Every loader returns a `Dataset`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# 源码仓库里默认用仓库下的 data/；pip 安装的包没有仓库目录，默认用 ~/.knosis/data。
+# In a source checkout the default is the repo's data/; a pip-installed package has no repo, so it defaults to ~/.knosis/data.
 REPO = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("KNOSIS_DATA_DIR") or
                 (REPO / "data" if (REPO / "pyproject.toml").exists() else Path.home() / ".knosis/data"))
@@ -22,7 +22,7 @@ def data_dir(name: str) -> Path:
 
 @dataclass
 class Unit:
-    """loader 直接产出的原始单元（目前只有文本入口的 doc / chunk）。知识层的 κ 见 `knosis.knowledge`。"""
+    """Raw units produced directly by a loader (currently only doc / chunk from the text entry). Knowledge-layer κ live in `knosis.knowledge`."""
 
     id: str
     content: str
@@ -35,7 +35,7 @@ class Unit:
 
 @dataclass
 class Task:
-    """一道题。`input` 给 agent 看；`answer` 是 GT（值或文件路径），只在评测时读。"""
+    """One task. `input` is shown to the agent; `answer` is the GT (a value or file path), read only at evaluation."""
 
     id: str
     input: str
@@ -50,11 +50,11 @@ class Dataset:
     name: str
     scenario: str
     root: Path
-    files: dict[str, Path] = field(default_factory=dict)  # 命名的数据文件 / 目录，用 `read(key)` 打开
-    schema: dict = field(default_factory=dict)            # 表 / 关系 / 变量等结构信息
+    files: dict[str, Path] = field(default_factory=dict)  # named data files / directories, opened with `read(key)`
+    schema: dict = field(default_factory=dict)            # structure: tables / relations / variables etc.
     tasks: list[Task] = field(default_factory=list)
     units: list[Unit] | None = None
-    metrics: dict[str, str] = field(default_factory=dict)  # 官方指标名 -> 说明
+    metrics: dict[str, str] = field(default_factory=dict)  # official metric name -> description
 
     def read(self, key: str | Path, **kw) -> Any:
         return read(self.files.get(key, key) if isinstance(key, str) else key, **kw)
@@ -74,7 +74,7 @@ def card(name: str) -> str:
 
 
 def read(path: str | Path, **kw) -> Any:
-    """按后缀打开一个文件；目录返回其下全部文件路径。"""
+    """Open a file by its suffix; a directory returns all file paths under it."""
     path = Path(path)
     if path.is_dir():
         return sorted(p for p in path.rglob("*") if p.is_file())

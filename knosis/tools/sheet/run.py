@@ -1,4 +1,4 @@
-"""电子表格结构查看与 LibreOffice 公式重算。"""
+"""Spreadsheet structure inspection and LibreOffice formula recalculation."""
 
 from __future__ import annotations
 

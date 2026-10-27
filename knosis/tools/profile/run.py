@@ -1,4 +1,4 @@
-"""表格画像：列统计 + 表级 schema κ + 可疑项 finding。"""
+"""Table profiling: column stats + table-level schema κ + suspicious-item findings."""
 
 from __future__ import annotations
 

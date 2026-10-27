@@ -113,7 +113,7 @@ def test_driver_cannot_skip_validation(ws, monkeypatch):
 
 
 def test_offline_trial(ws, tmp_path, monkeypatch):
-    # examples/ 不在安装包里：从仓库根目录导入（CI 用安装好的包跑测试）。
+    # examples/ is not in the installed package: import from the repo root (CI runs tests against the installed package).
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]))
     from examples.offline_trial import trial
 

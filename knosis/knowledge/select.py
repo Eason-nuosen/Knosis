@@ -1,4 +1,4 @@
-"""按任务选取知识：知识正确不等于对当前任务有用，选哪些由 agent 决定，这里只提供筛选与证据计数。"""
+"""Select knowledge for a task: correct knowledge is not necessarily useful for the task at hand; the agent decides what to pick, this only filters and counts evidence."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from .units import INACTIVE, load_units
 
 def select(base, about=(), form=None, text=None, include_inactive=False, ontology=True, root=None,
            include_contested=False) -> list[dict]:
-    """返回候选单元（κ 与本体视图单元），每条附 `evidence: {support, refute, undetermined, not_applicable}`。
+    """Return candidate units (κ and ontology view units), each with `evidence: {support, refute, undetermined, not_applicable}`.
 
-    `about`：本体元素名，命中 κ 的 `about` 或本体单元自身；`text`：在 id / content / condition 里找子串（不分大小写）。
-    矛盾未决（contested）的单元默认不给，`include_contested` 或 `include_inactive` 时才给。
+    `about`: ontology element name, matching a κ's `about` or the ontology unit itself; `text`: case-insensitive substring in id / content / condition.
+    Contested units are excluded unless `include_contested` or `include_inactive` is set.
     """
     from . import all_ontology_units, ontology_docs
 
@@ -43,7 +43,7 @@ def select(base, about=(), form=None, text=None, include_inactive=False, ontolog
 
 
 def select_skills(base, text=None, include_inactive=False) -> list[dict]:
-    """列出 skill（解题集），附评价它的 usage 单元（`meta.of` 指向它）及其状态；`text` 在 name / description / when 里找子串。"""
+    """List skills (solution playbooks) with the usage units that evaluate them (`meta.of` pointing to them) and their status; `text` is a substring in name / description / when."""
     from .skills import load_skills, skill_id
 
     usage = [u for u in load_units(layout(base).units) if u.get("scope") == "usage" and u["status"] not in INACTIVE]
@@ -61,16 +61,16 @@ def select_skills(base, text=None, include_inactive=False) -> list[dict]:
 
 
 def anchors(unit) -> list[str]:
-    """一条知识锚定的对象：来源里的数据位置与 `about`（本体元素名或数据位置）。"""
+    """Objects a knowledge unit is anchored to: data locations in its provenance and `about` (ontology element names or data locations)."""
     sources = [s.strip() for s in unit.get("provenance", "").split(";")]
     return sorted({s for s in sources if s.startswith("data/")} | set(unit.get("about", [])))
 
 
 def index(base, ws=None, prefix=None) -> dict[str, dict]:
-    """以对象为键的视图：{对象: {"units": [κ id], "used_in": {κ id: 被决策引用的次数}}}。
+    """Object-keyed view: {object: {"units": [κ id], "used_in": {κ id: times cited by decisions}}}.
 
-    `prefix`：只看以它开头的对象（如 `data/train.parquet#col/`）；`ws`：给定时统计各 decide / dev 交付旁的
-    `used_units` 里每条知识被引用的次数。对象既可以是文件（`data/x.csv`），也可以是其中的位置（`#col/…`、`#node/…`）。
+    `prefix`: only objects starting with it (e.g. `data/train.parquet#col/`); `ws`: if given, count how often each unit is cited in the
+    `used_units` next to each decide / dev deliverable. An object can be a file (`data/x.csv`) or a location in it (`#col/…`, `#node/…`).
     """
     from . import all_ontology_units, ontology_docs
 

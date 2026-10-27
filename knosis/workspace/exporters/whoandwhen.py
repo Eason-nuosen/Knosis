@@ -1,7 +1,7 @@
-"""Who&When：每条失败日志转成 ATIF 轨迹放进 `data/traces/<id>.json`（另有 `.md`），标注留在原始目录。
+"""Who&When: each failure log becomes an ATIF trace in `data/traces/<id>.json` (plus `.md`); annotations stay in the raw directory.
 
-按日志切分 dev 与测试：dev 日志的反馈给出归因对不对（mode=answer 时含标注的 agent、步骤与原因），
-测试日志是没见过的日志，检验的是「怎样定位出错的 agent 与步骤」能否迁移，而不是记住某条日志的答案。
+Dev and test are split by log: dev feedback says whether the attribution is correct (with the annotated agent, step and reason when mode=answer);
+test logs are unseen, so the test checks whether "how to locate the failing agent and step" transfers rather than memorizing a log's answer.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from . import register, render, split
 
 @register("whoandwhen")
 def export(ds, ws: Path, write_data=True, dev=10, limit=30, seed=0, answer=False, **opts) -> dict:
-    """`answer`：题目里给出任务的标准答案（上游 with ground truth 设置）；默认不给。"""
+    """`answer`: include the task's reference answer in each question (upstream with-ground-truth setting); off by default."""
     answer = str(answer).lower() in ("1", "true", "yes")
     tasks = []
     for t in ds.tasks:

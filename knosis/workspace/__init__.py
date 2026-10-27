@@ -1,13 +1,13 @@
-"""工作区：把四层串起来的编排。explore → extract → refine（多轮）→ decide，每次验收提交一次 git。
+"""Workspace: orchestration tying the four layers together. explore -> extract -> refine (multiple rounds) -> decide, with a git commit after each acceptance check.
 
     ws/<name>/
     ├── BRIEF.md  AGENTS.md  CLAUDE.md  TOOLS.md
-    ├── data/                 agent 可见的数据（只读）
-    ├── tasks/dev.jsonl       开发题（无答案），可提交拿反馈
-    ├── tasks/tasks.jsonl     decide 阶段才生成的测试题（无答案）
-    ├── stages/{0_inherit, 1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   每个版本的知识快照在 <阶段目录>/{kb,evidence}/
-    ├── kb/                   当前知识：knowledge/{units.jsonl, ontology/}、skills/、outline.yaml
-    ├── evidence/             来源与验证：ledger.jsonl、checks/、feedback/、consolidate.jsonl
+    ├── data/                 data visible to the agent (read-only)
+    ├── tasks/dev.jsonl       dev tasks (no answers); submit for feedback
+    ├── tasks/tasks.jsonl     test tasks generated only at decide (no answers)
+    ├── stages/{0_inherit, 1_explore, 2_extract, 3_refine/round_<n>, 4_decide}/   each version's knowledge snapshot is in <stage dir>/{kb,evidence}/
+    ├── kb/                   current knowledge: knowledge/{units.jsonl, ontology/}, skills/, outline.yaml
+    ├── evidence/             provenance and verification: ledger.jsonl, checks/, feedback/, consolidate.jsonl
     └── .knosis/state.json
 """
 
@@ -48,7 +48,7 @@ def stage_dir(ws, state):
 
 
 def open_dataset(benchmark, scenario, options):
-    """按工作区选项加载原始数据集：只把 loader 认识的参数（root、market、task …）传过去，其余留给导出器。"""
+    """Load the raw dataset from workspace options: pass only the args the loader knows (root, market, task ...); the rest go to the exporter."""
     accepted = inspect.signature(LOADERS[benchmark]).parameters
     return load_dataset(benchmark, scenario, **{k: v for k, v in options.items() if k in accepted})
 
@@ -63,9 +63,9 @@ def commit(ws, message):
 
 
 def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, kb_scope=None, feedback_full=False, **options) -> Path:
-    """`feedback` / `budget`：dev 题反馈的模式（answer / score / none）与提交次数上限；
-    `kb`：从独立知识库继承初始知识（`kb_scope` 只继承这些粒度，如 ["method"]），快照为 K_inherit；
-    `feedback_full`：每次提交必须覆盖全部 dev 题（默认可以只交一部分）；其余参数给导出器。"""
+    """`feedback` / `budget`：dev feedback mode (answer / score / none) and submission limit;
+    `kb`: inherit initial knowledge from a standalone knowledge base (`kb_scope` limits it to these granularities, e.g. ["method"]), snapshotted as K_inherit;
+    `feedback_full`: every submission must cover all dev tasks (by default a subset is allowed); other args go to the exporter."""
     from ..tools import tools_markdown
 
     ws = Path(out or f"ws/{benchmark}-{scenario}").resolve()
@@ -84,7 +84,7 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
     if kb:
         inherited = inherit(kb, ws, kb_scope)
         copy_knowledge(ws, ws / "stages/0_inherit")
-        # 继承来的反馈可能带着答案：同一数据集上，它们出现过的题目不再进测试集。
+        # Inherited feedback may contain answers: on the same dataset, tasks it covers are excluded from the test set.
         seen = seen_items(kb, benchmark, scenario)
         exclude = [t["id"] for t in exported["tasks"] if t["id"] in seen]
     write_units(ws / "tasks/dev.jsonl", exported["dev"])
@@ -113,7 +113,7 @@ def init(benchmark, scenario, out=None, feedback="answer", budget=20, kb=None, k
 
 
 def feedback_note(ws, state) -> str:
-    """阶段提示里关于 dev 反馈的一段话。"""
+    """The paragraph about dev feedback in stage prompts."""
     if state["feedback"]["mode"] == "none":
         return "本工作区没有 dev 反馈。"
     note = (f"`tasks/dev.jsonl` 是开发题（与测试题不重叠）。按 decide 的交付格式回答，"
@@ -140,7 +140,7 @@ def next_prompt(ws) -> str:
         write_units(ws / "tasks/tasks.jsonl", [t for t in exported["tasks"] if t["id"] not in exclude])
     template = (TEMPLATES / "stages" / f"{state['stage']}.md").read_text(encoding="utf-8")
     note = CONTROL if state.get("knowledge") == "none" else ""
-    # 模板总会带 $control；旧工作区的模板可能没有，缺的变量按空值处理。
+    # Templates always include $control; older workspaces' templates may not, so missing variables are treated as empty.
     return Template(template).substitute({"control": "", "feedback": "", **state},
                                          output=state["output"] or "（本数据集没有下游预测）",
                                          feedback=feedback_note(ws, state), control=note)
@@ -151,7 +151,7 @@ CONTROL = ("\n\n## 对照条件\n\n这是对照工作区：知识层为本轮的
 
 
 def prediction_ids(path) -> tuple[list, list]:
-    """交付文件里的 id 与缺答案的 id。JSONL 每行 {id, answer}；CSV 有 row_id、prediction 两列。"""
+    """Ids in the deliverable and ids missing an answer. JSONL: one {id, answer} per line; CSV: row_id and prediction columns."""
     path = Path(path)
     if path.suffix == ".jsonl":
         rows = load_units(path)
@@ -189,7 +189,7 @@ def prediction_issues(ws, state):
 
 
 def snapshots(ws) -> list[Path]:
-    """已保存的知识版本（含 `kb/` 的阶段目录，与工作区同布局），按 K_inherit, K_0, K_1, … 排序。"""
+    """Saved knowledge versions (stage dirs containing `kb/`, same layout as the workspace), ordered K_inherit, K_0, K_1, ..."""
     ws = Path(ws)
     rounds = sorted((ws / "stages/3_refine").glob("round_*"), key=lambda p: int(p.name.split("_")[1]))
     return [p for p in [ws / "stages/0_inherit", ws / "stages/2_extract", *rounds] if (p / "kb").is_dir()]
@@ -201,7 +201,7 @@ def stage_issues(ws, state):
     for directory in snapshots(ws):
         history.update((u["id"], u) for u in load_units(layout(directory).units))
     docs = ontology_docs(ws)
-    # 保留历史单元的最后状态，使删除单元不能绕过撤回传播。
+    # Keep the last state of past units so deleting a unit cannot bypass retraction propagation.
     effective = {**history, **{u["id"]: u for u in units if u.get("id")}}
     issues = check_knowledge(ws, known_ids=set(history), root=ws)
     issues += check_units(list(effective.values()), root=ws)
@@ -216,7 +216,7 @@ def stage_issues(ws, state):
     if state["stage"] in {"extract", "refine"}:
         from ..knowledge.kb import portable
 
-        # 方法知识要能被别人照做：它的检查脚本只能依赖 data/、kb/ 与 evidence/。
+        # Method knowledge must be reproducible by others: its check script may depend only on data/, kb/ and evidence/.
         for unit in units:
             if scope_of(unit) == "method" and unit.get("check", {}).get("kind") == "python" and unit["status"] not in {"retracted", "stale", "merged"}:
                 if not unit["check"]["path"].startswith(f"{CHECKS}/"):
@@ -234,7 +234,7 @@ def stage_issues(ws, state):
 
 
 def copy_knowledge(source, target):
-    """复制一整份知识层（`kb/` 与 `evidence/`）到另一个根目录（快照或对照副本）。"""
+    """Copy the whole knowledge layer (`kb/` and `evidence/`) to another root (snapshot or control copy)."""
     for part in PARTS:
         if (Path(source) / part).is_dir():
             shutil.copytree(Path(source) / part, Path(target) / part, dirs_exist_ok=True,
@@ -274,8 +274,8 @@ def goto(ws, stage) -> None:
 
 
 def fork(ws, out, knowledge="K_final", drop=()) -> Path:
-    """decide 对照用的副本：knowledge 为 none / K_inherit / K_0 / K_<n> / K_final；
-    `drop`：再从中去掉这些单元（单条知识的消融，测它对任务有没有用）。"""
+    """Copy for a decide control: knowledge is none / K_inherit / K_0 / K_<n> / K_final;
+    `drop`: additionally remove these units (single-unit ablation, to test whether it helps the task)."""
     ws, out = Path(ws).resolve(), Path(out).resolve()
     if out == ws or out.is_relative_to(ws):
         raise ValueError("fork output must be outside the source workspace")
@@ -285,7 +285,7 @@ def fork(ws, out, knowledge="K_final", drop=()) -> Path:
                   "K_inherit": ws / "stages/0_inherit"}[knowledge]
     else:
         chosen = ws / f"stages/3_refine/round_{int(knowledge.removeprefix('K_'))}"
-    # 对照副本不带未来的分析、预测或 git 历史；历史快照只保留所选版本及其之前的。
+    # The control copy carries no later analysis, predictions or git history; only snapshots up to the chosen version are kept.
     shutil.copytree(ws, out, ignore=shutil.ignore_patterns(".git", "stages", "tasks", *PARTS, "runs.jsonl", "eval.json", "__pycache__"))
     for directory in STAGES.values():
         (out / "stages" / directory).mkdir(parents=True)
@@ -300,7 +300,7 @@ def fork(ws, out, knowledge="K_final", drop=()) -> Path:
         units = load_units(layout(out).units)
         write_units(layout(out).units, [u for u in units if u["id"] not in set(drop)])
     state = status(out)
-    # 对照组只比较给定的知识，decide 时不再拿新的反馈。
+    # Controls compare only the given knowledge; no new feedback during decide.
     state.update(stage="decide", knowledge=knowledge, dropped=list(drop), feedback={**state["feedback"], "mode": "none"})
     state.pop("completed", None)
     save_state(out, state)

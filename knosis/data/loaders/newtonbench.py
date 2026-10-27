@@ -1,6 +1,6 @@
-"""NewtonBench：主动做实验、反推物理定律。没有数据文件，任务由源码定义，GT 是 laws.py 里的函数。
+"""NewtonBench: run experiments actively to infer physical laws. No data files; tasks are defined in source and GT is the functions in laws.py.
 
-    data/newtonbench/modules/<m*_域>/{laws.py, prompts.py, core.py}
+    data/newtonbench/modules/<m*_domain>/{laws.py, prompts.py, core.py}
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ VERSIONS = ("v0", "v1", "v2")
 COMPLEXITIES = ("vanilla_equation", "simple_system", "complex_system")
 
 METRICS = {
-    "symbolic_accuracy": "符号等价率（LLM 裁判，忽略常数）",
-    "rmsle": "5000 个留出样本上的 RMSLE（越低越好）",
+    "symbolic_accuracy": "symbolic equivalence rate (LLM judge, constants ignored)",
+    "rmsle": "RMSLE on 5000 held-out samples (lower is better)",
 }
 
 
@@ -51,9 +51,9 @@ def load(scenario: str = "m0_gravity", root: str | Path | None = None) -> Datase
 
 
 def upstream(scenario: str, root: str | Path | None = None):
-    """导入上游模块 `modules.<scenario>`（含 GT 定律与模拟器），只给环境侧（实验工具、打分器）用。
+    """Import the upstream module `modules.<scenario>` (GT law and simulator); for the environment side only (experiment tool, scorer).
 
-    上游 evaluation 在导入时依赖 openai；Knosis 不做 LLM 符号裁判，这里换成桩模块并关闭符号检查。
+    Upstream evaluation imports openai at import time; Knosis does no LLM symbolic judging, so it is replaced with a stub and symbolic checks are disabled.
     """
     import importlib
     import sys
@@ -61,7 +61,7 @@ def upstream(scenario: str, root: str | Path | None = None):
 
     base = str(Path(root or data_dir("newtonbench")).resolve())
     loaded = sys.modules.get("modules")
-    if loaded and str(Path(list(loaded.__path__)[0]).parent) != base:  # 上游包名是通用的 modules / utils，换根目录要先清掉
+    if loaded and str(Path(list(loaded.__path__)[0]).parent) != base:  # upstream package names are the generic modules / utils; clear them before switching roots
         for name in [n for n in sys.modules if n.split(".")[0] in ("modules", "utils")]:
             del sys.modules[name]
     if sys.path[:1] != [base]:

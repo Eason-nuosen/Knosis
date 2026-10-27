@@ -1,4 +1,4 @@
-"""NGDBench：含噪观测属性图 + 图问答。"""
+"""NGDBench: noisy observed property graph + graph QA."""
 
 from __future__ import annotations
 
@@ -27,14 +27,14 @@ def graph_summary(graph):
     }
 
 
-# BRIEF 里随题目形式变化的一段：题目给什么、答案形状怎么定。
-# ---------------------------------------------------------------- NL 题面是否完整
+# The BRIEF paragraph that varies with question form: what each task provides and how the answer is shaped.
+# ---------------------------------------------------------------- is the NL question complete
 
 LITERAL = re.compile(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|(?<![\w.$])(-?\d+(?:\.\d+)?)(?![\w.])")
 
 
 def literals(cypher: str) -> list[str]:
-    """Cypher 里题目自带的常数（字符串、数字）；不算 LIMIT / SKIP、变长路径 `*1..3` 与 0 / 1。"""
+    """Constants given in the Cypher (strings, numbers); excluding LIMIT / SKIP, variable-length paths `*1..3` and 0 / 1."""
     cypher = re.sub(r"\*\s*\d*\s*\.\.\s*\d*", "", re.sub(r"(?i)\b(LIMIT|SKIP)\s+\d+", "", cypher))
     return [s or d or n for s, d, n in LITERAL.findall(cypher) if (s or d) or n not in ("0", "1", "-1")]
 
@@ -55,19 +55,19 @@ def mentioned(value: str, question: str) -> bool:
 
 
 def relation_words(cypher: str) -> set[str]:
-    """关系类型里的动词（`Person_Own_Account` → own，`produces_output` → prod / outp），取前 4 个字母。"""
+    """Verbs in relation types (`Person_Own_Account` -> own, `produces_output` -> prod / outp), first 4 letters."""
     words = set()
     for group in re.findall(r"\[[^\]]*:\s*`?([A-Za-z_|]+)`?", cypher):
         for rel in group.split("|"):
             parts = rel.lower().split("_")
-            if len(parts) == 3 and rel[:1].isupper():  # 类型_动词_类型
+            if len(parts) == 3 and rel[:1].isupper():  # Type_Verb_Type
                 parts = parts[1:2]
             words |= {p[:4] for p in parts if len(p) > 2 and p not in {"entity", "has"}}
     return words
 
 
 def nl_complete(question: str, cypher: str) -> bool:
-    """自然语言题面是否交代了 Cypher 的全部常数，且提到了所用关系。上游 NL 常丢常数或描述错关系（NGD-Fin 约 73% 的题）。"""
+    """Whether the NL question states all constants of the Cypher and mentions the relations used. Upstream NL often drops constants or misdescribes relations (about 73% of NGD-Fin tasks)."""
     words = relation_words(cypher)
     return (all(mentioned(v, question) for v in literals(cypher))
             and (not words or any(w in squash(question) for w in words)))
@@ -94,16 +94,16 @@ QUERY_HELP = {
 @register("ngdbench")
 def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="cypher", noise_report=False,
            curated=None, **opts) -> dict:
-    """`dev`：用于反馈的开发题数；`limit`：抽样的测试题数（NGD-Fin 全量约 8700 题）。
-    `question`：`cypher` 每题同时给自然语言问题与 Cypher；`nl` 只给自然语言问题，且只用题面完整（`nl_complete`）的题。
-    `noise_report`：为真时噪声断言 `noise.jsonl` 是必交物，并要求把识别噪声的方法写成元知识。
-    `curated`：用 `exporters/curated/<名字>.yaml` 里人工核对过的题集（固定的 dev / test 与重写的题面），此时只给 NL 题面。"""
+    """`dev`: number of dev tasks for feedback; `limit`: number of sampled test tasks (NGD-Fin has about 8700 in total).
+    `question`: `cypher` gives both the NL question and the Cypher; `nl` gives only the NL question and uses only complete questions (`nl_complete`).
+    `noise_report`: if true, the noise assertions `noise.jsonl` are a required deliverable and the noise-detection method must be written as meta-knowledge.
+    `curated`: use the hand-checked task set in `exporters/curated/<name>.yaml` (fixed dev / test and rewritten questions); only NL questions are given."""
     ws = Path(ws)
     clean = ds.read("clean")
     graph = ds.read("perturbed") if "perturbed" in ds.files else clean.copy()
     node_keys = {key for _, attrs in clean.nodes(data=True) for key in attrs}
     edge_keys = {key for *_, attrs in clean.edges(data=True) for key in attrs}
-    # 属性键白名单来自 clean 图；加噪痕迹（is_noise / noise_similarity / original_name 等）会直接泄漏去噪答案。
+    # The attribute key allowlist comes from the clean graph; noise traces (is_noise / noise_similarity / original_name etc.) would leak the denoising answer.
     graph.graph.clear()
     for _, attrs in graph.nodes(data=True):
         for key in set(attrs) - node_keys:
@@ -133,7 +133,7 @@ def export(ds, ws: Path, write_data=True, dev=50, limit=None, seed=0, question="
         pick = lambda part: [{"id": f"{ds.scenario}/{k}", "kind": kinds[f"{ds.scenario}/{k}"], "question": q}  # noqa: E731
                              for k, q in spec[part].items()]
         dev_tasks, tests, question = pick("dev"), pick("test"), "nl"
-        examples = []  # 上游题面不可靠，人工题集不再从全量题里挑示例
+        examples = []  # Upstream questions are unreliable, so curated sets do not pick examples from the full set
     return {
         "brief": render(
             f"ngdbench-{ds.scenario}.md", **graph_summary(graph),

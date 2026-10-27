@@ -1,7 +1,7 @@
-"""文本 → 知识图谱（AutoSchemaKG 流程）：切段 → 三元组抽取（agent 或 --llm 命令）→ 建图 → 概念化（schema 归纳）。
+"""Text -> knowledge graph (AutoSchemaKG pipeline): chunk -> triple extraction (agent or --llm command) -> build graph -> conceptualize (schema induction).
 
-三元组抽取提示词逐字取自 AutoSchemaKG `atlas_rag/llm_generator/prompt/triple_extraction_prompt.py`（MIT）；
-概念化提示词由上游 entity / event / relation 三个提示合并而来，去掉了少样本示例。
+The triple extraction prompts are verbatim from AutoSchemaKG `atlas_rag/llm_generator/prompt/triple_extraction_prompt.py` (MIT);
+the conceptualization prompt merges the upstream entity / event / relation prompts, with few-shot examples removed.
 """
 
 from __future__ import annotations
@@ -71,11 +71,11 @@ KEYS = {"entity_relation": "entity_relation_dict", "event_entity": "event_entity
 VERSION = "0.1"
 
 
-# ---------------------------------------------------------------- 切段
+# ---------------------------------------------------------------- chunking
 
 
 def prepare(paths, out: Path, chunk_chars: int, overlap: int) -> list[dict]:
-    """文本文件 / 目录 → passages.jsonl（id, source, text）。传入工作区内的 `data/...` 相对路径，来源才能被 ws check 定位。"""
+    """Text file / directory -> passages.jsonl (id, source, text). Pass a `data/...` path relative to the workspace so ws check can locate sources."""
     passages = []
     for root in map(Path, paths):
         files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in SUFFIXES) if root.is_dir() else [root]
@@ -100,7 +100,7 @@ def prompts_markdown(n) -> str:
     return "\n\n".join(parts) + "\n"
 
 
-# ---------------------------------------------------------------- 自动抽取（可选）
+# ---------------------------------------------------------------- automatic extraction (optional)
 
 
 def ask(command, prompt) -> str:
@@ -111,7 +111,7 @@ def ask(command, prompt) -> str:
 
 
 def parse_array(text) -> list:
-    """LLM 输出里的 JSON 数组；允许外层有代码块或说明文字，解析不了返回空。"""
+    """The JSON array in LLM output; tolerates surrounding code fences or prose, returns empty if unparsable."""
     start, end = text.find("["), text.rfind("]")
     if start < 0 or end <= start:
         return []
@@ -133,7 +133,7 @@ def extract(passages, command) -> list[dict]:
     return rows
 
 
-# ---------------------------------------------------------------- 建图
+# ---------------------------------------------------------------- graph building
 
 
 def norm(text) -> str:
@@ -145,7 +145,7 @@ def grounded(name, passage_text) -> bool:
 
 
 def clean_items(items, keys) -> list[dict]:
-    """去掉缺字段或不是字符串的项（LLM 输出常见残缺）。"""
+    """Drop items with missing or non-string fields (common in truncated LLM output)."""
     out = []
     for item in items or []:
         if isinstance(item, dict) and all(isinstance(item.get(k), (str, list)) and item.get(k) for k in keys):
@@ -154,8 +154,8 @@ def clean_items(items, keys) -> list[dict]:
 
 
 def build_graph(extractions, passages: dict) -> tuple[nx.DiGraph, list[dict]]:
-    """与 AutoSchemaKG 的 json_to_graphml 同结构：entity / event / passage 节点；实体关系、事件关系、
-    事件—实体（is participated by）三类边，实体与事件到所在段落有 mention in 边。"""
+    """Same structure as AutoSchemaKG's json_to_graphml: entity / event / passage nodes; three edge types (entity relation, event relation,
+    event-entity "is participated by"), plus mention in edges from entities and events to their passages."""
     g, edges = nx.DiGraph(), []
 
     def node(name, kind, pid):
@@ -188,7 +188,7 @@ def build_graph(extractions, passages: dict) -> tuple[nx.DiGraph, list[dict]]:
 
 
 def concept_todo(g, limit) -> list[dict]:
-    """待概念化的节点：度数最高的实体 / 事件与出现最多的关系，附上下文（AutoSchemaKG 的概念化提示需要 CONTEXT）。"""
+    """Nodes to conceptualize: highest-degree entities / events and most frequent relations, with context (AutoSchemaKG's conceptualization prompt needs CONTEXT)."""
     def context(key):
         rels = [f"{d['relation']} {g.nodes[t]['id']}" for _, t, d in g.out_edges(key, data=True) if d.get("kind") != "mention"]
         return "; ".join(rels[:3])
@@ -203,7 +203,7 @@ def concept_todo(g, limit) -> list[dict]:
 
 
 def apply_concepts(g, concepts) -> dict:
-    """把概念写到节点 / 关系上，返回概念层 schema：概念的成员数与（头概念, 关系概念, 尾概念）模式的频次。"""
+    """Write concepts onto nodes / relations and return the concept-level schema: concept member counts and frequencies of (head concept, relation concept, tail concept) patterns."""
     by_name = {(c["type"], norm(c["name"])): [x.strip() for x in c["concepts"] if x.strip()] for c in concepts}
     for _, d in g.nodes(data=True):
         if (d["type"], norm(d["id"])) in by_name:
@@ -268,7 +268,7 @@ def build(directory: Path, extractions_path: Path, concepts_path: Path, max_unit
     passages = {p["id"]: p for p in read_jsonl(directory / "passages.jsonl")} if (directory / "passages.jsonl").exists() else {}
     extractions = read_jsonl(extractions_path)
     for i, row in enumerate(extractions):
-        # 上游抽取文件：段落正文在 original_text 里，id 只在文档内编号（不同文档会重复），改用行号。
+        # Upstream extraction file: passage text is in original_text and ids are per-document (they repeat across documents), so use line numbers.
         row["id"] = f"line{i + 1}" if row.get("original_text") else str(row.get("id", i + 1))
         if row["id"] not in passages and row.get("original_text"):
             passages[row["id"]] = {"id": row["id"], "source": f"{extractions_path.as_posix()}#line/{i + 1}", "text": row["original_text"]}
@@ -309,7 +309,7 @@ def query(directory: Path, needle, hops) -> list[str]:
     return list(dict.fromkeys(lines))
 
 
-# ---------------------------------------------------------------- 命令行
+# ---------------------------------------------------------------- CLI
 
 
 def read_jsonl(path) -> list[dict]:
@@ -323,24 +323,24 @@ def write_jsonl(path, rows) -> None:
 def main(argv=None):
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("prepare", help="切段并写出抽取提示词")
+    p = sub.add_parser("prepare", help="chunk text and write the extraction prompts")
     p.add_argument("--text", nargs="+", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--chunk-chars", type=int, default=3000)
     p.add_argument("--overlap", type=int, default=0)
-    e = sub.add_parser("extract", help="用 --llm 命令（从 stdin 读提示词）自动抽取")
+    e = sub.add_parser("extract", help="extract automatically with the --llm command (reads the prompt from stdin)")
     e.add_argument("--dir", required=True)
-    e.add_argument("--llm", required=True, help="如 'claude -p' 或 'codex exec --skip-git-repo-check -'")
-    e.add_argument("--limit", type=int, help="只抽前 n 段")
-    c = sub.add_parser("conceptualize", help="用 --llm 命令为 concept_todo.jsonl 写概念")
+    e.add_argument("--llm", required=True, help="e.g. 'claude -p' or 'codex exec --skip-git-repo-check -'")
+    e.add_argument("--limit", type=int, help="extract only the first n passages")
+    c = sub.add_parser("conceptualize", help="write concepts for concept_todo.jsonl with the --llm command")
     c.add_argument("--dir", required=True)
     c.add_argument("--llm", required=True)
-    b = sub.add_parser("build", help="建图、写 κ；目录里有 concepts.jsonl 时一并归纳概念层 schema")
+    b = sub.add_parser("build", help="build the graph and write κ; also induce the concept-level schema if concepts.jsonl exists")
     b.add_argument("--dir", required=True)
-    b.add_argument("--extractions", help="默认 <dir>/extractions.jsonl；也可以是上游 AutoSchemaKG 的抽取文件")
+    b.add_argument("--extractions", help="default <dir>/extractions.jsonl; may also be an upstream AutoSchemaKG extraction file")
     b.add_argument("--max-units", type=int, default=200)
     b.add_argument("--concept-limit", type=int, default=100)
-    q = sub.add_parser("query", help="按名字子串查节点的邻居")
+    q = sub.add_parser("query", help="look up node neighbors by name substring")
     q.add_argument("--dir", required=True)
     q.add_argument("--node", required=True)
     q.add_argument("--hops", type=int, default=1)

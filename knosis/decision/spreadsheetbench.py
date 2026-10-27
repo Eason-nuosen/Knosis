@@ -1,12 +1,12 @@
-"""SpreadsheetBench 打分：移植上游 `evaluation/evaluation.py` 的单元格比较，评测前用 LibreOffice 重算公式。
+"""SpreadsheetBench scoring: port of the cell comparison in upstream `evaluation/evaluation.py`; formulas are recalculated with LibreOffice before scoring.
 
-交付 `predictions.jsonl`，每行 `{"id": 指令 id, "answer": {"<用例号>": "<输出 xlsx 路径>"}}`，
-路径相对交付文件所在目录。每个用例：输出文件先经 LibreOffice 打开重算并另存（与上游 `open_spreadsheet.py` 一致，
-公式的计算结果才会被 openpyxl `data_only=True` 读到），再在 `answer_position` 内逐格比较值：
-数值保留 2 位小数，datetime 转 Excel 序列号取整，time 取到分钟，能转成数字的字符串按数字比，空串等于空，类型不同即不等。
-与上游的两处不同：答案文件含 TODAY() / NOW() 时一起重算（缓存值是标注当天的，否则正确公式也判错）；
-`answer_position` 的 sheet 名精确匹配不到时按去空格、忽略大小写匹配（上游数据里有 `Sheet 2` 对 `Sheet2`）。
-指标：soft = 各指令用例通过率的平均，hard = 全部用例通过的指令占比。上游颜色比较已注释掉，这里同样不比颜色与格式。
+Deliverable `predictions.jsonl`, one `{"id": instruction id, "answer": {"<case no>": "<output xlsx path>"}}` per line,
+paths relative to the deliverable's directory. Per case: the output file is opened, recalculated and re-saved by LibreOffice (as in upstream `open_spreadsheet.py`,
+so openpyxl `data_only=True` sees formula results), then values are compared cell by cell within `answer_position`:
+numbers rounded to 2 decimals, datetime to integer Excel serial, time to the minute, numeric strings compared as numbers, empty string equals empty, different types are unequal.
+Two differences from upstream: answer files containing TODAY() / NOW() are recalculated too (cached values are from the annotation date, otherwise correct formulas would fail);
+if the `answer_position` sheet name has no exact match, match ignoring spaces and case (upstream data has `Sheet 2` vs `Sheet2`).
+Metrics: soft = mean per-instruction case pass rate, hard = share of instructions passing all cases. Upstream's color comparison is commented out; likewise we compare neither color nor format.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ def find_soffice() -> str | None:
 
 
 def recalc(files, outdir) -> dict[Path, Path]:
-    """用 LibreOffice 打开并另存为 xlsx（重算公式、写入缓存值）；返回 {原文件: 重算后的文件}，失败的不在其中。
-    每次用独立的用户配置目录，多个进程可以同时跑。"""
+    """Open with LibreOffice and save as xlsx (recalculating formulas, writing cached values); returns {original: recalculated file}, failures omitted.
+    Each call uses its own user profile directory, so multiple processes can run concurrently."""
     soffice, outdir = find_soffice(), Path(outdir)
     if soffice is None:
         raise RuntimeError("LibreOffice not found (set KNOSIS_SOFFICE); SpreadsheetBench scoring needs it to recalculate formulas")
@@ -95,8 +95,8 @@ def col_name(n) -> str:
 
 
 def cells(rng, max_row=None) -> list[str]:
-    """区域 → 单元格名。兼容上游数据里的几种写法：小写列名、全角冒号、整列（`A:G`，行数取 `max_row`）、
-    终点缺列名（`BD2:308` 视为同一列）。"""
+    """Range -> cell names. Handles several notations in upstream data: lowercase columns, full-width colons, whole columns (`A:G`, rows up to `max_row`),
+    end without a column (`BD2:308` means the same column)."""
     rng = rng.upper().replace("：", ":")
     if ":" not in rng:
         return [rng]
@@ -107,21 +107,21 @@ def cells(rng, max_row=None) -> list[str]:
 
 
 def regions(position, default_sheet) -> list[tuple[str, str]]:
-    """`answer_position` → [(sheet, 区域)]；上游数据里 sheet 名的引号有时只剩一边。"""
+    """`answer_position` -> [(sheet, range)]; in upstream data sheet-name quotes are sometimes unbalanced."""
     out = []
     for part in position.split(","):
         if "!" in part:
             sheet, rng = part.split("!", 1)
             sheet = sheet.strip().strip("'")
-        else:  # 默认取第一个 sheet，名字原样保留（有的 sheet 名带首尾空格）
+        else:  # default to the first sheet, name kept verbatim (some sheet names have leading/trailing spaces)
             sheet, rng = default_sheet, part
         out.append((sheet, rng.strip().strip("'").replace("$", "")))
     return out
 
 
 def sheet_name(name, names):
-    """sheet 名精确匹配；上游有的 answer_position 写的名字与文件不一致（如 `Sheet 2` 对 `Sheet2`），
-    精确匹配不到时按去空格、忽略大小写匹配唯一的一个。"""
+    """Exact sheet name match; some upstream answer_position names differ from the file (e.g. `Sheet 2` vs `Sheet2`),
+    so without an exact match, take the unique match ignoring spaces and case."""
     if name in names:
         return name
     key = lambda x: x.replace(" ", "").lower()  # noqa: E731
@@ -133,7 +133,7 @@ VOLATILE = ("TODAY(", "NOW(")
 
 
 def volatile(path) -> bool:
-    """答案文件里有 TODAY() / NOW()：缓存值是标注当天算的，评测时要与输出在同一天重算才可比。"""
+    """Answer file contains TODAY() / NOW(): cached values are from the annotation date, so it must be recalculated on the same day as the output to be comparable."""
     import openpyxl
 
     wb = openpyxl.load_workbook(path)
@@ -142,13 +142,13 @@ def volatile(path) -> bool:
 
 
 def compare(gold_file, proc_file, position) -> tuple[bool, str, str]:
-    """(是否一致, 不含正确值的说明, 含正确值的说明)。"""
+    """(match, detail without the expected value, detail with the expected value)."""
     import openpyxl
 
     try:
         gold = openpyxl.load_workbook(gold_file, data_only=True)
         proc = openpyxl.load_workbook(proc_file, data_only=True)
-    except Exception as error:  # noqa: BLE001 — 打不开就是错
+    except Exception as error:  # noqa: BLE001 - failing to open counts as wrong
         return False, f"cannot open output: {type(error).__name__}", f"cannot open output: {error}"
     for sheet, rng in regions(position, gold.sheetnames[0]):
         g, p = sheet_name(sheet, gold.sheetnames), sheet_name(sheet, proc.sheetnames)
@@ -165,7 +165,7 @@ def compare(gold_file, proc_file, position) -> tuple[bool, str, str]:
 
 
 def score_cases(task, outputs: dict, scratch) -> list[dict]:
-    """`outputs`：{用例号: 输出文件路径或 None}。"""
+    """`outputs`：{case no: output file path or None}."""
     given = {n: Path(p) for n, p in outputs.items() if p and Path(p).is_file()}
     golds = [g for g in task.answer if volatile(g)] if given else []
     fixed = recalc(list(given.values()) + golds, scratch) if given else {}
@@ -177,7 +177,7 @@ def score_cases(task, outputs: dict, scratch) -> list[dict]:
             continue
         ok, detail, full = compare(fixed.get(Path(gold), gold), fixed.get(src, src), task.meta["answer_position"])
         if src not in fixed:
-            detail += "（LibreOffice 重算失败，按原文件比较）"
+            detail += " (LibreOffice recalculation failed, compared the original file)"
         rows.append({"case": n, "ok": ok, "detail": detail, "gold": full})
     return rows
 
@@ -197,7 +197,7 @@ def score(ws, state, ds, path, ids) -> dict:
             items.append({"id": tid, "kind": task.kind, "ok": all(r["ok"] for r in rows) and bool(rows), "soft": soft,
                           "cases": [{k: r[k] for k in ("case", "ok", "detail")} for r in rows],
                           "gold": [{"case": r["case"], "diff": r["gold"]} for r in rows if not r["ok"]]})
-            # 参照：原样交回输入表格（有的题答案区本来就有部分正确值）
+            # Reference: return the input spreadsheet unchanged (some answer regions already hold partially correct values)
             reference.append(mean([{"ok": compare(g, p, task.meta["answer_position"])[0]}
                                    for g, p in zip(task.answer, task.meta["inputs"])], "ok"))
     by_kind = {}

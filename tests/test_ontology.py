@@ -9,7 +9,7 @@ from knosis import workspace as w
 from knosis.cli import main
 from knosis.knowledge import check_knowledge, check_units, ontology, write_units
 
-SALES = Path(__file__).parent / "fixtures/sales_bi"  # ontology-bench 的 EOB v0.2 样例
+SALES = Path(__file__).parent / "fixtures/sales_bi"  # EOB v0.2 sample from ontology-bench
 
 
 def test_load_and_check_reference_example():
@@ -98,7 +98,7 @@ def test_from_bibench(bibench_root, tmp_path, capsys):
     assert sales["fields"][2]["datatype"] == "Boolean"
     assert model["datasets"][1]["fields"][1]["name"] == "Name"
     [rel] = model["relationships"]
-    # Power BI 里 from 是 one 侧；Ossie 的 from 必须是 many 侧
+    # in Power BI, from is the one side; in Ossie, from must be the many side
     assert (rel["from"], rel["from_columns"], rel["to"], rel["to_columns"]) == ("sales", ["CountryId"], "country_list", ["Id"])
     assert ontology.eob_data(rel) == {"cardinality": "one-to-many", "active": True, "cross_filter": "both"}
     assert not ontology.check_ontology({"semantic_model": model})

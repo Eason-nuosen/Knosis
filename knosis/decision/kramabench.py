@@ -1,10 +1,10 @@
-"""KramaBench 打分：按 answer_type 移植上游 `benchmark/metrics.py` 中不需要 LLM 的指标。
+"""KramaBench scoring: ports the non-LLM metrics of upstream `benchmark/metrics.py`, per answer_type.
 
-- numeric_exact / string_exact：上游 Success（数值允许舍入误差，字符串忽略大小写）
-- numeric_approximate：上游 RAE score = 1 / (1 + 相对误差)；ok 取相对误差 ≤ 1%
-- list_exact：上游 F1（字符串忽略大小写，数值相对误差 < 1e-6）
-- list_approximate：上游 F1Approximate，数值相对误差 ≤ 1%；字符串元素上游用 LLM 判同义，这里退化为规范化后精确匹配
-- string_approximate：上游用 LLM 判同义（llm_paraphrase），这里退化为规范化（只留字母数字、小写）后精确匹配
+- numeric_exact / string_exact: upstream Success (numbers tolerate rounding error, strings are case-insensitive)
+- numeric_approximate: upstream RAE score = 1 / (1 + relative error); ok means relative error ≤ 1%
+- list_exact: upstream F1 (strings case-insensitive, numbers relative error < 1e-6)
+- list_approximate: upstream F1Approximate, numbers relative error ≤ 1%; upstream judges string elements as paraphrases with an LLM, here this falls back to exact match after normalization
+- string_approximate: upstream judges paraphrase with an LLM (llm_paraphrase), here this falls back to exact match after normalization (alphanumerics only, lowercase)
 """
 
 from __future__ import annotations
@@ -15,11 +15,11 @@ from collections import defaultdict
 
 from . import answers, mean, register
 
-LLM_FALLBACK = "string_approximate 与 list_approximate 的字符串元素：上游用 LLM 判同义，这里用规范化后精确匹配"
+LLM_FALLBACK = "string_approximate and string elements of list_approximate: upstream judges paraphrase with an LLM, here exact match after normalization"
 
 
 def number(value):
-    """上游 try_convert_to_number：数字或可转成数字的字符串（支持百分号）→ float，否则 None。"""
+    """Upstream try_convert_to_number: a number or numeric string (percent sign supported) -> float, else None."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -85,7 +85,7 @@ def list_f1(pred, gold, tolerance, same_string) -> float:
 
 
 def score_answer(kind: str, pred, gold) -> tuple[float, bool]:
-    """返回 (分数, 是否算对)。"""
+    """Returns (score, is correct)."""
     if kind in ("numeric_exact", "string_exact"):
         s = success(pred, gold)
         return s, s == 1.0

@@ -1,4 +1,4 @@
-"""轨迹提取打分：没有题目，评知识层本身——是否引用到轨迹里存在的步骤，是否在环境上复核过（`env_verified`），还是只核对了与轨迹一致（`trace_checked`）。"""
+"""Trace extraction scoring: no tasks, so score the knowledge layer itself: whether it cites steps that exist in the traces, and whether it was re-verified against the environment (`env_verified`) or only checked for consistency with the traces (`trace_checked`)."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ ENV = {"check", "data", "tool", "feedback", "ablation"}
 
 
 def on_env(entry) -> bool:
-    """支持证据是否触及环境：反馈 / 消融本身来自环境；其余要求来源或依赖的输入里有轨迹以外的数据（`data/env/` 等）。
-    只在轨迹文件上跑的检查（核对说法与轨迹一致）不算环境复核。"""
+    """Whether supporting evidence touches the environment: feedback / ablation come from the environment by nature; others need non-trace data (`data/env/` etc.) among their sources or input dependencies.
+    Checks run only on trace files (confirming a claim matches the traces) do not count as environment verification."""
     if entry["verdict"] != "support" or entry["method"] not in ENV:
         return False
     if entry["method"] in ("feedback", "ablation"):

@@ -1,9 +1,9 @@
-"""dev 反馈：agent 在 dev 题上的提交结果，记录在 `evidence/feedback/<id>.json`。
+"""Dev feedback: results of agent submissions on dev questions, recorded in `evidence/feedback/<id>.json`.
 
-反馈是 agent 提取知识的依据：例如 NGD-Fin 上 dev 题答错、而按观测图执行无误，说明相关的边或属性有噪声，
-agent 把它写成 finding / fact，provenance 写 `feedback:<id>#item/<题目 id>`。
-dev 题与测试题不重叠，GT 从原始数据目录读，不进工作区（mode=answer 时随反馈给出 dev 题的正确答案）。
-`mode=score` 只返回对错与分数，`mode=answer` 另给出正确答案，`mode=none` 关闭；`budget` 限制提交次数。
+Feedback is a basis for extracting knowledge: e.g. on NGD-Fin, a wrong dev answer despite correct execution on the observed graph
+means the related edges or attributes are noisy; the agent writes it as a finding / fact with provenance `feedback:<id>#item/<question id>`.
+Dev and test questions do not overlap; GT is read from the raw data directory and never enters the workspace (mode=answer returns dev answers with the feedback).
+`mode=score` returns only correctness and score, `mode=answer` also returns the correct answers, `mode=none` disables it; `budget` caps submissions.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def records(ws) -> list[dict]:
 
 
 def own(ws) -> list[dict]:
-    """本工作区自己提交的记录（从知识库继承来的记录名为 `<工作区>.<id>`，不计入预算）。"""
+    """Records submitted by this workspace (records inherited from the knowledge base are named `<workspace>.<id>` and do not count toward the budget)."""
     return [r for r in records(ws) if "." not in r["id"]]
 
 
@@ -31,7 +31,7 @@ def left(ws, state) -> int:
 
 
 def submit(ws, path) -> dict:
-    """在 dev GT 上给 `path`（与 decide 交付同格式，只含 dev 题，可以只交一部分）打分，写一条反馈记录并返回它。"""
+    """Score `path` (same format as the decide deliverable, dev questions only, may be partial) against dev GT; write and return a feedback record."""
     from ..decision import SCORERS
     from ..workspace import open_dataset, prediction_ids, status
 
@@ -65,9 +65,9 @@ def submit(ws, path) -> dict:
 
 
 def usage(ws, record, used, kinds) -> None:
-    """使用知识（scope=usage）：按题型统计每条知识 / skill「用到时 / 没用到时」的 dev 正确率，写成候选 κ 与 feedback 证据。
+    """Usage knowledge (scope=usage): per question type, dev accuracy of each knowledge unit / skill when used vs. not used, written as candidate κ and feedback evidence.
 
-    `used`：与提交文件同名的 `<文件名>_used_units.jsonl`，每行 `{id, used_units}`。只用 dev 反馈，不碰测试题。
+    `used`: `<file name>_used_units.jsonl` next to the submission, one `{id, used_units}` per line. Uses dev feedback only, never test questions.
     """
     from .evidence import add_evidence
     from .units import write_units

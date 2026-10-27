@@ -1,7 +1,7 @@
-"""AlphaBench（evaluate）：给因子表达式，预测其在评估窗口内的 IC 表现。
+"""AlphaBench (evaluate): given a factor expression, predict its IC over the evaluation window.
 
-agent 只拿到评估窗口开始之前的行情（Qlib 二进制 → parquet 面板），可以自己在历史上验证因子；
-IC / RankIC 真值表与窗口内的行情都不进工作区。generate 场景需要 Qlib 现算新因子的 IC，本地未装 Qlib，暂不支持。
+The agent gets only market data before the window starts (Qlib binary -> parquet panel) and can validate factors on history;
+the IC / RankIC ground truth and in-window data never enter the workspace. The generate scenario needs Qlib to compute IC for new factors; Qlib is not installed locally, so it is unsupported.
 """
 
 from __future__ import annotations
@@ -19,14 +19,14 @@ from . import register, render, split
 
 
 def read_bin(path: Path, calendar: list[str]) -> pd.Series:
-    """Qlib 的 .day.bin：float32，第一个数是在交易日历里的起始下标。"""
+    """Qlib .day.bin: float32; the first value is the start index in the trading calendar."""
     values = np.fromfile(path, dtype="<f4")
     start = int(values[0])
     return pd.Series(values[1:], index=pd.to_datetime(calendar[start:start + len(values) - 1]))
 
 
 def market_panel(qlib: Path, universe: str, cutoff: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """截止 `cutoff`（不含）之前、历史上进过该指数的股票的日频面板与成分区间。"""
+    """Daily panel and membership intervals of stocks that were ever in the index before `cutoff` (exclusive)."""
     calendar = (qlib / "calendars/day.txt").read_text().split()
     members = pd.read_csv(qlib / f"instruments/{universe}.txt", sep="\t", names=["instrument", "start", "end"])
     members = members[members["start"] < cutoff]
@@ -49,8 +49,8 @@ def vocabulary(expressions) -> tuple[str, str]:
 
 @register("alphabench")
 def export(ds, ws: Path, write_data=True, start="2021-01-01", end="2025-06-30", dev=50, limit=250, seed=0, **opts) -> dict:
-    """`start`/`end`：评估窗口（上游 Overall 区间）；题目按 Positive / Negative / Noise = 4:4:2 分层抽样（上游 100:100:50）。"""
-    assert ds.scenario == "evaluate", "只支持 evaluate；generate 需要 Qlib 现算新因子的 IC"
+    """`start`/`end`: evaluation window (upstream Overall period); tasks are stratified-sampled Positive / Negative / Noise = 4:4:2 (upstream 100:100:50)."""
+    assert ds.scenario == "evaluate", "only evaluate is supported; generate needs Qlib to compute IC for new factors"
     pool = ds.read("factor_pool")
     stats = factor_stats(str(ds.files["ic"]), str(ds.files["rankic"]), start, end)
     rng, total = random.Random(seed), dev + limit
