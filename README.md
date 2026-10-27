@@ -1,189 +1,108 @@
 # Knosis
 
-> Knosis = knowledge + gnosis。**面向 agent 的知识底座与实验平台。**
+> Knosis = knowledge + gnosis。**给 agent 用的知识底座：收集、管理、再利用 agent 的知识。**
+
+Knosis 本身不是 agent。它让 Codex / Claude Code 这类编码 agent 把做事过程中学到的东西写成**显式知识**：
+每条知识都有来源、成立条件和证据，可以检查、追溯、撤回；下次做事时再按需取用。
 
 两类场景，同一套知识层：
 
-- **个人 agent**：给自己的 agent 一个**个人知识库**。从日常使用轨迹（Codex / Claude Code 会话）里收集知识，
-  整理成知识体系，下一次会话通过 MCP 取用（见下面「五分钟上手」）。
-- **企业级任务**：在具体任务上（各类 benchmark、业务数据）让 agent 边做边累积与任务相关的知识和理解，
-  经证据验证后写回知识库，可继承到同类新任务（见「快速开始（benchmark 工作区）」）。
+- **个人 agent**：从你日常的 Codex / Claude Code 会话里收集知识，整理成个人知识库，新会话通过 MCP 取用。
+- **任务 / 企业数据**：在具体任务上（benchmark、业务数据）让 agent 边探索边累积知识，经证据验证后写回知识库，
+  可继承到同类新任务。
 
-Knosis 把多源数据接进来，让 agent（Codex / Claude Code 等）从中构造**可审计、可撤回的显式知识**，
-再用这些知识做决策，并评测知识到底有没有用。Knosis 本身不是 agent：它提供数据、知识格式、工具与评测，
-agent 负责思考。所有后续工作（新数据、新工具、新的知识构造或使用方法）都可以接到这里来测。
+## 核心概念
 
-## 四层 + 工作区
+- **知识单元 κ**：一条知识 = 内容、形式（fact / rule / formula / procedure …）、成立条件、来源、状态
+  （observed → inferred → verified，或 contested / retracted / stale / merged）。存在 `kb/knowledge/units.jsonl`。
+- **证据**：支持或反驳某条知识的记录（可执行检查、工具输出、dev 反馈、轨迹步骤），存在 `evidence/`。状态必须与证据一致。
+- **内化**：知识多了以后由 agent 去重、处理矛盾、整理成知识体系（大纲、知识图谱、流程图），太多时再压缩；
+  每一步 Knosis 都检查、不通过就回滚，并留下操作记录。
+- **工作区**：一个任务的完整流程 explore → extract → refine（用 dev 反馈修正）→ decide，每阶段验收并提交 git；
+  标准答案不进工作区。
 
-| 层 | 模块 | 内容 |
-| --- | --- | --- |
-| **数据层** | `knosis.data` | 统一入口 `load_dataset`，10 个数据入口返回同一个 `Dataset(tasks, files, schema, units, metrics)` |
-| **知识层** | `knosis.knowledge` | 两大块：**kb/**（知识主体：κ 单元、OSI 标准的本体、skill、知识体系大纲）+ **evidence/**（来源与验证：证据账本、可执行检查、dev 反馈、轨迹、内化记录）；结构与证据一致性检查；内化（去重、矛盾处理、构建知识体系、结构化：知识图谱与流程图） |
-| **工具层** | `knosis.tools` | 统一的 `TOOL.md + run.py`：SQL、表画像、join 发现（参考 BI-Agent）、ULTRA、TabPFN |
-| **决策层** | `knosis.decision` | decide 产物的打分（从原始目录读 GT），与训练先验 / 含噪答案等参照对比，并统计知识被引用的情况 |
-| 工作区 | `knosis.workspace` | 把四层串起来：explore → extract → refine（多轮）→ decide，每步验收并提交 git，GT 不进工作区 |
-
-```
-数据层 ──导出──▶ 工作区 data/ ──agent + 工具──▶ 知识层 kb/ + evidence/ ──内化──▶ 决策层 预测 + 评测
-```
+知识库与工作区用同一个布局（`kb/` + `evidence/`），都是本地 git 仓库，每次写回一个版本，可回退。
 
 ## 安装
 
 ```bash
-conda env create -f environment.yml     # 建 knosis 环境，以 -e .[all] 安装
-conda activate knosis
+pip install -e '.[all]'          # Python 3.10+；或 conda env create -f environment.yml
 pytest -q
 ```
 
-或任意 Python 3.10+：`pip install -e '.[all]'`。核心包不依赖 torch；神经模型工具在各自环境里运行。
-数据默认在仓库下的 `data/<name>/`，可用 `KNOSIS_DATA_DIR` 指到别处；`knosis download <name>` 取数。
+需要一个编码 agent：[Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://claude.com/claude-code)，两者都已实测。
 
-## 五分钟上手：个人知识库
+## 上手：个人知识库
 
-不需要任何 benchmark 数据，只要装好 Knosis 和 Codex（或 Claude Code）。
-
-```bash
-# 1. 建库：一个 git 仓库，每次写回一个提交
-knosis kb init ~/kb
-
-# 2. 再利用：把 skill 与指向 ~/kb 的 MCP 服务装进 Codex（写 ~/.codex/config.toml 里一段带标记的配置，可重复执行）
-#    Claude Code 会打印一条 `claude mcp add ...` 命令，自己运行
-knosis install --kb ~/kb
-
-# 3. 照常用 Codex 干活。新会话里 agent 先看知识体系（knowledge_outline），再按任务检索（knowledge_select）
-
-# 4. 收集：把最近一天的会话交给 Codex 提取知识，写回 ~/kb，再内化（去重 → 矛盾处理 → 构建知识体系）
-knosis kb collect --kb ~/kb --since 1d --dry-run     # 先看会收集哪些会话
-knosis kb collect --kb ~/kb --since 1d
-
-# 5. 管理：看知识体系、查某条知识的证据
-knosis knowledge outline --ws ~/kb
-knosis knowledge select --ws ~/kb --text <关键词>
-knosis knowledge trace <id> --ws ~/kb
-cd ~/kb && git log --oneline                        # 每次收集一个版本，可回退
-```
-
-收集时跳过：已收集过的会话、在知识库里运行的会话（收集与整理自身）、在 Knosis 工作区里运行的会话
-（那里的知识已由工作区记录，`--include-workspaces` 可放开）、工具调用少于 3 次的会话。
-只收集能被环境反驳的知识（项目约定、数据的坑、工具与命令的实际行为、报错与解决办法、可复用的方法），
-不收集用户偏好与对话记忆。会话原文会复制进 `~/kb/evidence/traces/` 供追溯，知识库是本地仓库，别推到公开远端。
-提取结果验收不通过时，知识库恢复到运行前的版本。v0.4 建的知识库先运行 `knosis migrate ~/kb` 转换成新布局。
-
-## 快速开始（benchmark 工作区）
-
-### 数据层
-
-```python
-from knosis import load_dataset, list_datasets, describe
-
-list_datasets()          # ngdbench relbench burr newtonbench llm-srbench alphabench kramabench tabarena bibench spreadsheetbench text traces whoandwhen
-describe("ngdbench")     # 给 agent 读的说明（来源 / 布局 / 陷阱），不含 GT
-ds = load_dataset("ngdbench", "ngd-fin")
-ds.tasks[0]              # Task(id, input, answer, split, kind, meta)；answer 是 GT，只在评测时读
-g = ds.read("clean")     # 按后缀打开：parquet/csv → DataFrame，gpickle → 图 ...
-```
-
-### 知识层
-
-```python
-from knosis.knowledge import load_units, check_knowledge, ontology
-
-check_knowledge("ws/x", root="ws/x")                      # κ 结构 + 证据一致 + 本体引用 + 去重别名与矛盾标记
-model = ontology.from_bibench(load_dataset("bibench", "101248502"))   # Power BI 元数据 → 本体 core 层
-ontology.write_ontology("onto/", {"semantic_model": model})
-ontology.ontology_units(ontology.load_ontology("onto/"))  # 本体元素展开成 κ（form=schema）
-```
+不需要任何数据集。
 
 ```bash
-knosis ontology convert relbench rel-f1 --out onto/f1    # manifest 的主外键 → core 层
-knosis ontology check onto/f1
+knosis kb init ~/kb                                  # 建库
+knosis install --kb ~/kb                             # 把 skill 与 MCP 服务装进 Codex；Claude Code 会打印一条 claude mcp add 命令
+
+# 照常用 agent 干活；新会话里 agent 先看知识体系，再按任务检索
+
+knosis kb collect --kb ~/kb --since 1d --dry-run     # 看会收集哪些会话
+knosis kb collect --kb ~/kb --since 1d               # 提取知识 → 验收 → 内化 → 提交一个版本（--source claude 收 Claude Code 会话）
+
+knosis knowledge outline --ws ~/kb                   # 看知识体系
+knosis knowledge select  --ws ~/kb --text <关键词>    # 检索
+knosis knowledge trace <id> --ws ~/kb                # 一条知识的来源与证据
 ```
 
-格式说明见 [docs/knowledge.md](docs/knowledge.md)。知识多了以后用 `knosis knowledge consolidate` 让 agent 依次去重、处理矛盾、
-构建知识体系（每步由 Knosis 验收并记进 `evidence/consolidate.jsonl`）；知识库变大后用 `knosis knowledge compact`
-让 agent 自己判断怎么压缩，或 `--topic <主题>` 只压缩某个主题的知识（被压缩的单元并入概括它的那条，作别名保留）；
-`knosis mcp --ws <dir>` 把知识层与工具以 MCP 暴露给 agent；工具 / skill / MCP 的分工见 [docs/interfaces.md](docs/interfaces.md)。
+只收集能被环境验证或反驳的知识（项目约定、数据的坑、工具的实际行为、报错与解决办法、可复用的方法），
+不收集偏好和闲聊。会话原文会复制进知识库供追溯，所以**知识库不要推到公开远端**。
 
-### 工具层
+## 上手：任务工作区
 
 ```bash
-knosis tool list
-knosis tool card joins
-knosis tool run profile -- --tables data/ --out stages/1_explore/profile
-knosis tool run joins   -- --tables data/ --out stages/1_explore/joins --ontology stages/1_explore/joins/ontology
-knosis tool run sql     -- --tables data/ --query 'SELECT COUNT(*) FROM train' --out stages/1_explore/sql
-knosis tool run autoschemakg -- prepare --text data/ --out stages/1_explore/kg   # 文本 → KG，抽取由 agent 自己做
+knosis ws init tabarena houses --out ws/houses       # 从数据集导出一个工作区（数据入口见下）
+
+# 驱动模式：Knosis 启动 agent 跑完各阶段，每阶段验收，不过重试一次
+knosis ws run ws/houses --agent codex --stage explore extract refine decide --rounds 2 --consolidate
+knosis ws run ws/houses --agent claude --model <模型> --effort medium ...    # 换成 Claude Code
+
+# 嵌入模式：直接在 agent 里打开工作区，agent 读 AGENTS.md 自己推进
+knosis install
+
+knosis eval ws/houses                                # 评测，写 .knosis/eval.json
+knosis ws fork ws/houses --out ws/houses-none --knowledge none   # 对照：不给知识 / K_0 / K_final
 ```
 
-工具只产出注解（κ，`inferred` / `observed`），不改数据；神经模型工具（ULTRA、TabPFN）用
-`KNOSIS_<NAME>_PYTHON` 指定 GPU 环境的解释器，`--prepare-only` 在本机只检查输入。
+标准答案只在评测时读取，测试题直到 decide 才生成，反馈只接受 dev 题。这是软隔离，不是安全边界：
+正式评测请把原始数据目录放在 agent 环境之外。
 
-### 工作区与决策层
+## 管理知识
 
 ```bash
-knosis ws init tabarena houses --out ws/houses                 # 试点 1：单表
-knosis ws init ngdbench ngd-fin --out ws/ngd-fin --limit 200   # 试点 2：含噪属性图问答，抽 200 道测试题（另有 50 道 dev 题）
-
-# 嵌入模式：在 Codex / Claude Code 里打开工作区，agent 读 AGENTS.md，自己调 ws next / ws check
-knosis install                                                 # 安装 skill，让 agent 知道怎么用 Knosis
-
-# 驱动模式：由 Knosis 启动 agent 跑完各阶段
-knosis ws run ws/houses --agent codex --stage explore extract refine decide --rounds 2 --consolidate   # refine 后内化一次
-
-# 反馈与自动 RSI：agent 交 dev 题答案换逐题结果；驱动模式下 refine 每轮自动提交一次
-knosis feedback submit stages/3_refine/round_1/dev_predictions.jsonl --ws ws/ngd-fin
-knosis ws run ws/ngd-fin --agent codex --stage refine --rounds 3
-
-# 对照与评测
-knosis ws fork ws/houses --out ws/houses-none --knowledge none  # none / K_0 / K_<n> / K_final
-knosis eval ws/houses                                          # 写 .knosis/eval.json
+knosis knowledge check       --ws <dir>                    # 结构、来源、状态与证据一致性
+knosis knowledge consolidate --ws <dir>                    # 去重 → 矛盾处理 → 构建知识体系 → 结构化
+knosis knowledge compact     --ws <dir> [--topic <主题>]    # 知识太多时压缩：agent 自己判断，或只压缩某个主题
+knosis mcp --ws <dir>                                      # 以 MCP 暴露知识层与工具（16 个工具）
 ```
 
-阶段：explore 交笔记与可疑项；extract 产出 K_0；refine 每轮产出 K_n、写 changelog，并用 dev 反馈修正知识；
-decide 对每道题 / 每个测试行恰好一个预测，可附 `used_units.jsonl` 记录用到的知识。
-`ws check` 验收通过才提交并推进阶段。
+被合并、被压缩的知识不会删除，而是作为别名指向保留下来的那条；撤回一条知识后，由它推出的知识也必须改为失效（检查会报出）。
 
-**GT 软隔离**：GT 永远不导出到工作区（NGD-Fin 只给去掉加噪痕迹的观测图；TabArena 只给训练标签与测试特征；
-测试题直到 decide 才生成；反馈只接受 dev 题）。驱动模式下 agent 进程带 `KNOSIS_DEPTH=1`，不能再起 agent，也不能运行 `knosis eval`。
-这不是安全边界：同机的 agent 仍可能读到原始数据目录，正式评测请把 `data/` 放在 agent 环境之外。
+## 数据入口与工具
 
-## 现状（v0.5）
+13 个数据入口：ngdbench、tabarena、relbench、bibench、kramabench、burr、llm-srbench、newtonbench、alphabench、
+spreadsheetbench、whoandwhen，以及不带题目的 text（文档语料）与 traces（agent 轨迹）。
+场景、指标与已知限制见 [docs/datasets.md](docs/datasets.md)。
 
-13 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）：
+工具（`knosis tool list`）：sql、profile、joins、fit、sheet、newton、tabpfn、autoschemakg（文本 → 知识图谱）、ultra。
+工具只产出待验证的知识，不改数据。
 
-| 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
-| --- | --- | --- | --- | --- | --- |
-| ngdbench | ngd-fin | 答案 JSONL（可加噪声断言） | 答案集合 EM / F1；噪声断言 P/R；参照：照抄含噪图答案 | 50 题；演示题集 10 / 20 | NL 题面大量与 Cypher 不一致，见 [demos](docs/demos.md)；其他 4 个域的导出模板 |
-| tabarena | 51 个数据集 | 预测 CSV | RMSE / accuracy / AUC / log loss；参照：训练先验 | 默认 0，`--dev N` 留出训练行 | — |
-| relbench | 库名，`-o task=` | 预测 CSV | AUROC / MAE / MAP@k；参照：平凡基线 | val 划分 | — |
-| bibench | 用例 id 或 `all` | 表 JSONL | 上游匹配规则的 success；`-o metadata=true` 给初始本体 | all 模式 20 例 | — |
-| kramabench | 领域 | 答案 JSONL | 上游 exact / 近似 / 列表 F1 | 约 25% | 需 LLM 判定的口径退化为规范化精确匹配 |
-| burr | 真实库 / micro 场景 / `micro/<类别>` | 映射 JSONL | 上游 class / relation / attribute P/R/F1 | 多场景时约 25% | iswc、npd 的 D2RQ GT 打分 |
-| llm-srbench | split | 表达式 JSONL | NMSE、Acc₀.₁（含 OOD） | 约 20% | 符号等价（需 LLM） |
-| newtonbench | 领域 | 定律函数源码 | 上游 RMSLE；实验用 `newton` 工具 | 按（难度, 版本）整组 | 符号等价（需 LLM） |
-| alphabench | evaluate（CSI300） | 因子判断 JSONL | 信号准确率、IC MAE / Spearman、分维度打分 | 50 题 | generate（需 Qlib 现算 IC）、美股 |
-| spreadsheetbench | all / cell / sheet | 每条指令 3 个用例的输出 xlsx | 上游单元格值比较（评测前 LibreOffice 重算公式）：soft / hard；参照：原样交回输入 | 按指令切，默认 dev 5 / 测试 15 | .xlsm 默认跳过；需要 LibreOffice |
-| text | 语料路径 | 无（只评知识层） | 单元数、来源可定位率、引文核对 | 无 | — |
-| traces | 名字，`-o paths=` 轨迹（Codex / Claude Code 含子 agent / 逐步记录 / messages / ATIF），可选 `-o env=` | 无（只评知识层） | 引用步骤有效率、环境复核率、只核对轨迹的比例 | 无 | 迁移收益另做：合进知识库后在新题上对比 |
-| whoandwhen | all / algorithm / hand | 每条失败日志的出错 agent 与步骤 JSONL | 上游 agent-level / step-level accuracy；参照：随机猜 | 按日志切，默认 dev 10 / 测试 30 | `-o answer=true` 给出任务标准答案（with ground truth 设置） |
+## 文档
 
-轨迹（`traces`、`whoandwhen`、`kb collect`）统一存成 ATIF v1.7（`<id>.json` + `.md`，格式见 `knosis/data/traces.py`），引用写 `<目录>/<id>.json#step/<n>`；
-v0.5 之前的步骤序列用 `knosis migrate` 转换（引用的步号一并改写）。
-
-| 部分 | 状态 |
+| 文档 | 内容 |
 | --- | --- |
-| 知识层 | 两大块 kb/ + evidence/；κ 粒度分对象知识（instance / relation / dataset）与元知识（method 怎么得到知识 / usage 怎么用好知识）；证据账本 + 可执行检查 + OSI 本体 + skill（usage 管有没有用，skill 管怎么做）；检查必填字段、来源、I1、I2、I5、状态与证据一致、证据过期、method 脚本可脱离原工作区运行、去重别名与矛盾标记；I3、I4 未实现 |
-| 知识库 | 独立知识库：继承（可按粒度）、写回（被引用的轨迹随知识带走）、导入 ontology-bench 标注（可去 GT） |
-| 工具层 | sql / profile / joins / fit / newton / tabpfn（含 cv，本机 CPU 推断已验证）/ autoschemakg（文本 → KG，agent 自己抽取或 `--llm` 命令）可用；ULTRA 只适配接口 |
-| 内化、知识体系与 MCP | `knowledge consolidate`：去重（merged + merged_into）、矛盾处理（收窄条件 / 裁决 / superseded_by / conflicts_with + contested）、构建知识体系（`kb/outline.yaml` + 归纳单元）、结构化（知识图谱 `kb/graph.json` + 流程图 `kb/flows/`，另有计算出的派生图与规则 / 公式卡片），每步验收、可回滚、留痕；`knosis kb merge --namespace` 把不同数据集的工作区合进一个知识库；`knosis mcp` 手写 stdio 服务，16 个工具；`knosis migrate` 转换 v0.4 布局 |
-| agent 接入 | Codex 驱动模式在单表、方程、多表、KG 四类场景跑通演示（含 refine 自动反馈），以及从 Codex 自身轨迹与 agent-rsi AppWorld 轨迹提取知识，结果见 [docs/demos.md](docs/demos.md)；Claude Code 接口相同，未做 smoke |
-
-范围与定位见 [docs/scope.md](docs/scope.md)；路线：跨 agent 读者对照、只继承 method / skill 的迁移实验、L2 复杂查询。设计背景见 [docs/design.md](docs/design.md)。
-
-## 扩展
-
-新增数据集、工作区导出器、评测或工具，各只需要一个文件或目录，见 [docs/extending.md](docs/extending.md)。
-代码风格：短小、直接、不写防御性代码；出错就直接抛出。
+| [docs/knowledge.md](docs/knowledge.md) | 知识格式、状态与证据、内化与压缩的规则 |
+| [docs/interfaces.md](docs/interfaces.md) | 工具、skill、MCP 的分工与接入方式 |
+| [docs/datasets.md](docs/datasets.md) | 数据入口、指标、Python 接口 |
+| [docs/demos.md](docs/demos.md) | 各数据集上的演示与结果 |
+| [docs/scope.md](docs/scope.md) | 范围与定位 |
+| [docs/extending.md](docs/extending.md) | 新增数据集、评测或工具 |
+| [docs/design.md](docs/design.md) | 设计背景（四层架构：数据 / 知识 / 工具 / 决策） |
 
 ## 许可
 

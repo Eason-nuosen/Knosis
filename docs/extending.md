@@ -65,3 +65,5 @@ def score(ws, state, ds, path, ids) -> dict:
 κ 的字段集合与检查只在 `knosis/knowledge/units.py`；本体的读写、引用、检查与转换只在 `knosis/knowledge/ontology.py`。
 新增一种数据源 → 本体的转换，写一个 `from_<name>(ds) -> dict`（返回 core 层文档），复用 `from_tables` / `relationship` / `eob`，
 并在 `cli.py` 的 `ontology convert` 里登记。
+
+代码风格：短小、直接、不写防御性代码；出错就直接抛出。
