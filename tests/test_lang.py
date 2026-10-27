@@ -18,6 +18,11 @@ CJK = re.compile(r"[一-龥]")
 PKG = Path(w.__file__).resolve().parents[1]
 
 
+def placeholders(text):
+    """`string.Template` names (Template.get_identifiers needs Python 3.11)."""
+    return sorted({m.group("named") or m.group("braced") for m in Template.pattern.finditer(text)} - {None})
+
+
 def pairs(en, cn, pattern="**/*.md"):
     files = sorted(p.relative_to(en) for p in en.glob(pattern))
     assert files == sorted(p.relative_to(cn) for p in cn.glob(pattern))
@@ -30,7 +35,7 @@ def test_every_file_has_both_languages_with_the_same_placeholders(en, cn):
     for a, b in pairs(en, cn):
         text = a.read_text(encoding="utf-8")
         assert not CJK.search(text), a
-        assert Template(text).get_identifiers() == Template(b.read_text(encoding="utf-8")).get_identifiers(), a
+        assert placeholders(text) == placeholders(b.read_text(encoding="utf-8")), a
 
 
 def test_english_by_default(ws):  # noqa: F811
