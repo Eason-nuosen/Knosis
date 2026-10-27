@@ -2,6 +2,8 @@
 
 > Knosis = knowledge + gnosis。**给 agent 用的知识底座：收集、管理、再利用 agent 的知识。**
 
+**在线演示**：https://eason-nuosen.github.io/Knosis/ （各类数据上 agent 构造的知识图谱、流程图、知识体系与结果，中英文）· `pip install knosis`
+
 Knosis 本身不是 agent。它让 Codex / Claude Code 这类编码 agent 把做事过程中学到的东西写成**显式知识**：
 每条知识都有来源、成立条件和证据，可以检查、追溯、撤回；下次做事时再按需取用。
 
@@ -145,7 +147,7 @@ Knosis 面向**异构数据**：同一套知识层（κ + 证据 + 本体）覆�
 | [docs/knowledge.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/knowledge.md) | 知识格式、状态与证据、内化与压缩的规则 |
 | [docs/interfaces.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/interfaces.md) | 工具、skill、MCP 的分工与接入方式 |
 | [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md) | 数据入口、指标、Python 接口 |
-| [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | 各数据集上的演示与结果 |
+| [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | 各数据集上的演示与结果（网页版见[在线演示](https://eason-nuosen.github.io/Knosis/)） |
 | [docs/scope.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/scope.md) | 范围与定位 |
 | [docs/extending.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/extending.md) | 新增数据集、评测或工具 |
 | [docs/design.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/design.md) | 设计背景（四层架构：数据 / 知识 / 工具 / 决策） |
