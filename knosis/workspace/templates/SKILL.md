@@ -31,7 +31,7 @@ form 为 finding/fact/rule/formula/schema/tool/procedure；status 为 observed/i
 有 `kb/outline.yaml` 时先用 `knosis knowledge outline` 看知识体系。
 「如何运用知识解某类题」写成 `kb/skills/<名字>/SKILL.md`（讲怎么做）；它有没有效写成 usage 单元。
 内化：重复的改为 merged + merged_into，矛盾的收窄条件 / 撤回 / superseded_by / conflicts_with + contested，
-`knosis knowledge consolidate` 依次做去重、矛盾处理、构建知识体系。
+`knosis knowledge consolidate` 依次做去重、矛盾处理、构建知识体系；知识太多时 `knosis knowledge compact [--topic 主题]` 压缩。
 记录 condition、derived_from 和验证支持数与反例数；来源定位到 data 文件的行、列、节点或边，
 工具来源为 `tool:<name>@<version>(...)`，多来源用 ` ; ` 连接。
 结构性知识可写成 `kb/knowledge/ontology/` 下的本体（OSI 标准三层），κ 用 `about` 引用本体元素。

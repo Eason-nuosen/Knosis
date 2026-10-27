@@ -100,7 +100,8 @@ knosis ontology check onto/f1
 ```
 
 格式说明见 [docs/knowledge.md](docs/knowledge.md)。知识多了以后用 `knosis knowledge consolidate` 让 agent 依次去重、处理矛盾、
-构建知识体系（每步由 Knosis 验收并记进 `evidence/consolidate.jsonl`），
+构建知识体系（每步由 Knosis 验收并记进 `evidence/consolidate.jsonl`）；知识库变大后用 `knosis knowledge compact`
+让 agent 自己判断怎么压缩，或 `--topic <主题>` 只压缩某个主题的知识（被压缩的单元并入概括它的那条，作别名保留）；
 `knosis mcp --ws <dir>` 把知识层与工具以 MCP 暴露给 agent；工具 / skill / MCP 的分工见 [docs/interfaces.md](docs/interfaces.md)。
 
 ### 工具层

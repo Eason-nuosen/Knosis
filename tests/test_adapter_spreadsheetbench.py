@@ -3,8 +3,9 @@
 import json
 import shutil
 
-import openpyxl
 import pytest
+
+openpyxl = pytest.importorskip("openpyxl")
 
 from knosis import load_dataset
 from knosis.decision import spreadsheetbench as sb

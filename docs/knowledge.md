@@ -128,6 +128,21 @@ usage 只能由 feedback / ablation 证据支持为 verified。测试题上的�
 `knosis kb collect` 收集后自动运行；`knosis ws run --consolidate` 在 refine 结束后运行一次，结果快照为新的 refine 版本（K_final）。
 大纲格式见 [interfaces.md](interfaces.md)；`knosis knowledge organize` 只做第三步。
 
+### 压缩
+
+知识库变大后单独运行，不在默认步骤里：
+
+```bash
+knosis knowledge compact --ws ~/kb                      # agent 自己判断压缩哪些、怎么压缩
+knosis knowledge compact --ws ~/kb --topic "订单表 主键"   # 只压缩与这个主题有关的知识
+```
+
+agent 把能合起来说的一组单元（同一对象的零散断言、同一规律的多个实例、措辞不同的同一件事）写成一条主单元
+（合并条件、例外与来源），组内其余单元改为 `merged` + `merged_into`；给 `--topic` 时 Knosis 先按主题词列出命中的单元，
+agent 判断哪些真的相关、补上漏掉的，只动这些。Knosis 检查：活跃单元数减少（什么都没改也算通过）、这一步失效的单元都有
+`merged_into` 或 `superseded_by` 指向活跃单元、不删除单元、不新增问题；不过重试一次，仍不过回滚。
+记录（含 topic 与前后活跃单元数）追加到 `evidence/consolidate.jsonl`。也可写作 `consolidate --steps compact`。
+
 ### 知识体系的组成形式
 
 同一批知识单元（κ、skill、本体单元）有五种组织方式，都只组织、不新增断言，每个节点、边、步骤都引用它来自的单元：

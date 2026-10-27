@@ -18,6 +18,7 @@ def agent_command(agent, ws, prompt, model=None, effort=None):
                 *(["-m", model] if model else []), *(["-c", f'model_reasoning_effort="{effort}"'] if effort else []), prompt]
     if agent == "claude":
         return ["claude", "-p", prompt, "--permission-mode", "acceptEdits", *(["--model", model] if model else []),
+                *(["--effort", effort] if effort else []),
                 "--allowedTools", "Bash", "Read", "Edit", "Write"]
     raise ValueError(f"unknown agent: {agent}")
 

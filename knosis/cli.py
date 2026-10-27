@@ -4,7 +4,7 @@
     knosis ws init|next|check|status|goto|fork|run ...
     knosis tool list|card|run ...
     knosis ontology check <dir> | convert <dataset> <scenario> --out <dir> | units <dir>
-    knosis knowledge check|verify|select|skills|index|trace|outline|candidates|consolidate|organize|evidence add|evidence import ... [--ws <ws>]
+    knosis knowledge check|verify|select|skills|index|trace|outline|candidates|consolidate|organize|compact|evidence add|evidence import ... [--ws <ws>]
     knosis kb init <dir> | merge <ws> --kb <dir> | import-ontology <src> --kb <dir> [--strip-gt]
     knosis kb collect --kb <dir> [--since 1d] [--source codex|claude] [--dry-run]
     knosis feedback submit <dev 预测文件> [--ws <ws>] | list [--ws <ws>]
@@ -145,12 +145,15 @@ def knowledge_parser(sub):
     graph.add_argument("--depth", type=int, default=1)
     graph.add_argument("--view", choices=["summary", "graph", "flows", "derivation", "cards"], default="summary")
     for name, text in (("consolidate", "内化：去重 → 矛盾处理 → 构建知识体系 → 结构化，每步由 agent 做、Knosis 验收并留痕"),
-                       ("organize", "只做内化的「构建知识体系」一步（写 kb/outline.yaml）")):
+                       ("organize", "只做内化的「构建知识体系」一步（写 kb/outline.yaml）"),
+                       ("compact", "压缩：agent 判断哪些单元可以合起来说并入主单元（作别名保留），活跃单元数减少；--topic 只压缩某个主题")):
         cmd = kn.add_parser(name, help=text)
         cmd.add_argument("--ws", default=".", help="工作区或知识库")
         if name == "consolidate":
             cmd.add_argument("--steps", default="dedup,conflict,organize,structure",
-                             help="逗号分隔，取自 dedup / conflict / organize / structure")
+                             help="逗号分隔，取自 dedup / conflict / organize / structure（另有不在默认里的 compact）")
+        if name == "compact":
+            cmd.add_argument("--topic", help="只压缩与这个主题有关的知识（不给时由 agent 自己判断压缩哪些）")
         cmd.add_argument("--agent", choices=["codex", "claude"], default="codex")
         cmd.add_argument("--model")
         cmd.add_argument("--effort")
@@ -217,7 +220,7 @@ def knowledge_command(args):
     ws = Path(args.ws).resolve()
     kdir, root = ws, knowledge.data_root(ws)
     history = [u for d in snapshots(ws) for u in knowledge.load_units(knowledge.layout(d).units)] if root else []
-    if args.kn_cmd in {"outline", "organize", "consolidate"}:
+    if args.kn_cmd in {"outline", "organize", "consolidate", "compact"}:
         outline_command(args)
     elif args.kn_cmd == "graph":
         from .knowledge import structure
@@ -274,12 +277,13 @@ def outline_command(args):
     from .knowledge import by_unit, consolidate, load_evidence, outline
 
     kdir, root = consolidate.resolve_base(args.ws)
-    if args.kn_cmd in {"organize", "consolidate"}:
-        steps = args.steps.split(",") if args.kn_cmd == "consolidate" else ["organize"]
+    if args.kn_cmd in {"organize", "consolidate", "compact"}:
+        steps = args.steps.split(",") if args.kn_cmd == "consolidate" else [args.kn_cmd]
+        topic = getattr(args, "topic", None)
         if args.prompt_only:
-            print(consolidate.prompt(args.ws, steps[0]))
+            print(consolidate.prompt(args.ws, steps[0], topic))
             return
-        results = consolidate.run(args.ws, steps, args.agent, args.model, args.effort)
+        results = consolidate.run(args.ws, steps, args.agent, args.model, args.effort, topic)
         report([f"{r['step']}: {i}" for r in results for i in r["issues"]])
         return
     current = None if args.draft or args.write else outline.load_outline(kdir)

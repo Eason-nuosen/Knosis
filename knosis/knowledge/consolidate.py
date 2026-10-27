@@ -1,6 +1,7 @@
 """内化：让知识库保持正确、不重复、不自相矛盾、成体系。四步，各由 agent 判断内容，Knosis 检查不变式并留痕。
 
     knosis knowledge consolidate [--ws <工作区或知识库>] [--steps dedup,conflict,organize,structure]
+    knosis knowledge compact [--ws <工作区或知识库>] [--topic <主题>]
 
 - dedup 去重：说同一件事的单元合并为一条；被并掉的改为 `status: merged` + `merged_into`，作为别名保留（不删除）。
 - conflict 矛盾处理：同一对象上互斥的断言，① 收窄条件，② 用新证据裁决（一方撤回），③ 环境变了按版本处理
@@ -9,6 +10,9 @@
   不新增断言）；串联中归纳出的上位规律是新断言：`provenance: derived`，`derived_from` 至少两条，从 inferred 起步。
 - structure 结构化：把同一批知识再组织成知识图谱（`kb/graph.json`，实体与关系）和流程图（`kb/flows/*.json`），
   每条边、每个步骤都引用单元；只组织、不改单元（格式与检查见 `structure`）。
+- compact 压缩（不在默认步骤里，知识库变大时单独运行）：agent 自己判断哪些单元可以合起来说，组内其余单元并入主单元
+  （merged，作别名保留），活跃单元数必须减少、失效的都要指向活跃单元。给 `topic` 时只压缩与该主题有关的单元：
+  Knosis 先按主题词列出命中的单元，agent 再自己找全。
 
 候选（疑似重复、疑似矛盾）由 `candidates` 按内容相似度与共同锚定对象找出，只是提示。
 每步验收：知识层检查不新增问题、没有单元被删除，以及该步自己的要求；不通过带着问题重试一次，仍不通过把
@@ -30,9 +34,10 @@ from pathlib import Path
 from string import Template
 
 from .layout import ACTIONS, data_root, layout
-from .units import INACTIVE, load_units
+from .units import INACTIVE, load_units, resolve
 
 STEPS = ("dedup", "conflict", "organize", "structure")
+EXTRA = ("compact",)  # 不在默认步骤里
 LAYERED = ("outline", "structure")  # 由 organize / structure 维护的部分；其他步骤不为它们的问题负责
 GRAPH_COVERAGE, FLOW_COVERAGE = 0.6, 0.6
 
@@ -103,6 +108,56 @@ def candidates(base, limit=30) -> dict:
             "contested": disputed[:limit]}
 
 
+def topic_terms(topic) -> list[str]:
+    """主题词：整句与按空白、逗号切开的各段（中文主题常不带空格，整句也算一个词）。"""
+    import re
+
+    parts = [t for t in re.split(r"[\s,，、;；]+", topic.strip()) if len(t) >= 2]
+    return list(dict.fromkeys([topic.strip(), *parts]))
+
+
+def topic_units(base, topic) -> list[dict]:
+    """与主题有关的活跃单元，按命中的主题词数排序；只是起点，agent 还要自己找全。"""
+    terms = [t.lower() for t in topic_terms(topic)]
+    hits = []
+    for u in load_units(layout(base).units):
+        if u.get("status") in INACTIVE:
+            continue
+        blob = " ".join(str(u.get(k, "")) for k in ("id", "content", "condition", "about", "provenance")).lower()
+        n = sum(t in blob for t in terms)
+        if n:
+            hits.append((n, u))
+    return [u for _, u in sorted(hits, key=lambda h: -h[0])]
+
+
+def render_unit(u) -> str:
+    return f"- `{u['id']}` [{u.get('form')}/{u.get('scope', '')}/{u.get('status')}] {u['content'][:200]}"
+
+
+def compact_values(base, topic=None) -> dict:
+    units = [u for u in load_units(layout(base).units) if u.get("status") not in INACTIVE]
+    if topic:
+        found = topic_units(base, topic)
+        listing = "\n".join(render_unit(u) for u in found[:80]) or "（主题词没有直接命中的单元；用 select 换几个说法再找）"
+        return {"goal": f"把与主题「{topic}」有关的知识压缩成更少、更概括的单元，其余知识不动。",
+                "scope": (f"主题：**{topic}**。主题词（{'、'.join(topic_terms(topic))}）直接命中的活跃单元 {len(found)} 条"
+                          f"{'（只列前 80 条）' if len(found) > 80 else ''}：\n\n{listing}\n\n"
+                          "主题词只是字面匹配：先判断哪些真与主题有关（同义说法、相关对象也算），去掉无关的，再补上漏掉的。"),
+                "topic_rule": "\n6. 只动与主题有关的单元；与主题无关的单元即使能压缩也不要动。"}
+    pairs = candidates(base, limit=40)
+    lines = [f"- 相似度 {p['similarity']}：`{p['a']}` / `{p['b']}`" + (f"，共同对象 {', '.join(p['shared'])}" if p["shared"] else "")
+             for p in pairs["duplicates"] + pairs["conflicts"]]
+    by_kind = {}
+    for u in units:
+        by_kind.setdefault(f"{u.get('scope', '?')}/{u.get('form')}", []).append(u)
+    groups = "\n".join(f"- {k}：{len(v)} 条" for k, v in sorted(by_kind.items(), key=lambda kv: -len(kv[1])))
+    listing = "\n".join(render_unit(u) for u in units[:200])
+    return {"goal": "让知识库在不丢信息的前提下变小，由你判断压缩哪些、怎么压缩。",
+            "scope": (f"全部活跃单元，按粒度 / 形式：\n\n{groups}\n\n内容相近或锚定同一对象的单元对（只是提示）：\n\n"
+                      f"{chr(10).join(lines) or '（没有）'}\n\n活跃单元{'（只列前 200 条）' if len(units) > 200 else ''}：\n\n{listing}"),
+            "topic_rule": ""}
+
+
 def render_candidates(base, step) -> str:
     found = candidates(base)
     units = {u["id"]: u for u in load_units(layout(base).units)}
@@ -131,7 +186,7 @@ def history_ids(base) -> set[str]:
     return {u["id"] for d in snapshots(base) for u in load_units(layout(d).units)} if data_root(base) else set()
 
 
-def prompt(path, step) -> str:
+def prompt(path, step, topic=None) -> str:
     from . import check_knowledge
     from . import outline as ol
     from ..workspace import TEMPLATES
@@ -160,6 +215,8 @@ def prompt(path, step) -> str:
                    "n_objects": cov["objects"], "n_procedural": cov["procedural"],
                    "existing": ("已有知识图谱 / 流程图：在它们的基础上更新（补上新单元，去掉对已失效单元的引用），保留合理的结构。"
                                 if st.graph_path(base).exists() else "还没有知识图谱与流程图，从头建。")}
+    elif step == "compact":
+        values |= compact_values(base, topic)
     else:
         values["candidates"] = render_candidates(base, step)
     text = Template((TEMPLATES / "consolidate" / f"{step}.md").read_text(encoding="utf-8")).substitute(values)
@@ -202,6 +259,8 @@ def step_issues(path, step, before_units, before_issues) -> list[str]:
                 issues.append(f"structure graph: {cov['bridges']} entities cite units from two or more datasets; need {min_bridges(cov['datasets'])}")
             missing = [u for u in st.cross_induced(base) if u not in st.cited(base)]
             issues += [f"structure: cross-dataset unit {u} is cited by neither the graph nor a flow" for u in missing]
+    if step == "compact":
+        issues += compact_issues(before_units, {u["id"]: u for u in now})
     if step == "organize":
         outline = ol.load_outline(base)
         if outline is None:
@@ -215,6 +274,23 @@ def step_issues(path, step, before_units, before_issues) -> list[str]:
                 continue
             if unit.get("provenance", "").strip() != "derived" or len(unit.get("derived_from", [])) < 2:
                 issues.append(f"{unit['id']}: induced units need provenance derived and at least two derived_from")
+    return issues
+
+
+def compact_issues(before: dict, after: dict) -> list[str]:
+    """活跃单元数减少（什么都没改也算通过）；这一步失效的单元都要指向活跃单元，不能悄悄丢掉。"""
+    if before == after:
+        return []
+    alive = lambda units: {uid for uid, u in units.items() if u.get("status") not in INACTIVE}  # noqa: E731
+    issues = []
+    if len(alive(after)) >= len(alive(before)):
+        issues.append(f"compact: active units {len(alive(before))} -> {len(alive(after))}; must decrease")
+    for uid in alive(before) - alive(after):
+        target = after[uid].get("merged_into") or after[uid].get("superseded_by")
+        if not target:
+            issues.append(f"{uid}: compacted units need merged_into (or superseded_by) pointing to the unit that covers them")
+        elif after.get(resolve(target, after), {}).get("status") in INACTIVE:
+            issues.append(f"{uid}: {target} must resolve to an active unit")
     return issues
 
 
@@ -270,7 +346,7 @@ def restore(base, tmp) -> None:
             shutil.copytree(Path(tmp) / part, Path(base) / part)
 
 
-def run_step(path, step, agent="codex", model=None, effort=None) -> dict:
+def run_step(path, step, agent="codex", model=None, effort=None, topic=None) -> dict:
     from ..workspace.driver import agent_command
     from . import check_knowledge
 
@@ -278,7 +354,7 @@ def run_step(path, step, agent="codex", model=None, effort=None) -> dict:
     lay = layout(base)
     before = {u["id"]: u for u in load_units(lay.units)}
     before_issues = [i for i in check_knowledge(base, history_ids(base), root=root) if not i.startswith(LAYERED)]
-    text, issues, started = prompt(base, step), [], time.monotonic()
+    text, issues, started = prompt(base, step, topic), [], time.monotonic()
     env = {**os.environ, "KNOSIS_DEPTH": "1"}
     with tempfile.TemporaryDirectory() as tmp:
         backup(base, tmp)
@@ -298,6 +374,10 @@ def run_step(path, step, agent="codex", model=None, effort=None) -> dict:
             return {"step": step, "issues": issues, "restored": True, "seconds": round(time.monotonic() - started)}
     after = {u["id"]: u for u in load_units(lay.units)}
     done = actions(before, after, step)
+    if step == "compact":
+        alive = lambda units: sum(u.get("status") not in INACTIVE for u in units.values())  # noqa: E731
+        done.append({"step": step, "op": "compact", "topic": topic, "active_before": alive(before),
+                     "active_after": alive(after), "created": datetime.now(timezone.utc).isoformat()})
     if step == "structure":
         from .structure import coverage
 
@@ -306,16 +386,19 @@ def run_step(path, step, agent="codex", model=None, effort=None) -> dict:
     ops = {}
     for a in done:
         ops[a["op"]] = ops.get(a["op"], 0) + 1
-    return {"step": step, "issues": [], "actions": ops, "seconds": round(time.monotonic() - started)}
+    out = {"step": step, "issues": [], "actions": ops, "seconds": round(time.monotonic() - started)}
+    if step == "compact":
+        out |= {"topic": topic, "active": [done[-1]["active_before"], done[-1]["active_after"]]}
+    return out
 
 
-def run(path, steps=STEPS, agent="codex", model=None, effort=None) -> list[dict]:
+def run(path, steps=STEPS, agent="codex", model=None, effort=None, topic=None) -> list[dict]:
     if int(os.environ.get("KNOSIS_DEPTH", "0")) >= 1:
         raise RuntimeError("nested agent runs are disabled (KNOSIS_DEPTH >= 1)")
     results = []
     for step in steps:
-        if step not in STEPS:
-            raise ValueError(f"unknown step: {step}; choose from {', '.join(STEPS)}")
-        results.append(run_step(path, step, agent, model, effort))
+        if step not in STEPS + EXTRA:
+            raise ValueError(f"unknown step: {step}; choose from {', '.join(STEPS + EXTRA)}")
+        results.append(run_step(path, step, agent, model, effort, topic))
         print(json.dumps(results[-1], ensure_ascii=False))
     return results

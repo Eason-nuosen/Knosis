@@ -190,3 +190,34 @@ def test_migrate_kb_cli(tmp_path, capsys):
     assert load_units(kb / "kb/knowledge/units.jsonl")[0]["provenance"] == "evidence/traces/s1.jsonl#step/1"
     assert (kb / "evidence/traces/s1.jsonl").exists() and "kb/outline.draft.yaml" in (kb / ".gitignore").read_text()
     assert check_knowledge(kb) == []
+
+
+def test_compact_topic_and_invariants(base, monkeypatch):
+    path = layout(base).units
+    write_units(path, [unit("a", content="订单表 order_id 唯一"), unit("b", content="订单表 order_id 非空"),
+                       unit("c", content="用户表 age 有缺失")])
+    assert [u["id"] for u in consolidate.topic_units(base, "订单表 order_id")] == ["a", "b"]
+    text = consolidate.prompt(base, "compact", topic="订单表")
+    assert "订单表" in text and "`a`" in text and "`c`" not in text and "只动与主题有关的单元" in text
+    assert "`c`" in consolidate.prompt(base, "compact")
+
+    def drop():  # 只改状态、不指向主单元：不允许悄悄丢掉
+        units = load_units(path)
+        write_units(path, [units[0], {**units[1], "status": "stale"}, units[2]])
+
+    fake_run(monkeypatch, drop)
+    result = consolidate.run_step(base, "compact", topic="订单表")
+    assert result["restored"] and any("need merged_into" in i for i in result["issues"])
+
+    def merge():
+        units = load_units(path)
+        write_units(path, [{**units[0], "content": "订单表 order_id 唯一且非空"},
+                           {**units[1], "status": "merged", "merged_into": "a"}, units[2]])
+
+    fake_run(monkeypatch, merge)
+    result = consolidate.run_step(base, "compact", topic="订单表")
+    assert result["issues"] == [] and result["active"] == [3, 2] and result["topic"] == "订单表"
+    assert load_units(layout(base).actions)[-1]["op"] == "compact"
+
+    fake_run(monkeypatch, lambda: None)  # 没有可压缩的：什么都不改也通过
+    assert consolidate.run_step(base, "compact")["issues"] == []

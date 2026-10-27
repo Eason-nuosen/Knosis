@@ -44,7 +44,7 @@ codex exec -C ws/newton \
   -c 'mcp_servers.knosis.default_tools_approval_mode="approve"' "<任务>"
 ```
 
-接入 Claude Code（未实测）：`claude -p "<任务>" --mcp-config '{"mcpServers":{"knosis":{"command":"knosis","args":["mcp","--ws","ws/newton"]}}}' --allowedTools 'mcp__knosis'`。
+接入 Claude Code（2026-10-27 实测 Claude Code 2.1.311 可用，读大纲、select、add、evidence_add、check 均正常）：`claude -p "<任务>" --mcp-config '{"mcpServers":{"knosis":{"command":"knosis","args":["mcp","--ws","ws/newton"]}}}' --allowedTools 'mcp__knosis'`。
 
 ## 内化与知识体系（大纲）
 
@@ -61,6 +61,7 @@ knosis knowledge outline --ws ws/x --draft       # 按粒度与锚定文件生�
 knosis knowledge outline --ws ws/x               # 渲染当前大纲（末尾列出还没归类的活跃单元）
 knosis knowledge candidates --ws ws/x            # 疑似重复、可能矛盾、有争议的单元
 knosis knowledge consolidate --ws ws/x           # 去重 → 矛盾处理 → 构建知识体系，每步验收不过重试一次，仍不过回滚
+knosis knowledge compact --ws ws/x [--topic 主题]  # 压缩：合并能合起来说的单元，活跃单元数减少
 knosis knowledge organize --ws ws/x --prompt-only   # 只做第三步并只打印提示词，本会话的 agent 自己整理
 ```
 

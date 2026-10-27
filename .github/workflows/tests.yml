@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install '.[all]'
+      # 用安装好的包跑测试（不从源码目录导入），顺带检查 package-data 是否打包完整。
+      - run: cd /tmp && pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/tests"
