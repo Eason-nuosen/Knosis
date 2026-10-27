@@ -118,14 +118,25 @@ knosis mcp --ws <dir>                                      # 以 MCP 暴露知�
 
 被合并、被压缩的知识不会删除，而是作为别名指向保留下来的那条；撤回一条知识后，由它推出的知识也必须改为失效（检查会报出）。
 
-## 数据入口与工具
+## 支持的数据
 
-13 个数据入口：ngdbench、tabarena、relbench、bibench、kramabench、burr、llm-srbench、newtonbench、alphabench、
-spreadsheetbench、whoandwhen，以及不带题目的 text（文档语料）与 traces（agent 轨迹）。
-场景、指标与已知限制见 [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md)。
+Knosis 面向**异构数据**：同一套知识层（κ + 证据 + 本体）覆盖下面这些数据形态，每类都有可评测的数据入口与对应工具。
 
-工具（`knosis tool list`）：sql、profile、joins、fit、sheet、newton、tabpfn、autoschemakg（文本 → 知识图谱）、ultra。
-工具只产出待验证的知识，不改数据。
+| 数据形态 | 数据入口 | agent 从中得到的知识 | 工具 |
+| --- | --- | --- | --- |
+| 单表 | tabarena（51 个表格数据集的分类 / 回归） | 列含义、分布与异常、特征与目标的关系、建模经验 | profile、sql、fit、tabpfn |
+| 电子表格 | spreadsheetbench（真实 xlsx 上的单元格 / 工作表操作） | 表格结构、公式与操作的实际行为 | sheet（查看结构、LibreOffice 重算公式） |
+| 多表 / 关系数据库 | relbench（多表 + 时间切分的预测）、bibench（BI 项目问答）、burr（关系库 → 本体映射） | 主外键与 join、粒度、包含依赖、业务口径；可写成 OSI 本体 | joins、sql、profile |
+| 数据湖（多源异构文件） | kramabench（多份格式不一的文件上的数值问答） | 文件之间的对应关系、单位与时间对齐、清洗规则 | 通用表格工具（sql、profile） |
+| 图 | ngdbench（大规模属性图问答，含注入噪声的版本） | 节点 / 边类型、属性规律、哪些是噪声 | ultra（只适配接口，需另备 checkpoint） |
+| 方程与科学数据 | llm-srbench（数值数据 → 符号公式）、newtonbench（在模拟器里做实验发现物理定律） | 公式、成立范围、实验方法 | newton（模拟器实验）、fit |
+| 金融时间序列 | alphabench（A 股行情上的因子评估） | 因子的信号与稳定性判断 | 通用表格工具（sql、profile） |
+| 文本 | text（任意文档集合，无题目） | 文中的断言与实体关系，可抽成知识图谱 | autoschemakg（文本 → 知识图谱） |
+| agent 轨迹 | traces（Codex / Claude Code 会话、ATIF 等格式）、whoandwhen（多 agent 失败日志）；个人会话由 `kb collect` 收集 | 项目约定、工具与命令的实际行为、出错原因与解决办法 | 统一转成 ATIF 轨迹，知识引用到具体步骤 |
+
+各入口的场景、指标、dev 切分与已知限制见 [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md)；
+`knosis list` 列出全部入口，`knosis describe <名字>` 看数据说明，`knosis download <名字>` 取数（数据集不随包分发）。
+工具（`knosis tool list`、`knosis tool card <名字>`）只产出待验证的知识，不改数据。
 
 ## 文档
 
