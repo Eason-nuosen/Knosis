@@ -26,19 +26,20 @@ Knosis 本身不是 agent。它让 Codex / Claude Code 这类编码 agent 把做
 ## 安装
 
 ```bash
-pip install -e '.[all]'          # Python 3.10+；或 conda env create -f environment.yml
-pytest -q
+pip install knosis               # Python 3.10+
+pip install 'knosis[all]'        # 加上各数据集需要的依赖（networkx、h5py、openpyxl、下载工具）
 ```
 
 需要一个编码 agent：[Codex CLI](https://github.com/openai/codex) 或 [Claude Code](https://claude.com/claude-code)，两者都已实测。
+从源码安装：`git clone` 后 `pip install -e '.[all]'`，`pytest -q` 跑测试。
 
 ## 上手：个人知识库
 
 不需要任何数据集。
 
 ```bash
-knosis kb init ~/kb                                  # 建库
-knosis install --kb ~/kb                             # 把 skill 与 MCP 服务装进 Codex；Claude Code 会打印一条 claude mcp add 命令
+knosis kb init ~/kb                                  # 建库（一个本地 git 仓库）
+knosis install --kb ~/kb                             # 让 Codex / Claude Code 能用它，见下一节
 
 # 照常用 agent 干活；新会话里 agent 先看知识体系，再按任务检索
 
@@ -53,6 +54,40 @@ knosis knowledge trace <id> --ws ~/kb                # 一条知识的来源与�
 只收集能被环境验证或反驳的知识（项目约定、数据的坑、工具的实际行为、报错与解决办法、可复用的方法），
 不收集偏好和闲聊。会话原文会复制进知识库供追溯，所以**知识库不要推到公开远端**。
 
+## 在 Codex 与 Claude Code 中使用
+
+Knosis 通过两样东西接入 agent：**skill**（告诉 agent 有知识库、什么时候查、怎么写回）和 **MCP 服务**
+（`knosis mcp`，让 agent 在会话里直接查询、写入知识，16 个工具）。`knosis install --kb ~/kb` 两样都装：
+
+| | Codex | Claude Code |
+| --- | --- | --- |
+| skill | 复制到 `~/.codex/skills/knosis/`、`~/.agents/skills/knosis/` | 复制到 `~/.claude/skills/knosis/` |
+| MCP | 自动写入 `~/.codex/config.toml`（带标记的一段，可重复执行；已放行调用审批） | 打印一条命令，自己运行一次：`claude mcp add -s user knosis -- <python> -m knosis.cli mcp --ws ~/kb` |
+| 只装一方 | `knosis install --codex --kb ~/kb` | `knosis install --claude --kb ~/kb` |
+
+装好后在新会话里，agent 会先看知识体系（`knowledge_outline`），再按任务检索（`knowledge_select`）；
+也可以直接对它说"查一下知识库里关于 X 的知识""把这个结论记进知识库"。
+
+**收集**不在会话里自动发生，需要定期运行（可放进 cron）：
+
+```bash
+knosis kb collect --kb ~/kb --since 1d                                  # 收集 Codex 会话（~/.codex/sessions）
+knosis kb collect --kb ~/kb --since 1d --source claude                  # 收集 Claude Code 会话（~/.claude/projects）
+knosis kb collect --kb ~/kb --since 1d --agent claude --model <模型>     # 用 Claude Code 来做提取（默认用 Codex）
+```
+
+不装到全局、临时试用 MCP：
+
+```bash
+codex exec -c 'mcp_servers.knosis.command="knosis"' -c 'mcp_servers.knosis.args=["mcp","--ws","/abs/path/kb"]' \
+  -c 'mcp_servers.knosis.default_tools_approval_mode="approve"' "<任务>"
+claude -p "<任务>" --mcp-config '{"mcpServers":{"knosis":{"command":"knosis","args":["mcp","--ws","/abs/path/kb"]}}}' \
+  --allowedTools mcp__knosis
+```
+
+需要 agent 自动跑的命令（`ws run`、`kb collect`、`knowledge consolidate / compact`）都有 `--agent codex|claude`、
+`--model`、`--effort` 三个参数。
+
 ## 上手：任务工作区
 
 ```bash
@@ -62,7 +97,7 @@ knosis ws init tabarena houses --out ws/houses       # 从数据集导出一个�
 knosis ws run ws/houses --agent codex --stage explore extract refine decide --rounds 2 --consolidate
 knosis ws run ws/houses --agent claude --model <模型> --effort medium ...    # 换成 Claude Code
 
-# 嵌入模式：直接在 agent 里打开工作区，agent 读 AGENTS.md 自己推进
+# 嵌入模式：直接在 agent 里打开工作区（Codex 读 AGENTS.md，Claude Code 读 CLAUDE.md），agent 自己推进
 knosis install
 
 knosis eval ws/houses                                # 评测，写 .knosis/eval.json
@@ -87,7 +122,7 @@ knosis mcp --ws <dir>                                      # 以 MCP 暴露知�
 
 13 个数据入口：ngdbench、tabarena、relbench、bibench、kramabench、burr、llm-srbench、newtonbench、alphabench、
 spreadsheetbench、whoandwhen，以及不带题目的 text（文档语料）与 traces（agent 轨迹）。
-场景、指标与已知限制见 [docs/datasets.md](docs/datasets.md)。
+场景、指标与已知限制见 [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md)。
 
 工具（`knosis tool list`）：sql、profile、joins、fit、sheet、newton、tabpfn、autoschemakg（文本 → 知识图谱）、ultra。
 工具只产出待验证的知识，不改数据。
@@ -96,13 +131,13 @@ spreadsheetbench、whoandwhen，以及不带题目的 text（文档语料）与 
 
 | 文档 | 内容 |
 | --- | --- |
-| [docs/knowledge.md](docs/knowledge.md) | 知识格式、状态与证据、内化与压缩的规则 |
-| [docs/interfaces.md](docs/interfaces.md) | 工具、skill、MCP 的分工与接入方式 |
-| [docs/datasets.md](docs/datasets.md) | 数据入口、指标、Python 接口 |
-| [docs/demos.md](docs/demos.md) | 各数据集上的演示与结果 |
-| [docs/scope.md](docs/scope.md) | 范围与定位 |
-| [docs/extending.md](docs/extending.md) | 新增数据集、评测或工具 |
-| [docs/design.md](docs/design.md) | 设计背景（四层架构：数据 / 知识 / 工具 / 决策） |
+| [docs/knowledge.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/knowledge.md) | 知识格式、状态与证据、内化与压缩的规则 |
+| [docs/interfaces.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/interfaces.md) | 工具、skill、MCP 的分工与接入方式 |
+| [docs/datasets.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/datasets.md) | 数据入口、指标、Python 接口 |
+| [docs/demos.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/demos.md) | 各数据集上的演示与结果 |
+| [docs/scope.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/scope.md) | 范围与定位 |
+| [docs/extending.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/extending.md) | 新增数据集、评测或工具 |
+| [docs/design.md](https://github.com/Eason-nuosen/Knosis/blob/main/docs/design.md) | 设计背景（四层架构：数据 / 知识 / 工具 / 决策） |
 
 ## 许可
 

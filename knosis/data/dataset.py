@@ -9,7 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path(os.environ.get("KNOSIS_DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
+# 源码仓库里默认用仓库下的 data/；pip 安装的包没有仓库目录，默认用 ~/.knosis/data。
+REPO = Path(__file__).resolve().parents[2]
+DATA_DIR = Path(os.environ.get("KNOSIS_DATA_DIR") or
+                (REPO / "data" if (REPO / "pyproject.toml").exists() else Path.home() / ".knosis/data"))
 CARDS_DIR = Path(__file__).resolve().parent / "cards"
 
 

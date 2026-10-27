@@ -19,3 +19,19 @@ jobs:
       - run: pip install '.[all]'
       # 用安装好的包跑测试（不从源码目录导入），顺带检查 package-data 是否打包完整。
       - run: cd /tmp && pytest -q -p no:cacheprovider "$GITHUB_WORKSPACE/tests"
+
+  core-install:
+    # 只装核心依赖（pip install knosis）时，常用命令不能因为缺可选依赖而失败。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - run: |
+          cd /tmp
+          knosis kb init kb
+          knosis knowledge check --ws kb
+          knosis list
+          HOME=/tmp/home knosis install --kb kb

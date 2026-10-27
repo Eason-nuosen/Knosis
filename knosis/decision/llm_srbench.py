@@ -6,7 +6,6 @@ Acc_τ 按论文定义：所有测试点的最大相对误差 ≤ τ 记为 1（
 
 from __future__ import annotations
 
-import h5py
 import numpy as np
 
 from ..knowledge import load_units, layout
@@ -39,6 +38,7 @@ def score(ws, state, ds, path, ids) -> dict:
     tasks = {t.id: t for t in ds.tasks}
     predictions = answers(path)
     items = []
+    import h5py  # 可选依赖 knosis[hdf5]
     with h5py.File(ds.files["hdf5"], "r") as h5:
         for tid in ids:
             task = tasks[tid]
@@ -70,6 +70,7 @@ def score_knowledge(ws, state, ds) -> dict:
     被接受的方程有多少真的成立，被撤回的有多少本来就不成立。"""
     tasks = {t.id: t for t in ds.tasks}
     items = []
+    import h5py  # 可选依赖 knosis[hdf5]
     with h5py.File(ds.files["hdf5"], "r") as h5:
         for unit in load_units(layout(ws).units):
             meta = unit.get("meta", {})

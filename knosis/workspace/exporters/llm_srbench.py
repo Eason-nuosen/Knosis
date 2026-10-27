@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import h5py
 import pandas as pd
 
 from . import register, render, split
@@ -19,6 +18,7 @@ def export(ds, ws: Path, write_data=True, dev=None, limit=None, seed=0, **opts) 
     dev_tasks, tests = split(tasks, round(0.2 * len(tasks)) if dev is None else dev, limit, seed)
     if write_data:
         used = {t["id"] for t in dev_tasks + tests}
+        import h5py  # 可选依赖 knosis[hdf5]
         with h5py.File(ds.files["hdf5"], "r") as h5:
             for t in ds.tasks:
                 if t.id not in used:

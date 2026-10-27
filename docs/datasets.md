@@ -1,7 +1,7 @@
 # 数据入口
 
 13 个数据入口都能开工作区并评测（`knosis ws init <数据集> <scenario>` → 四阶段 → `knosis eval`）。
-数据默认在仓库下的 `data/<name>/`，可用 `KNOSIS_DATA_DIR` 指到别处；`knosis download <name>` 取数。
+数据默认在仓库下的 `data/<name>/`（pip 安装时为 `~/.knosis/data/<name>/`），可用 `KNOSIS_DATA_DIR` 指到别处；`knosis download <name>` 取数。
 各数据集的来源、布局与陷阱见 `datacards/`（`knosis describe <name>`）。
 
 | 数据集 | scenario | 交付 | 指标（离线可算的部分） | dev（反馈） | 未做 |
