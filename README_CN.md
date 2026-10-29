@@ -4,7 +4,11 @@
 
 [English](https://github.com/Eason-nuosen/Knosis/blob/main/README.md) | 中文
 
-**在线演示**：https://eason-nuosen.github.io/Knosis/
+**在线演示**：https://eason-nuosen.github.io/Knosis/ （也可访问 https://hkust-knowcomp.github.io/Knosis/ ）
+
+**仓库**：Knosis 在 [Eason-nuosen/Knosis](https://github.com/Eason-nuosen/Knosis) 开发；
+[HKUST-KnowComp/Knosis](https://github.com/HKUST-KnowComp/Knosis) 是它在 HKUST KnowComp 组的 fork，从 Eason-nuosen 同步。
+PyPI 上的版本从 Eason-nuosen/Knosis 发布。
 
 Knosis 本身不是 agent。它让 Codex / Claude Code 这类编码 agent 把做事过程中学到的东西写成**显式知识**：
 每条知识都有来源、成立条件和证据，可以检查、追溯、撤回；下次做事时再按需取用。

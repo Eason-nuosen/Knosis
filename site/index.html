@@ -1075,6 +1075,16 @@ conda env create -f environment.yml && conda activate knosis
 <div class="shade" id="shade"></div>
 <aside class="drawer" id="drawer"><button class="x" id="dx" aria-label="close">×</button><div id="dbody"></div></aside>
 
+<script>
+// The same page is served from Eason-nuosen and from the HKUST-KnowComp fork; point repo links at the repo hosting this page.
+(function(){
+  if(!/^hkust-knowcomp\./i.test(location.hostname)) return;
+  var from='github.com/Eason-nuosen/Knosis', to='github.com/HKUST-KnowComp/Knosis';
+  document.querySelectorAll('a[href*="'+from+'"]').forEach(function(a){ a.href=a.href.replace(from,to); });
+  var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT), n;
+  while((n=w.nextNode())) if(n.nodeValue.indexOf(from)>=0) n.nodeValue=n.nodeValue.split(from).join(to);
+})();
+</script>
 <script src="data.js"></script>
 <script>
 document.documentElement.classList.add("js");

@@ -1,6 +1,7 @@
 name: pages
 
 # Publish site/ (static demo page) to GitHub Pages: https://eason-nuosen.github.io/Knosis/
+# (and https://hkust-knowcomp.github.io/Knosis/ from the HKUST-KnowComp fork)
 on:
   push:
     branches: [main]

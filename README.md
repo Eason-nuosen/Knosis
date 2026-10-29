@@ -4,7 +4,11 @@
 
 English | [中文](https://github.com/Eason-nuosen/Knosis/blob/main/README_CN.md)
 
-**Live demo**: https://eason-nuosen.github.io/Knosis/
+**Live demo**: https://eason-nuosen.github.io/Knosis/ (also at https://hkust-knowcomp.github.io/Knosis/)
+
+**Repositories**: Knosis is developed at [Eason-nuosen/Knosis](https://github.com/Eason-nuosen/Knosis);
+[HKUST-KnowComp/Knosis](https://github.com/HKUST-KnowComp/Knosis) is a fork of it for the HKUST KnowComp group, synced
+from Eason-nuosen. Releases on PyPI are published from Eason-nuosen/Knosis.
 
 Knosis is not an agent. It lets coding agents such as Codex and Claude Code write down what they learn while working as
 **explicit knowledge**: every piece of knowledge has a source, the conditions under which it holds, and evidence, so it can
